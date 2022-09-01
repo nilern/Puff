@@ -56,7 +56,6 @@ impl From<Fixnum> for isize {
     fn from(n: Fixnum) -> Self { (n.0 as isize) >> ORef::SHIFT }
 }
 
-
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct Flonum(usize);
 
