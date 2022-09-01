@@ -1,4 +1,4 @@
-use std::mem::size_of;
+use std::mem::{size_of, transmute};
 
 trait Tagged {
     const TAG: usize;
@@ -56,11 +56,36 @@ impl From<Fixnum> for isize {
     fn from(n: Fixnum) -> Self { (n.0 as isize) >> ORef::SHIFT }
 }
 
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Flonum(usize);
+
+impl Tagged for Flonum {
+    const TAG: usize = Fixnum::TAG + 1;
+}
+
+impl From<Flonum> for ORef {
+    fn from(n: Flonum) -> Self { ORef(n.0) }
+}
+
+impl From<f64> for Flonum {
+    // Loses `ORef::TAG_SIZE` bits of precision:
+    fn from(n: f64) -> Self {
+        Flonum(unsafe { transmute::<f64, usize>(n) } | Self::TAG)
+    }
+}
+
+impl From<Flonum> for f64 {
+    fn from(n: Flonum) -> Self {
+        unsafe { transmute::<usize, f64>(n.0 & !ORef::TAG_BITS) }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Char(usize);
 
 impl Tagged for Char {
-    const TAG: usize = 3;
+    const TAG: usize = Flonum::TAG + 1;
 }
 
 impl From<Char> for ORef {
@@ -109,6 +134,16 @@ mod tests {
             Fixnum::MIN);
         assert_eq!(isize::from(Fixnum::try_from(Fixnum::MAX).unwrap()),
             Fixnum::MAX);
+    }
+
+    #[test]
+    fn flonum_from_f64() {
+        assert_eq!(f64::from(Flonum::from(0f64)), 0f64);
+        assert!(ORef::from(Flonum::from(0f64)).is_tagged::<Flonum>());
+
+        assert_eq!(f64::from(Flonum::from(5f64)), 5f64);
+
+        assert_eq!(f64::from(Flonum::from(-5f64)), -5f64);
     }
 
     #[test]
