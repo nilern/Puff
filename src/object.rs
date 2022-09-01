@@ -1,18 +1,33 @@
 use std::mem::size_of;
 
+trait Tagged {
+    const TAG: usize;
+}
+
 // TODO: Enforce `usize` at least 32 bits:
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct ORef(usize);
 
 impl ORef {
-    const TAG_BITS: usize = 2;
+    const TAG_SIZE: usize = 2;
 
-    const PAYLOAD_BITS: usize = 8*size_of::<Self>() - Self::TAG_BITS;
+    const TAG_BITS: usize = (1 << Self::TAG_SIZE) - 1;
 
-    const SHIFT: usize = Self::TAG_BITS;
+    const PAYLOAD_BITS: usize = 8*size_of::<Self>() - Self::TAG_SIZE;
+
+    const SHIFT: usize = Self::TAG_SIZE;
+
+    fn tag(self) -> usize { self.0 & Self::TAG_BITS }
+
+    fn is_tagged<T: Tagged>(self) -> bool { self.tag() == T::TAG }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Fixnum(usize);
+
+impl Tagged for Fixnum {
+    const TAG: usize = 1;
+}
 
 impl Fixnum {
     const MIN: isize = -(1 << (ORef::PAYLOAD_BITS - 1));
@@ -30,7 +45,7 @@ impl TryFrom<isize> for Fixnum {
     fn try_from(n: isize) -> Result<Self, Self::Error> {
         // Bounds check `MIN <= n <= MAX` from Hacker's Delight 4-1:
         if (n - Fixnum::MIN) as usize <= (Fixnum::MAX - Fixnum::MIN) as usize {
-            Ok(Fixnum((n as usize) << ORef::SHIFT))
+            Ok(Fixnum(((n as usize) << ORef::SHIFT) | Fixnum::TAG))
         } else {
             Err(())
         }
@@ -41,7 +56,12 @@ impl From<Fixnum> for isize {
     fn from(n: Fixnum) -> Self { (n.0 as isize) >> ORef::SHIFT }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Char(usize);
+
+impl Tagged for Char {
+    const TAG: usize = 3;
+}
 
 impl From<Char> for ORef {
     fn from(c: Char) -> Self { ORef(c.0) }
@@ -49,7 +69,7 @@ impl From<Char> for ORef {
 
 // `ORef::PAYLOAD_BITS >= 30` so even `char::MAX` always fits:
 impl From<char> for Char {
-    fn from(c: char) -> Self { Char((c as usize) << ORef::SHIFT) }
+    fn from(c: char) -> Self { Char(((c as usize) << ORef::SHIFT) | Char::TAG) }
 }
 
 impl From<Char> for char {
@@ -65,6 +85,8 @@ mod tests {
     #[test]
     fn fixnum_try_from_isize() {
         assert!(Fixnum::try_from(0isize).is_ok());
+        assert!(ORef::from(Fixnum::try_from(0isize).unwrap())
+            .is_tagged::<Fixnum>());
 
         assert!(Fixnum::try_from(5isize).is_ok());
         assert!(Fixnum::try_from(-5isize).is_ok());
@@ -95,6 +117,8 @@ mod tests {
             char::from(Char::from(char::from_u32(0u32).unwrap())),
             char::from_u32(0u32).unwrap()
         );
+        assert!(ORef::from(Char::from(char::from_u32(0u32).unwrap()))
+            .is_tagged::<Char>());
 
         assert_eq!(
             char::from(Char::from(char::from_u32(5u32).unwrap())),
