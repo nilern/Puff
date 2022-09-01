@@ -1,5 +1,6 @@
 use std::mem::size_of;
 
+// TODO: Enforce `usize` at least 32 bits:
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct ORef(usize);
 
@@ -20,14 +21,14 @@ impl Fixnum {
 }
 
 impl From<Fixnum> for ORef {
-    fn from(n: Fixnum) -> Self { Self(n.0) }
+    fn from(n: Fixnum) -> Self { ORef(n.0) }
 }
 
 impl TryFrom<isize> for Fixnum {
     type Error = ();
 
     fn try_from(n: isize) -> Result<Self, Self::Error> {
-        // Bounds check `Fixnum::MIN <= n <= Fixnum::MAX` from Hacker's Delight 4-1:
+        // Bounds check `MIN <= n <= MAX` from Hacker's Delight 4-1:
         if (n - Fixnum::MIN) as usize <= (Fixnum::MAX - Fixnum::MIN) as usize {
             Ok(Fixnum((n as usize) << ORef::SHIFT))
         } else {
@@ -37,7 +38,24 @@ impl TryFrom<isize> for Fixnum {
 }
 
 impl From<Fixnum> for isize {
-    fn from(n: Fixnum) -> Self { (n.0 as Self) >> ORef::SHIFT }
+    fn from(n: Fixnum) -> Self { (n.0 as isize) >> ORef::SHIFT }
+}
+
+struct Char(usize);
+
+impl From<Char> for ORef {
+    fn from(c: Char) -> Self { ORef(c.0) }
+}
+
+// `ORef::PAYLOAD_BITS >= 30` so even `char::MAX` always fits:
+impl From<char> for Char {
+    fn from(c: char) -> Self { Char((c as usize) << ORef::SHIFT) }
+}
+
+impl From<Char> for char {
+    fn from(c: Char) -> Self {
+        unsafe { char::from_u32_unchecked((c.0 >> ORef::SHIFT) as u32) }
+    }
 }
 
 #[cfg(test)]
@@ -65,7 +83,27 @@ mod tests {
         assert_eq!(isize::from(Fixnum::try_from(5isize).unwrap()), 5);
         assert_eq!(isize::from(Fixnum::try_from(-5isize).unwrap()), -5);
 
-        assert_eq!(isize::from(Fixnum::try_from(Fixnum::MIN).unwrap()), Fixnum::MIN);
-        assert_eq!(isize::from(Fixnum::try_from(Fixnum::MAX).unwrap()), Fixnum::MAX);
+        assert_eq!(isize::from(Fixnum::try_from(Fixnum::MIN).unwrap()),
+            Fixnum::MIN);
+        assert_eq!(isize::from(Fixnum::try_from(Fixnum::MAX).unwrap()),
+            Fixnum::MAX);
+    }
+
+    #[test]
+    fn char_from() {
+        assert_eq!(
+            char::from(Char::from(char::from_u32(0u32).unwrap())),
+            char::from_u32(0u32).unwrap()
+        );
+
+        assert_eq!(
+            char::from(Char::from(char::from_u32(5u32).unwrap())),
+            char::from_u32(5u32).unwrap()
+        );
+
+        assert_eq!(
+            char::from(Char::from(char::from_u32(char::MAX as u32).unwrap())),
+            char::from_u32(char::MAX as u32).unwrap()
+        );
     }
 }
