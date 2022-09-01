@@ -5,7 +5,7 @@ trait Tagged {
 }
 
 // TODO: Enforce `usize` at least 32 bits:
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 struct ORef(usize);
 
 impl ORef {
