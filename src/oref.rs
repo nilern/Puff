@@ -6,7 +6,7 @@ trait Tagged {
 
 // TODO: Enforce `usize` at least 32 bits:
 #[derive(Debug, Clone, Copy, PartialEq)]
-struct ORef(usize);
+pub struct ORef(usize);
 
 impl ORef {
     const TAG_SIZE: usize = 2;
@@ -23,7 +23,7 @@ impl ORef {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct Fixnum(usize);
+pub struct Fixnum(usize);
 
 impl Tagged for Fixnum {
     const TAG: usize = 1;
