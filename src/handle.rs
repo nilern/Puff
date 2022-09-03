@@ -1,6 +1,7 @@
 use std::alloc::{Layout, alloc, dealloc};
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::mem::{size_of, align_of};
+use std::marker::PhantomData;
 use std::ops::Deref;
 use std::ptr::NonNull;
 
@@ -16,49 +17,44 @@ struct FreeHandleImpl {
     next: Option<NonNull<FreeHandleImpl>>
 }
 
-struct Handle(NonNull<LiveHandleImpl>);
+struct Handle<'a>(&'a LiveHandleImpl);
 
-impl Deref for Handle {
+impl<'a> Deref for Handle<'a> {
     type Target = ORef;
 
-    fn deref(&self) -> &Self::Target { unsafe { &self.0.as_ref().oref } }
+    fn deref(&self) -> &'a Self::Target { &self.0.oref }
 }
 
-impl Clone for Handle {
+impl<'a> Clone for Handle<'a> {
     fn clone(&self) -> Self {
-        unsafe {
-            let imp = self.0.as_ref();
-            imp.rc.set(imp.rc.get() + 1);
-        }
+        self.0.rc.set(self.0.rc.get() + 1);
 
         Handle(self.0)
     }
 }
 
-impl Drop for Handle {
+impl<'a> Drop for Handle<'a> {
     fn drop(&mut self) {
-        unsafe {
-            let imp = self.0.as_ref();
-            imp.rc.set(imp.rc.get() - 1);
-        }
+        self.0.rc.set(self.0.rc.get() - 1);
     }
 }
  
-struct HandlePool {
-    free: Option<NonNull<FreeHandleImpl>>,
-    live: Option<NonNull<LiveHandleImpl>>,
-    chunks: Vec<*mut u8>
+struct HandlePool<'a> {
+    free: Cell<Option<NonNull<FreeHandleImpl>>>,
+    live: Cell<Option<NonNull<LiveHandleImpl>>>,
+    chunks: RefCell<Vec<*mut u8>>,
+    phantom: PhantomData<&'a LiveHandleImpl>
 }
 
-impl Drop for HandlePool {
+impl<'a> Drop for HandlePool<'a> {
     fn drop(&mut self) {
-        for &chunk in self.chunks.iter() {
+        for &chunk in self.chunks.borrow().iter() {
             unsafe { dealloc(chunk, Self::CHUNK_LAYOUT); }
         }
     }
 }
 
-impl HandlePool {
+impl<'a> HandlePool<'a> {
     const CHUNK_SIZE: usize = 1 << 12; // 4k, a common page size
 
     const CHUNK_LAYOUT: Layout = unsafe { Layout::from_size_align_unchecked(
@@ -68,23 +64,24 @@ impl HandlePool {
 
     fn new() -> Self {
         HandlePool {
-            free: None,
-            live: None,
-            chunks: Vec::new()
+            free: Cell::new(None),
+            live: Cell::new(None),
+            chunks: RefCell::new(Vec::new()),
+            phantom: PhantomData::default()
         }
     }
 
-    fn root(&mut self, oref: ORef) -> Handle {
-        if self.free.is_none() {
+    fn root(&'a self, oref: ORef) -> Handle<'a> {
+        if self.free.get().is_none() {
             self.grow();
         }
 
         unsafe {
-            let free = self.free.unwrap();
-            let live = self.live;
+            let free = self.free.get().unwrap();
+            let live = self.live.get();
 
             // Pop `self.free`:
-            self.free = free.as_ref().next;
+            self.free.set(free.as_ref().next);
             let handle = free.as_ptr() as *mut LiveHandleImpl;
 
             // Initialize `handle`:
@@ -96,23 +93,23 @@ impl HandlePool {
 
             // Push to `self.live`:
             let handle = NonNull::new_unchecked(handle);
-            self.live = Some(handle);
+            self.live.set(Some(handle));
 
-            Handle(handle)
+            Handle(handle.as_ref())
         }
     }
 
-    fn grow(&mut self) {
+    fn grow(&'a self) {
         let len = Self::CHUNK_SIZE / size_of::<LiveHandleImpl>();
 
         // Allocate:
         let chunk = unsafe { alloc(Self::CHUNK_LAYOUT) };
-        self.chunks.push(chunk);
+        self.chunks.borrow_mut().push(chunk);
 
         // Link into `self.free`:
         unsafe {
             let mut handle = (chunk as *mut LiveHandleImpl).add(len);
-            let mut free = self.free;
+            let mut free = self.free.get();
             for _ in 0..len {
                 handle = handle.offset(-1);
                 let new_free = handle as *mut FreeHandleImpl;
@@ -121,13 +118,13 @@ impl HandlePool {
                 free = Some(NonNull::new_unchecked(new_free));
             }
 
-            self.free = free;
+            self.free.set(free);
         }
     }
 
-    fn for_each_root<F: FnMut(&mut ORef)>(&mut self, mut f: F) {
+    fn for_each_root<F: FnMut(&mut ORef)>(&'a self, mut f: F) {
         let mut prev: Option<NonNull<LiveHandleImpl>> = None;
-        let mut curr = self.live;
+        let mut curr = self.live.get();
 
         while let Some(mut curr_ptr) = curr {
             let curr_ref = unsafe { curr_ptr.as_mut() };
@@ -144,20 +141,20 @@ impl HandlePool {
         }
     }
 
-    unsafe fn free(&mut self, prev: Option<NonNull<LiveHandleImpl>>,
+    unsafe fn free(&'a self, prev: Option<NonNull<LiveHandleImpl>>,
         curr: &mut LiveHandleImpl
     ) {
         // Unlink from `self.live`:
         if let Some(mut prev) = prev {
             prev.as_mut().next = curr.next;
         } else {
-            self.live = curr.next;
+            self.live.set(curr.next);
         }
 
         // Link into `self.free`:
         let free = (curr as *mut LiveHandleImpl) as *mut FreeHandleImpl;
-        free.write(FreeHandleImpl {next: self.free});
-        self.free = Some(NonNull::new_unchecked(free));
+        free.write(FreeHandleImpl {next: self.free.get()});
+        self.free.set(Some(NonNull::new_unchecked(free)));
     }
 }
 
@@ -170,13 +167,13 @@ mod tests {
     fn new_pool() {
         let handles = HandlePool::new();
 
-        assert!(handles.free.is_none());
-        assert!(handles.live.is_none());
+        assert!(handles.free.get().is_none());
+        assert!(handles.live.get().is_none());
     }
 
     #[test]
     fn for_each_root() {
-        let mut handles = HandlePool::new();
+        let handles = HandlePool::new();
 
         handles.root(Fixnum::try_from(0isize).unwrap().into());
         let _handle1 = handles.root(Fixnum::try_from(1isize).unwrap().into());
@@ -196,7 +193,7 @@ mod tests {
 
         // Only live roots remain internally:
         let mut n = 0;
-        let mut curr = handles.live;
+        let mut curr = handles.live.get();
         while let Some(mut curr_ptr) = curr {
             n += 1;
             curr = unsafe { curr_ptr.as_mut() }.next;
@@ -206,63 +203,55 @@ mod tests {
 
     #[test]
     fn handle_lifespan() {
-        let mut handles = HandlePool::new();
+        let handles = HandlePool::new();
 
         let handle1 = handles.root(Fixnum::try_from(5isize).unwrap().into());
 
-        unsafe {
-            let handle_impl = handle1.0.as_ref();
+        let handle_impl = handle1.0;
 
-            assert_eq!(
-                handle_impl.oref,
-                ORef::from(Fixnum::try_from(5isize).unwrap())
-            );
-            assert_eq!(handle_impl.rc.get(), 1);
-            assert_eq!(handle_impl.next, None);
-        }
+        assert_eq!(
+            handle_impl.oref,
+            ORef::from(Fixnum::try_from(5isize).unwrap())
+        );
+        assert_eq!(handle_impl.rc.get(), 1);
+        assert_eq!(handle_impl.next, None);
 
 
         {
             let handle2 = handle1.clone();
 
-            unsafe {
-                let handle1_impl = handle1.0.as_ref();
-
-                assert_eq!(
-                    handle1_impl.oref,
-                    ORef::from(Fixnum::try_from(5isize).unwrap())
-                );
-                assert_eq!(handle1_impl.rc.get(), 2);
-                assert_eq!(handle1_impl.next, None);
-
-                assert_eq!(
-                    handle2.0.as_ref() as *const LiveHandleImpl,
-                    handle1_impl as *const LiveHandleImpl);
-            }
-        }
-
-        unsafe {
-            let handle_impl = handle1.0.as_ref();
-
+            let handle1_impl = handle1.0;
             assert_eq!(
-                handle_impl.oref,
+                handle1_impl.oref,
                 ORef::from(Fixnum::try_from(5isize).unwrap())
             );
-            assert_eq!(handle_impl.rc.get(), 1);
-            assert_eq!(handle_impl.next, None);
+            assert_eq!(handle1_impl.rc.get(), 2);
+            assert_eq!(handle1_impl.next, None);
+
+            assert_eq!(
+                handle2.0 as *const LiveHandleImpl,
+                handle1_impl as *const LiveHandleImpl);
         }
+
+        let handle_impl = handle1.0;
+        assert_eq!(
+            handle_impl.oref,
+            ORef::from(Fixnum::try_from(5isize).unwrap())
+        );
+        assert_eq!(handle_impl.rc.get(), 1);
+        assert_eq!(handle_impl.next, None);
     }
 
     #[test]
     fn five_handles() {
-        let mut handles = HandlePool::new();
+        let handles = HandlePool::new();
 
         let handle1 = handles.root(Fixnum::try_from(5isize).unwrap().into());
         let handle2 = handles.root(Fixnum::try_from(23isize).unwrap().into());
 
         unsafe {
-            let handle1_impl = handle1.0.as_ref();
-            let handle2_impl = handle2.0.as_ref();
+            let handle1_impl = handle1.0;
+            let handle2_impl = handle2.0;
 
             assert!(
                 handle1_impl as *const LiveHandleImpl
@@ -281,14 +270,19 @@ mod tests {
                 ORef::from(Fixnum::try_from(23isize).unwrap())
             );
             assert_eq!(handle2_impl.rc.get(), 1);
-            assert_eq!(handle2_impl.next, Some(handle1.0));
+            assert_eq!(
+                handle2_impl.next,
+                Some(NonNull::new_unchecked(
+                    (handle1.0 as *const LiveHandleImpl) as *mut LiveHandleImpl
+                ))
+            );
         }
 
     }
 
     #[test]
     fn handle_deref() {
-        let mut handles = HandlePool::new();
+        let handles = HandlePool::new();
 
         let handle = handles.root(Fixnum::try_from(5isize).unwrap().into());
 
