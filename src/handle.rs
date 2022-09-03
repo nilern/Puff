@@ -105,12 +105,46 @@ impl HandlePool {
                 let new_free = handle as *mut FreeHandleImpl;
 
                 new_free.write(FreeHandleImpl {next: free});
-
                 free = Some(NonNull::new_unchecked(new_free));
             }
 
             self.free = free;
         }
+    }
+
+    fn for_each_root<F: FnMut(&mut ORef)>(&mut self, mut f: F) {
+        let mut prev: Option<NonNull<LiveHandleImpl>> = None;
+        let mut curr = self.live;
+
+        while let Some(mut curr_ptr) = curr {
+            let curr_ref = unsafe { curr_ptr.as_mut() };
+
+            if curr_ref.rc.get() == 0 {
+                unsafe { self.free(prev, curr_ref); }
+            } else {
+                f(&mut curr_ref.oref);
+
+                prev = curr;
+            }
+
+            curr = curr_ref.next;
+        }
+    }
+
+    unsafe fn free(&mut self, prev: Option<NonNull<LiveHandleImpl>>,
+        curr: &mut LiveHandleImpl
+    ) {
+        // Unlink from `self.live`:
+        if let Some(mut prev) = prev {
+            prev.as_mut().next = curr.next;
+        } else {
+            self.live = curr.next;
+        }
+
+        // Link into `self.free`:
+        let free = (curr as *mut LiveHandleImpl) as *mut FreeHandleImpl;
+        free.write(FreeHandleImpl {next: self.free});
+        self.free = Some(NonNull::new_unchecked(free));
     }
 }
 
@@ -125,6 +159,36 @@ mod tests {
 
         assert!(handles.free.is_none());
         assert!(handles.live.is_none());
+    }
+
+    #[test]
+    fn for_each_root() {
+        let mut handles = HandlePool::new();
+
+        handles.root(Fixnum::try_from(0isize).unwrap().into());
+        let _handle1 = handles.root(Fixnum::try_from(1isize).unwrap().into());
+        handles.root(Fixnum::try_from(2isize).unwrap().into());
+        handles.root(Fixnum::try_from(3isize).unwrap().into());
+        handles.root(Fixnum::try_from(4isize).unwrap().into());
+        let _handle5 = handles.root(Fixnum::try_from(5isize).unwrap().into());
+        handles.root(Fixnum::try_from(6isize).unwrap().into());
+
+        // Only called on live roots:
+        let mut roots = Vec::<ORef>::new();
+        handles.for_each_root(|&mut oref| roots.push(oref));
+        assert_eq!(roots, vec![
+            Fixnum::try_from(5isize).unwrap().into(),
+            Fixnum::try_from(1isize).unwrap().into()
+        ]);
+
+        // Only live roots remain internally:
+        let mut n = 0;
+        let mut curr = handles.live;
+        while let Some(mut curr_ptr) = curr {
+            n += 1;
+            curr = unsafe { curr_ptr.as_mut() }.next;
+        }
+        assert_eq!(n, roots.len());
     }
 
     #[test]
