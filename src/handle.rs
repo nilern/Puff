@@ -1,4 +1,4 @@
-use std::alloc::{Layout, alloc};
+use std::alloc::{Layout, alloc, dealloc};
 use std::cell::Cell;
 use std::mem::{size_of, align_of};
 use std::ops::Deref;
@@ -46,14 +46,31 @@ impl Drop for Handle {
  
 struct HandlePool {
     free: Option<NonNull<FreeHandleImpl>>,
-    live: Option<NonNull<LiveHandleImpl>>
+    live: Option<NonNull<LiveHandleImpl>>,
+    chunks: Vec<*mut u8>
+}
+
+impl Drop for HandlePool {
+    fn drop(&mut self) {
+        for &chunk in self.chunks.iter() {
+            unsafe { dealloc(chunk, Self::CHUNK_LAYOUT); }
+        }
+    }
 }
 
 impl HandlePool {
+    const CHUNK_SIZE: usize = 1 << 12; // 4k, a common page size
+
+    const CHUNK_LAYOUT: Layout = unsafe { Layout::from_size_align_unchecked(
+        Self::CHUNK_SIZE,
+        align_of::<LiveHandleImpl>()
+    ) };
+
     fn new() -> Self {
         HandlePool {
             free: None,
-            live: None
+            live: None,
+            chunks: Vec::new()
         }
     }
 
@@ -86,15 +103,11 @@ impl HandlePool {
     }
 
     fn grow(&mut self) {
-        let chunk_size = 1 << 12; // 4k, a common page size
-        let len = chunk_size / size_of::<LiveHandleImpl>();
+        let len = Self::CHUNK_SIZE / size_of::<LiveHandleImpl>();
 
         // Allocate:
-        let chunk = unsafe { alloc(Layout::from_size_align_unchecked(
-                chunk_size,
-                align_of::<LiveHandleImpl>())
-            )
-        };
+        let chunk = unsafe { alloc(Self::CHUNK_LAYOUT) };
+        self.chunks.push(chunk);
 
         // Link into `self.free`:
         unsafe {
