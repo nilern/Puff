@@ -157,10 +157,6 @@ impl<T> Gc<T> {
         unsafe { &*((self.0.as_ptr() as *const Header).offset(-1)) }
     }
 
-    pub unsafe fn set_header(self, header: Header) {
-        (self.0.as_ptr() as *mut Header).offset(-1).write(header);
-    }
-
     pub fn r#type(self) -> Gc<Type> { self.header().r#type() }
 
     pub fn is_marked(self) -> bool { self.header().is_marked() }

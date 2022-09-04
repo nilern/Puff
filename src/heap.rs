@@ -73,17 +73,16 @@ impl Heap {
         addr &= !(align - 1); // Round down to `align`
 
         if addr >= self.fromspace.start as usize {
-            let ptr = addr as *mut u8;
-            let obj =
-                Gc::<()>::new_unchecked(NonNull::new_unchecked(ptr as *mut ()));
+            let obj = addr as *mut u8;
+            let header = (obj as *mut Header).offset(-1);
 
             // Initialize:
-            obj.set_header(Header::new(r#type.as_type()));
-            ptr::write_bytes(ptr, 0, size);
+            header.write(Header::new(r#type.as_type()));
+            ptr::write_bytes(obj, 0, size);
 
-            self.free = ptr;
+            self.free = header as *mut u8;
 
-            Some(NonNull::new_unchecked(ptr))
+            Some(NonNull::new_unchecked(obj))
         } else {
             None
         }
