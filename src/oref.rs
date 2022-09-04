@@ -1,4 +1,8 @@
+use std::fmt::{self, Debug};
 use std::mem::{size_of, transmute};
+use std::ptr::NonNull;
+
+use super::r#type::{Type, NonIndexedType, BitsType};
 
 trait Tagged {
     const TAG: usize;
@@ -99,6 +103,80 @@ impl From<char> for Char {
 impl From<Char> for char {
     fn from(c: Char) -> Self {
         unsafe { char::from_u32_unchecked((c.0 >> ORef::SHIFT) as u32) }
+    }
+}
+
+pub struct Header(usize);
+
+impl Header {
+    const TAG_SIZE: usize = 1;
+
+    const TAG_BITS: usize = (1 << Self::TAG_SIZE) - 1;
+
+    const MARK_BIT: usize = 1;
+
+    pub fn new(r#type: Gc<Type>) -> Self { Self(r#type.0.as_ptr() as usize) }
+
+    pub fn r#type(&self) -> Gc<Type> {
+        unsafe {
+            Gc::new_unchecked(
+                NonNull::new_unchecked((self.0 & !Self::TAG_BITS) as *mut Type)
+            )
+        }
+    }
+
+    fn is_marked(&self) -> bool { (self.0 & Self::MARK_BIT) == 1 }
+}
+
+pub struct Gc<T>(NonNull<T>);
+
+impl<T> Debug for Gc<T> {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        fmt.debug_tuple("Gc")
+            .field(&self.0)
+            .finish()
+    }
+}
+
+impl<T> Clone for Gc<T> {
+    fn clone(&self) -> Self { Self(self.0) }
+}
+
+impl<T> Copy for Gc<T> {}
+
+impl<T> PartialEq for Gc<T> {
+    fn eq(&self, other: &Self) -> bool { self.0 == other.0 }
+}
+
+impl<T> Gc<T> {
+    pub unsafe fn new_unchecked(ptr: NonNull<T>) -> Self { Self(ptr) }
+
+    pub unsafe fn as_ref(&self) -> &T { self.0.as_ref() }
+
+    fn header(&self) -> &Header {
+        unsafe { &*((self.0.as_ptr() as *const Header).offset(-1)) }
+    }
+
+    pub unsafe fn set_header(self, header: Header) {
+        (self.0.as_ptr() as *mut Header).offset(-1).write(header);
+    }
+
+    pub fn r#type(self) -> Gc<Type> { self.header().r#type() }
+
+    pub fn is_marked(self) -> bool { self.header().is_marked() }
+
+    unsafe fn unchecked_cast<R>(self) -> Gc<R> { Gc::<R>(self.0.cast()) }
+}
+
+impl Gc<NonIndexedType> {
+    pub fn as_type(self) -> Gc<Type> {
+        unsafe { self.unchecked_cast::<Type>() }
+    }
+}
+
+impl Gc<BitsType> {
+    pub fn as_nonindexed(self) -> Gc<NonIndexedType> {
+        unsafe { self.unchecked_cast::<NonIndexedType>() }
     }
 }
 
