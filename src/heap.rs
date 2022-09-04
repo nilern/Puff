@@ -71,16 +71,17 @@ impl Heap {
         let mut align = r#type.as_ref().align();
         align = align.max(align_of::<Header>()); // Ensure header gets aligned
         addr &= !(align - 1); // Round down to `align`
+        let obj = addr as *mut u8;
+
+        let header = (obj as *mut Header).offset(-1);
+        addr = header as usize;
 
         if addr >= self.fromspace.start as usize {
-            let obj = addr as *mut u8;
-            let header = (obj as *mut Header).offset(-1);
-
             // Initialize:
             header.write(Header::new(r#type.as_type()));
             ptr::write_bytes(obj, 0, size);
 
-            self.free = header as *mut u8;
+            self.free = addr as *mut u8;
 
             Some(NonNull::new_unchecked(obj))
         } else {
