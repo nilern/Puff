@@ -2,8 +2,8 @@ use std::alloc::{Layout, alloc, dealloc};
 use std::mem::align_of;
 use std::ptr::{self, NonNull};
 
-use super::oref::{Gc, Header};
-use super::r#type::NonIndexedType;
+use super::oref::{AsType, Gc, Header};
+use super::r#type::{NonIndexedType, IndexedType};
 
 struct Granule(usize);
 
@@ -60,7 +60,9 @@ impl Heap {
         }
     }
 
-    unsafe fn alloc_raw(&mut self, layout: Layout) -> Option<NonNull<u8>> {
+    unsafe fn alloc_raw(&mut self, layout: Layout, indexed: bool)
+        -> Option<NonNull<u8>>
+    {
         let mut addr = self.free as usize;
 
         addr = addr.checked_sub(layout.size())?; // Bump by `size`
@@ -72,6 +74,10 @@ impl Heap {
 
         let header = (obj as *mut Header).offset(-1);
         addr = header as usize;
+
+        if indexed {
+            addr = (header as *mut usize).offset(-1) as usize;
+        }
 
         if addr >= self.fromspace.start as usize {
             self.free = addr as *mut u8;
@@ -87,12 +93,29 @@ impl Heap {
     {
         let layout = r#type.as_ref().layout();
 
-        self.alloc_raw(layout).map(|obj| {
+        self.alloc_raw(layout, false).map(|obj| {
             // Initialize:
             let header = (obj.as_ptr() as *mut Header).offset(-1);
             header.write(Header::new(r#type.as_type()));
             ptr::write_bytes(obj.as_ptr(), 0, layout.size());
-            
+
+            obj
+        })
+    }
+
+    unsafe fn alloc_indexed(&mut self, r#type: Gc<IndexedType>, len: usize)
+        -> Option<NonNull<u8>>
+    {
+        let layout = r#type.as_ref().layout(len);
+
+        self.alloc_raw(layout, true).map(|obj| {
+            // Initialize:
+            let header = (obj.as_ptr() as *mut Header).offset(-1);
+            let header_len = (header as *mut usize).offset(-1);
+            header_len.write(len);
+            header.write(Header::new(r#type.as_type()));
+            ptr::write_bytes(obj.as_ptr(), 0, layout.size());
+
             obj
         })
     }

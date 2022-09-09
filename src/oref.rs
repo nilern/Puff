@@ -2,7 +2,7 @@ use std::fmt::{self, Debug};
 use std::mem::{size_of, transmute};
 use std::ptr::NonNull;
 
-use super::r#type::{Type, NonIndexedType, BitsType};
+use super::r#type::{Type, NonIndexedType, IndexedType, BitsType};
 
 trait Tagged {
     const TAG: usize;
@@ -164,8 +164,18 @@ impl<T> Gc<T> {
     unsafe fn unchecked_cast<R>(self) -> Gc<R> { Gc::<R>(self.0.cast()) }
 }
 
-impl Gc<NonIndexedType> {
-    pub fn as_type(self) -> Gc<Type> {
+pub unsafe trait AsType {
+    fn as_type(self) -> Gc<Type>;
+}
+
+unsafe impl AsType for Gc<NonIndexedType> {
+    fn as_type(self) -> Gc<Type> {
+        unsafe { self.unchecked_cast::<Type>() }
+    }
+}
+
+unsafe impl AsType for Gc<IndexedType> {
+    fn as_type(self) -> Gc<Type> {
         unsafe { self.unchecked_cast::<Type>() }
     }
 }
