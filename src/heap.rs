@@ -60,16 +60,13 @@ impl Heap {
         }
     }
 
-    unsafe fn alloc_nonindexed(&mut self, r#type: Gc<NonIndexedType>)
-        -> Option<NonNull<u8>>
-    {
+    unsafe fn alloc_raw(&mut self, layout: Layout) -> Option<NonNull<u8>> {
         let mut addr = self.free as usize;
 
-        let size = r#type.as_ref().min_size();
-        addr = addr.checked_sub(size)?; // Bump by `size`
-
-        let mut align = r#type.as_ref().align();
-        align = align.max(align_of::<Header>()); // Ensure header gets aligned
+        addr = addr.checked_sub(layout.size())?; // Bump by `size`
+        
+        let align = layout.align()
+            .max(align_of::<Header>()); // Ensure header gets aligned
         addr &= !(align - 1); // Round down to `align`
         let obj = addr as *mut u8;
 
@@ -77,16 +74,27 @@ impl Heap {
         addr = header as usize;
 
         if addr >= self.fromspace.start as usize {
-            // Initialize:
-            header.write(Header::new(r#type.as_type()));
-            ptr::write_bytes(obj, 0, size);
-
             self.free = addr as *mut u8;
 
             Some(NonNull::new_unchecked(obj))
         } else {
             None
         }
+    }
+
+    unsafe fn alloc_nonindexed(&mut self, r#type: Gc<NonIndexedType>)
+        -> Option<NonNull<u8>>
+    {
+        let layout = r#type.as_ref().layout();
+
+        self.alloc_raw(layout).map(|obj| {
+            // Initialize:
+            let header = (obj.as_ptr() as *mut Header).offset(-1);
+            header.write(Header::new(r#type.as_type()));
+            ptr::write_bytes(obj.as_ptr(), 0, layout.size());
+            
+            obj
+        })
     }
 }
 

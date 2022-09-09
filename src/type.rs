@@ -1,4 +1,5 @@
 use std::mem::{size_of, align_of};
+use std::alloc::Layout;
 
 #[repr(C)]
 pub struct Type {
@@ -22,6 +23,12 @@ impl NonIndexedType {
 
     pub fn stride(&self) -> usize {
         (self.min_size() + self.align() - 1) & !(self.align() - 1)
+    }
+
+    pub fn layout(&self) -> Layout {
+        unsafe {
+            Layout::from_size_align_unchecked(self.min_size(), self.align())
+        }
     }
 }
 
