@@ -1,8 +1,8 @@
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Pos {
-    index: usize,
-    line: usize,
-    col: usize
+    pub index: usize,
+    pub line: usize,
+    pub col: usize
 }
 
 impl Default for Pos {
@@ -38,12 +38,23 @@ pub struct Positioned<T> {
     pub pos: Pos
 }
 
-struct Span {
-    start: Pos,
-    end: Pos
+#[derive(Debug, PartialEq)]
+pub struct Span {
+    pub start: Pos,
+    pub end: Pos
 }
 
-struct Spanning<T> {
-    v: T,
-    span: Span
+#[derive(Debug, PartialEq)]
+pub struct Spanning<T> {
+    pub v: T,
+    pub span: Span
+}
+
+impl<T> Spanning<T> {
+    pub fn map<U, F: FnOnce(T) -> U>(self, f: F) -> Spanning<U> {
+        Spanning {
+            v: f(self.v),
+            span: self.span
+        }
+    }
 }
