@@ -47,12 +47,12 @@ impl<'a> Iterator for Input<'a> {
 // TODO: Proper error type:
 type ReadResult<T> = Result<Spanning<T>, ()>;
 
-struct Reader<'a> {
+pub struct Reader<'a> {
     input: Input<'a>
 }
 
 impl<'a> Reader<'a> {
-    fn new(chars: &'a str) -> Self { Reader {input: Input::new(chars)} }
+    pub fn new(chars: &'a str) -> Self { Reader {input: Input::new(chars)} }
 
     fn read_fixnum(&mut self, radix: u32, first_pc: Positioned<char>)
         -> ReadResult<Fixnum>
