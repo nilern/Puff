@@ -2,56 +2,7 @@ use std::iter::Peekable;
 use std::str::Chars;
 
 use crate::oref::{ORef, Fixnum};
-
-#[derive(Clone, Copy)]
-struct Pos {
-    index: usize,
-    line: usize,
-    col: usize
-}
-
-impl Default for Pos {
-    fn default() -> Self {
-        Pos {
-            index: 0,
-            line: 1,
-            col: 1
-        }
-    }
-}
-
-impl Pos {
-    fn advance(&self, c: char) -> Self {
-        if c != '\n' {
-            Pos {
-                index: self.index + 1,
-                line: self.line,
-                col: self.col + 1
-            }
-        } else {
-            Pos {
-                index: self.index + 1,
-                line: self.line + 1,
-                col: 1
-            }
-        }
-    }
-}
-
-struct Span {
-    start: Pos,
-    end: Pos
-}
-
-struct Spanning<T> {
-    v: T,
-    span: Span
-}
-
-struct Positioned<T> {
-    v: T,
-    pos: Pos
-}
+use crate::pos::{Pos, Positioned};
 
 struct Input<'a> {
     chars: Peekable<Chars<'a>>,
