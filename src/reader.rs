@@ -64,8 +64,9 @@ impl<'a> Reader<'a> {
         while let Some(pc) = self.input.peek() {
             if pc.v.is_digit(radix) {
                 self.input.next();
-                n = (radix as isize) * n
-                    + pc.v.to_digit(radix).unwrap() as isize;
+                n = (radix as isize).checked_mul(n).unwrap()
+                    .checked_add(pc.v.to_digit(radix).unwrap() as isize)
+                    .unwrap();
                 end = pc.pos;
             } else {
                 break;

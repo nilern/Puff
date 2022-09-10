@@ -29,7 +29,7 @@ fn main() -> rustyline::Result<()> {
 
                 for res in reader {
                     match res {
-                        Ok(sv) => println!("{:?}", sv.v),
+                        Ok(sv) => println!("{}", sv.v),
                         Err(err) => {
                             println!("Error: {:?}", err);
                             break;

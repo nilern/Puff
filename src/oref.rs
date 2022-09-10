@@ -1,4 +1,4 @@
-use std::fmt::{self, Debug};
+use std::fmt::{self, Debug, Display};
 use std::mem::{size_of, transmute};
 use std::ptr::NonNull;
 
@@ -26,11 +26,29 @@ impl ORef {
     fn is_tagged<T: Tagged>(self) -> bool { self.tag() == T::TAG }
 }
 
+impl Display for ORef {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        match self.tag() {
+            Gc::<()>::TAG => unsafe {
+                let ptr = NonNull::new_unchecked(self.0 as *mut ());
+                Display::fmt(&Gc::new_unchecked(ptr), fmt)
+            },
+            Fixnum::TAG =>
+                Display::fmt(&isize::from(Fixnum(self.0)), fmt),
+            Flonum::TAG =>
+                Display::fmt(&f64::from(Flonum(self.0)), fmt),
+            Char::TAG =>
+                Display::fmt(&char::from(Char(self.0)), fmt),
+            _ => unreachable!()
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Fixnum(usize);
 
 impl Tagged for Fixnum {
-    const TAG: usize = 1;
+    const TAG: usize = Gc::<()>::TAG + 1;
 }
 
 impl Fixnum {
@@ -130,11 +148,21 @@ impl Header {
 
 pub struct Gc<T>(NonNull<T>);
 
+impl<T> Gc<T> {
+    const TAG: usize = 0;
+}
+
 impl<T> Debug for Gc<T> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         fmt.debug_tuple("Gc")
             .field(&self.0)
             .finish()
+    }
+}
+
+impl<T> Display for Gc<T> {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        write!(fmt, "#<object {:p}>", self.0)
     }
 }
 
