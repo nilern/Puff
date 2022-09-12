@@ -3,6 +3,7 @@ use std::mem::{size_of, transmute};
 use std::ptr::NonNull;
 
 use super::r#type::{Type, NonIndexedType, IndexedType, BitsType};
+use crate::heap_obj::Header;
 
 trait Tagged {
     const TAG: usize;
@@ -121,37 +122,6 @@ impl From<char> for Char {
 impl From<Char> for char {
     fn from(c: Char) -> Self {
         unsafe { char::from_u32_unchecked((c.0 >> ORef::SHIFT) as u32) }
-    }
-}
-
-pub struct Header(usize);
-
-impl Header {
-    const TAG_SIZE: usize = 1;
-
-    const TAG_BITS: usize = (1 << Self::TAG_SIZE) - 1;
-
-    const MARK_BIT: usize = 1;
-
-    pub fn new(r#type: Gc<Type>) -> Self { Self(r#type.0.as_ptr() as usize) }
-
-    pub fn r#type(&self) -> Gc<Type> {
-        unsafe {
-            Gc::new_unchecked(
-                NonNull::new_unchecked((self.0 & !Self::TAG_BITS) as *mut Type)
-            )
-        }
-    }
-
-    fn is_marked(&self) -> bool { (self.0 & Self::MARK_BIT) == 1 }
-
-    pub unsafe fn initialize_indexed<T>(obj: NonNull<T>, header: Self,
-        len: usize
-    ) {
-        let header_ptr = (obj.as_ptr() as *mut Header).offset(-1);
-        let header_len = (header_ptr as *mut usize).offset(-1);
-        header_len.write(len);
-        header_ptr.write(header);
     }
 }
 

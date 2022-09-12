@@ -3,10 +3,10 @@ use std::mem::{align_of, size_of};
 use std::alloc::Layout;
 
 use crate::heap::Heap;
-use crate::oref::{AsType, Header, Gc};
-use crate::r#type::{Indexed, Type, Field, IndexedType, NonIndexedType, BitsType,
-    min_size_of_indexed, align_of_indexed};
+use crate::oref::{AsType, Gc};
+use crate::r#type::{Type, Field, IndexedType, NonIndexedType, BitsType};
 use crate::symbol::Symbol;
+use crate::heap_obj::{Indexed, Header, min_size_of_indexed, align_of_indexed};
 
 const USIZE_TYPE_SIZE: usize = min_size_of_indexed::<Type>();
 

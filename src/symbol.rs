@@ -3,7 +3,7 @@ use std::slice;
 use std::str;
 
 use crate::oref::{Gc, Fixnum};
-use crate::r#type::Indexed;
+use crate::heap_obj::Indexed;
 use crate::mutator::Mutator;
 
 #[repr(C)]

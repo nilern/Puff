@@ -1,66 +1,11 @@
 use std::mem::{transmute, size_of, align_of};
 use std::alloc::Layout;
-use std::slice;
 use std::ptr::NonNull;
 
 use crate::heap::Heap;
-use crate::oref::{Gc, Header};
-
-pub unsafe trait Indexed: Sized {
-    type Item;
-
-    fn indexed_field(&self) -> &[Self::Item] {
-        let ptr = self as *const Self;
-
-        unsafe {
-            let field_align = align_of::<Self::Item>();
-
-            let mut fields_addr = ptr.add(1) as usize;
-            fields_addr = (fields_addr + field_align - 1) & !(field_align - 1);
-            let fields_ptr = fields_addr as *const Self::Item;
-
-            let header_len = ((ptr as *const Header).offset(-1) as *const usize)
-                .offset(-1);
-
-            slice::from_raw_parts(fields_ptr, *header_len)
-        }
-    }
-
-    fn indexed_field_mut(&mut self) -> &mut[Self::Item] {
-        let ptr = self as *mut Self;
-
-        unsafe {
-            let field_align = align_of::<Self::Item>();
-
-            let mut fields_addr = ptr.add(1) as usize;
-            fields_addr = (fields_addr + field_align - 1) & !(field_align - 1);
-            let fields_ptr = fields_addr as *mut Self::Item;
-
-            let header_len = ((ptr as *const Header).offset(-1) as *const usize)
-                .offset(-1);
-
-            slice::from_raw_parts_mut(fields_ptr, *header_len)
-        }
-    }
-}
-
-pub const fn min_size_of_indexed<T: Indexed>() -> usize {
-    let static_size = size_of::<T>();
-    let item_align = align_of::<T::Item>();
-    (static_size + item_align - 1) & !(item_align - 1)
-}
-
-pub const fn align_of_indexed<T: Indexed>() -> usize {
-    let align = align_of::<T>();
-    let item_align = align_of::<T::Item>();
-    if align > item_align { align } else { item_align }
-}
-
-pub const fn item_stride<T: Indexed>() -> usize {
-    let item_size = size_of::<T::Item>();
-    let item_align = align_of::<T::Item>();
-    (item_size + item_align - 1) & !(item_align - 1)
-}
+use crate::oref::Gc;
+use crate::heap_obj::{Indexed, min_size_of_indexed, align_of_indexed,
+    item_stride};
 
 #[repr(C)]
 pub struct Field<T> {

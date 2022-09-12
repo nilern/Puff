@@ -6,6 +6,7 @@ mod reader;
 mod pos;
 mod symbol;
 mod mutator;
+mod heap_obj;
 
 use rustyline::error::ReadlineError;
 use rustyline;
