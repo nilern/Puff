@@ -1,5 +1,3 @@
-use std::mem::align_of;
-use std::slice;
 use std::str;
 use std::collections::hash_map::DefaultHasher;
 
@@ -31,16 +29,7 @@ impl Symbol {
             ptr.write(Symbol {
                 hash: hash::<DefaultHasher, _>(cs)
             });
-
-            let field_align = align_of::<u8>();
-
-            let mut fields_addr = ptr.add(1) as usize;
-            fields_addr = (fields_addr + field_align - 1) & !(field_align - 1);
-            let fields_ptr = fields_addr as *mut u8;
-
-            let fields = slice::from_raw_parts_mut(fields_ptr, len);
-
-            fields.copy_from_slice(cs.as_bytes());
+            (*ptr).indexed_field_mut().copy_from_slice(cs.as_bytes());
 
             Gc::new_unchecked(nptr)
         } else {
