@@ -4,6 +4,8 @@ mod r#type;
 mod heap;
 mod reader;
 mod pos;
+mod symbol;
+mod mutator;
 
 use rustyline::error::ReadlineError;
 use rustyline;

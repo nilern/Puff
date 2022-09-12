@@ -1,29 +1,23 @@
-use std::mem::{size_of, align_of};
+use std::mem::{transmute, size_of, align_of};
 use std::alloc::Layout;
 use std::slice;
+use std::ptr::NonNull;
 
-use super::oref::{Gc, Header};
+use crate::heap::Heap;
+use crate::oref::{Gc, Header};
 
-#[repr(C)]
-pub struct Type {
-    align: usize,
-    min_size: usize
-}
+pub unsafe trait Indexed: Sized {
+    type Item;
 
-impl Type {
-    pub fn align(&self) -> usize { self.align }
-
-    pub fn min_size(&self) -> usize { self.min_size }
-
-    fn fields(&self) -> &[Gc<NonIndexedType>] {
+    fn indexed_field(&self) -> &[Self::Item] {
         let ptr = self as *const Self;
 
         unsafe {
-            let field_align = align_of::<Gc<NonIndexedType>>();
+            let field_align = align_of::<Self::Item>();
 
             let mut fields_addr = ptr.add(1) as usize;
             fields_addr = (fields_addr + field_align - 1) & !(field_align - 1);
-            let fields_ptr = fields_addr as *const Gc<NonIndexedType>;
+            let fields_ptr = fields_addr as *const Self::Item;
 
             let header_len = ((ptr as *const Header).offset(-1) as *const usize)
                 .offset(-1);
@@ -31,15 +25,115 @@ impl Type {
             slice::from_raw_parts(fields_ptr, *header_len)
         }
     }
+
+    fn indexed_field_mut(&mut self) -> &mut[Self::Item] {
+        let ptr = self as *mut Self;
+
+        unsafe {
+            let field_align = align_of::<Self::Item>();
+
+            let mut fields_addr = ptr.add(1) as usize;
+            fields_addr = (fields_addr + field_align - 1) & !(field_align - 1);
+            let fields_ptr = fields_addr as *mut Self::Item;
+
+            let header_len = ((ptr as *const Header).offset(-1) as *const usize)
+                .offset(-1);
+
+            slice::from_raw_parts_mut(fields_ptr, *header_len)
+        }
+    }
+}
+
+pub const fn min_size_of_indexed<T: Indexed>() -> usize {
+    let static_size = size_of::<T>();
+    let item_align = align_of::<T::Item>();
+    (static_size + item_align - 1) & !(item_align - 1)
+}
+
+pub const fn align_of_indexed<T: Indexed>() -> usize {
+    let align = align_of::<T>();
+    let item_align = align_of::<T::Item>();
+    if align > item_align { align } else { item_align }
+}
+
+pub const fn item_stride<T: Indexed>() -> usize {
+    let item_size = size_of::<T::Item>();
+    let item_align = align_of::<T::Item>();
+    (item_size + item_align - 1) & !(item_align - 1)
+}
+
+#[repr(C)]
+pub struct Field<T> {
+    pub r#type: Gc<T>,
+    pub offset: usize
+}
+
+impl<T> Clone for Field<T> {
+    fn clone(&self) -> Self {
+        Self {
+            r#type: self.r#type,
+            offset: self.offset
+        }
+    }
+}
+
+impl<T> Copy for Field<T> {}
+
+impl<T> Field<T> {
+    pub const TYPE_LEN: usize = 2;
+
+    pub const TYPE_SIZE: usize = min_size_of_indexed::<Type>()
+        + Self::TYPE_LEN * item_stride::<Type>();
+
+    pub const TYPE_LAYOUT: Layout = unsafe {
+        Layout::from_size_align_unchecked(
+            Self::TYPE_SIZE, align_of_indexed::<Type>()
+        )
+    };
+}
+
+#[repr(C)]
+pub struct Type {
+    pub align: usize,
+    pub min_size: usize
+}
+
+impl Type {
+    pub const TYPE_LEN: usize = 3;
+
+    pub const TYPE_SIZE: usize = min_size_of_indexed::<Type>()
+        + Self::TYPE_LEN * item_stride::<Type>();
+
+    pub const TYPE_LAYOUT: Layout = unsafe {
+        Layout::from_size_align_unchecked(
+            Self::TYPE_SIZE, align_of_indexed::<Type>()
+        )
+    };
+
+    pub unsafe fn bootstrap_new<T>(heap: &mut Heap, type_type: Gc<IndexedType>,
+        len: usize
+    ) -> Option<NonNull<T>>
+    {
+        heap.alloc_indexed(type_type, len)
+            .map(NonNull::cast)
+    }
+
+    fn fields(&self) -> &[Field<Type>] { self.indexed_field() }
+}
+
+unsafe impl Indexed for Type {
+    type Item = Field<Type>;
 }
 
 #[repr(C)]
 pub struct NonIndexedType(Type);
 
 impl NonIndexedType {
-    pub fn align(&self) -> usize { self.0.align() }
+    pub fn new_unchecked(r#type: Type) -> Self { Self(r#type) }
 
-    pub fn min_size(&self) -> usize { self.0.min_size() }
+    pub fn align(&self) -> usize { self.0.align }
+
+    pub fn min_size(&self) -> usize { self.0.min_size }
 
     pub fn stride(&self) -> usize {
         (self.min_size() + self.align() - 1) & !(self.align() - 1)
@@ -68,19 +162,24 @@ impl BitsType {
 pub struct IndexedType(Type);
 
 impl IndexedType {
-    fn align(&self) -> usize { self.0.align() }
+    pub fn new_unchecked(r#type: Type) -> Self { Self(r#type) }
 
-    fn min_size(&self) -> usize { self.0.min_size() }
+    fn align(&self) -> usize { self.0.align }
 
-    fn indexed_field(&self) -> Gc<NonIndexedType> {
+    fn min_size(&self) -> usize { self.0.min_size }
+
+    fn indexed_field(&self) ->&Field<NonIndexedType> {
         let fields = self.0.fields();
-        fields[fields.len() - 1]
+        unsafe { transmute::<&Field<Type>, &Field<NonIndexedType>>(
+            &fields[fields.len() - 1]
+        ) }
     }
 
     pub fn layout(&self, len: usize) -> Layout {
         unsafe {
+            let item_stride = self.indexed_field().r#type.as_ref().stride();
             Layout::from_size_align_unchecked(
-                self.min_size() + len * self.indexed_field().as_ref().stride(),
+                self.min_size() + len * item_stride,
                 self.align()
             )
         }

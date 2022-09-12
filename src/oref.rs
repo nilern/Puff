@@ -144,6 +144,15 @@ impl Header {
     }
 
     fn is_marked(&self) -> bool { (self.0 & Self::MARK_BIT) == 1 }
+
+    pub unsafe fn initialize_indexed<T>(obj: NonNull<T>, header: Self,
+        len: usize
+    ) {
+        let header_ptr = (obj.as_ptr() as *mut Header).offset(-1);
+        let header_len = (header_ptr as *mut usize).offset(-1);
+        header_len.write(len);
+        header_ptr.write(header);
+    }
 }
 
 pub struct Gc<T>(NonNull<T>);
@@ -181,6 +190,8 @@ impl<T> Gc<T> {
 
     pub unsafe fn as_ref(&self) -> &T { self.0.as_ref() }
 
+    pub unsafe fn as_mut(&mut self) -> &mut T { self.0.as_mut() }
+
     fn header(&self) -> &Header {
         unsafe { &*((self.0.as_ptr() as *const Header).offset(-1)) }
     }
@@ -203,6 +214,12 @@ unsafe impl AsType for Gc<NonIndexedType> {
 }
 
 unsafe impl AsType for Gc<IndexedType> {
+    fn as_type(self) -> Gc<Type> {
+        unsafe { self.unchecked_cast::<Type>() }
+    }
+}
+
+unsafe impl AsType for Gc<BitsType> {
     fn as_type(self) -> Gc<Type> {
         unsafe { self.unchecked_cast::<Type>() }
     }

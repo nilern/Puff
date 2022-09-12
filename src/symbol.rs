@@ -1,0 +1,71 @@
+use std::mem::align_of;
+use std::slice;
+use std::str;
+
+use crate::oref::{Gc, Fixnum};
+use crate::r#type::Indexed;
+use crate::mutator::Mutator;
+
+#[repr(C)]
+pub struct Symbol {
+    hash: Fixnum,
+}
+
+unsafe impl Indexed for Symbol {
+    type Item = u8;
+}
+
+impl Symbol {
+    pub const TYPE_LEN: usize = 2;
+
+    /// Safety: May GC
+    unsafe fn new(mt: &mut Mutator, cs: &str) -> Gc<Self> {
+        let len = cs.len();
+
+        if let Some(nptr) = mt.alloc_indexed(mt.types().symbol, len) {
+            let nptr = nptr.cast::<Self>();
+            let ptr = nptr.as_ptr();
+
+            ptr.write(Symbol {
+                hash: Fixnum::try_from(0isize).unwrap() // FIXME
+            });
+
+            let field_align = align_of::<u8>();
+
+            let mut fields_addr = ptr.add(1) as usize;
+            fields_addr = (fields_addr + field_align - 1) & !(field_align - 1);
+            let fields_ptr = fields_addr as *mut u8;
+
+            let fields = slice::from_raw_parts_mut(fields_ptr, len);
+
+            fields.copy_from_slice(cs.as_bytes());
+
+            Gc::new_unchecked(nptr)
+        } else {
+            todo!() // Need to GC, then retry
+        }
+    }
+
+    fn name<'a>(&'a self) -> &'a str {
+        unsafe { str::from_utf8_unchecked(self.indexed_field()) }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::oref::AsType;
+
+    #[test]
+    fn symbol_new() {
+        let mut mt = Mutator::new(1 << 20 /* 1 MiB */).unwrap();
+
+        let sym = unsafe { Symbol::new(&mut mt, "foo") };
+
+        unsafe {
+            assert_eq!(sym.r#type(), mt.types().symbol.as_type());
+            assert_eq!(sym.as_ref().hash, Fixnum::try_from(0isize).unwrap());
+            assert_eq!(sym.as_ref().name(), "foo");
+        }
+    }
+}

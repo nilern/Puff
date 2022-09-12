@@ -41,14 +41,14 @@ impl Drop for Semispace {
     }
 }
 
-struct Heap {
+pub struct Heap {
     fromspace: Semispace,
     tospace: Semispace,
     free: *mut u8
 }
 
 impl Heap {
-    fn new(size: usize) -> Self {
+    pub fn new(size: usize) -> Self {
         let semi_size = size / 2;
 
         let fromspace = Semispace::new(semi_size);
@@ -60,7 +60,7 @@ impl Heap {
         }
     }
 
-    unsafe fn alloc_raw(&mut self, layout: Layout, indexed: bool)
+    pub unsafe fn alloc_raw(&mut self, layout: Layout, indexed: bool)
         -> Option<NonNull<u8>>
     {
         let mut addr = self.free as usize;
@@ -88,7 +88,7 @@ impl Heap {
         }
     }
 
-    unsafe fn alloc_nonindexed(&mut self, r#type: Gc<NonIndexedType>)
+    pub unsafe fn alloc_nonindexed(&mut self, r#type: Gc<NonIndexedType>)
         -> Option<NonNull<u8>>
     {
         let layout = r#type.as_ref().layout();
@@ -103,17 +103,14 @@ impl Heap {
         })
     }
 
-    unsafe fn alloc_indexed(&mut self, r#type: Gc<IndexedType>, len: usize)
+    pub unsafe fn alloc_indexed(&mut self, r#type: Gc<IndexedType>, len: usize)
         -> Option<NonNull<u8>>
     {
         let layout = r#type.as_ref().layout(len);
 
         self.alloc_raw(layout, true).map(|obj| {
             // Initialize:
-            let header = (obj.as_ptr() as *mut Header).offset(-1);
-            let header_len = (header as *mut usize).offset(-1);
-            header_len.write(len);
-            header.write(Header::new(r#type.as_type()));
+            Header::initialize_indexed(obj, Header::new(r#type.as_type()), len);
             ptr::write_bytes(obj.as_ptr(), 0, layout.size());
 
             obj
