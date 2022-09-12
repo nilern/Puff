@@ -11,6 +11,7 @@ use rustyline::error::ReadlineError;
 use rustyline;
 
 use reader::Reader;
+use mutator::Mutator;
 
 const PROMPT: &'static str = "molysite> ";
 const HISTORY_FILENAME: &'static str = ".molysite-history.txt";
@@ -21,6 +22,8 @@ fn main() -> rustyline::Result<()> {
     if rl.load_history(HISTORY_FILENAME).is_err() {
         println!("No previous history.");
     }
+
+    let _mt = Mutator::new(1 << 20 /* 1 MiB */);
 
     loop {
         match rl.readline(PROMPT) {
