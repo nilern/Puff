@@ -2,7 +2,7 @@ use std::fmt::{self, Debug, Display};
 use std::mem::{size_of, transmute};
 use std::ptr::NonNull;
 
-use super::r#type::{Type, NonIndexedType, IndexedType, BitsType};
+use crate::r#type::{Type, NonIndexedType, IndexedType, BitsType};
 use crate::heap_obj::Header;
 
 trait Tagged {

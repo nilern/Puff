@@ -5,7 +5,7 @@ use std::marker::PhantomData;
 use std::ops::Deref;
 use std::ptr::NonNull;
 
-use super::oref::ORef;
+use crate::oref::ORef;
 
 struct LiveHandleImpl {
     oref: ORef,

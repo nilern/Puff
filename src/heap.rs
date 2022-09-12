@@ -2,8 +2,8 @@ use std::alloc::{Layout, alloc, dealloc};
 use std::mem::align_of;
 use std::ptr::{self, NonNull};
 
-use super::oref::{AsType, Gc};
-use super::r#type::{NonIndexedType, IndexedType};
+use crate::oref::{AsType, Gc};
+use crate::r#type::{NonIndexedType, IndexedType};
 use crate::heap_obj::Header;
 
 struct Granule(usize);
