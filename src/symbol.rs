@@ -1,10 +1,12 @@
 use std::mem::align_of;
 use std::slice;
 use std::str;
+use std::collections::hash_map::DefaultHasher;
 
 use crate::oref::{Gc, Fixnum};
 use crate::heap_obj::Indexed;
 use crate::mutator::Mutator;
+use crate::util::hash;
 
 #[repr(C)]
 pub struct Symbol {
@@ -27,7 +29,7 @@ impl Symbol {
             let ptr = nptr.as_ptr();
 
             ptr.write(Symbol {
-                hash: Fixnum::try_from(0isize).unwrap() // FIXME
+                hash: hash::<DefaultHasher, _>(cs)
             });
 
             let field_align = align_of::<u8>();
@@ -64,7 +66,7 @@ mod tests {
 
         unsafe {
             assert_eq!(sym.r#type(), mt.types().symbol.as_type());
-            assert_eq!(sym.as_ref().hash, Fixnum::try_from(0isize).unwrap());
+            assert_eq!(sym.as_ref().hash, hash::<DefaultHasher, _>("foo"));
             assert_eq!(sym.as_ref().name(), "foo");
         }
     }

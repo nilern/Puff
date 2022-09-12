@@ -14,7 +14,7 @@ trait Tagged {
 pub struct ORef(usize);
 
 impl ORef {
-    const TAG_SIZE: usize = 2;
+    pub const TAG_SIZE: usize = 2;
 
     const TAG_BITS: usize = (1 << Self::TAG_SIZE) - 1;
 
