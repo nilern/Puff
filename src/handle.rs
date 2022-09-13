@@ -16,7 +16,7 @@ struct FreeHandleImpl {
     next: Option<NonNull<FreeHandleImpl>>
 }
 
-struct Handle(*const LiveHandleImpl);
+pub struct Handle(*const LiveHandleImpl);
 
 impl Deref for Handle {
     type Target = ORef;
@@ -38,7 +38,7 @@ impl Drop for Handle {
     }
 }
  
-struct HandlePool {
+pub struct HandlePool {
     free: Option<NonNull<FreeHandleImpl>>,
     live: Option<NonNull<LiveHandleImpl>>,
     chunks: Vec<*mut u8>
@@ -60,7 +60,7 @@ impl HandlePool {
         align_of::<LiveHandleImpl>()
     ) };
 
-    fn new() -> Self {
+    pub fn new() -> Self {
         HandlePool {
             free: None,
             live: None,
@@ -70,7 +70,7 @@ impl HandlePool {
 
     /// Safety: The returned handle and its clones are only valid for the
     /// lifetime of `self`.
-    unsafe fn root(&mut self, oref: ORef) -> Handle {
+    pub unsafe fn root(&mut self, oref: ORef) -> Handle {
         if self.free.is_none() {
             self.grow();
         }

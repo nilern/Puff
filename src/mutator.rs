@@ -3,10 +3,11 @@ use std::mem::{align_of, size_of};
 use std::alloc::Layout;
 
 use crate::heap::Heap;
-use crate::oref::{AsType, Gc};
+use crate::oref::{AsType, ORef, Gc};
 use crate::r#type::{Type, Field, IndexedType, NonIndexedType, BitsType};
 use crate::symbol::Symbol;
 use crate::heap_obj::{Indexed, Header, min_size_of_indexed, align_of_indexed};
+use crate::handle::{Handle, HandlePool};
 
 const USIZE_TYPE_SIZE: usize = min_size_of_indexed::<Type>();
 
@@ -23,6 +24,7 @@ pub struct Types {
 
 pub struct Mutator {
     heap: Heap,
+    handles: HandlePool,
     types: Types
 }
 
@@ -112,6 +114,7 @@ impl Mutator {
 
             Some(Self {
                 heap,
+                handles: HandlePool::new(),
                 types: Types { r#type, symbol }
             })
         }
@@ -123,6 +126,10 @@ impl Mutator {
         -> Option<NonNull<u8>>
     {
         self.heap.alloc_indexed(r#type, len)
+    }
+
+    pub unsafe fn root(&mut self, oref: ORef) -> Handle {
+        self.handles.root(oref)
     }
 }
 
