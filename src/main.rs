@@ -18,25 +18,25 @@ use mutator::Mutator;
 const PROMPT: &'static str = "molysite> ";
 const HISTORY_FILENAME: &'static str = ".molysite-history.txt";
     
-fn main() -> rustyline::Result<()> {
-    let mut rl = rustyline::Editor::<()>::new()?;
+fn main() {
+    let mut rl = rustyline::Editor::<()>::new().unwrap();
 
     if rl.load_history(HISTORY_FILENAME).is_err() {
         println!("No previous history.");
     }
 
-    let _mt = Mutator::new(1 << 20 /* 1 MiB */);
+    let mut mt = Mutator::new(1 << 20 /* 1 MiB */).unwrap();
 
     loop {
         match rl.readline(PROMPT) {
             Ok(line) => {
                 rl.add_history_entry(line.as_str());
 
-                let reader = Reader::new(line.as_str());
+                let reader = Reader::new(&mut mt, line.as_str());
 
                 for res in reader {
                     match res {
-                        Ok(sv) => println!("{}", sv.v),
+                        Ok(sv) => println!("{}", *sv.v),
                         Err(err) => {
                             println!("Error: {:?}", err);
                             break;
@@ -59,5 +59,5 @@ fn main() -> rustyline::Result<()> {
         }
     }
 
-    rl.save_history(HISTORY_FILENAME)
+    rl.save_history(HISTORY_FILENAME).unwrap();
 }

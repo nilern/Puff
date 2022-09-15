@@ -19,7 +19,7 @@ impl Symbol {
     pub const TYPE_LEN: usize = 2;
 
     /// Safety: May GC
-    unsafe fn new(mt: &mut Mutator, cs: &str) -> Gc<Self> {
+    pub unsafe fn new(mt: &mut Mutator, cs: &str) -> Gc<Self> {
         let len = cs.len();
 
         if let Some(nptr) = mt.alloc_indexed(mt.types().symbol, len) {

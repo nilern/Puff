@@ -155,6 +155,10 @@ impl<T> PartialEq for Gc<T> {
     fn eq(&self, other: &Self) -> bool { self.0 == other.0 }
 }
 
+impl<T> From<Gc<T>> for ORef {
+    fn from(obj: Gc<T>) -> Self { Self(obj.0.as_ptr() as usize) }
+}
+
 impl<T> Gc<T> {
     pub unsafe fn new_unchecked(ptr: NonNull<T>) -> Self { Self(ptr) }
 
