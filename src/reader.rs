@@ -1,29 +1,28 @@
-use std::iter::Peekable;
-use std::str::Chars;
-
 use crate::oref::{ORef, Fixnum};
 use crate::pos::{Pos, Positioned, Span, Spanning};
 
 struct Input<'a> {
-    chars: Peekable<Chars<'a>>,
+    chars: &'a str,
     pos: Pos
 }
 
 impl<'a> Input<'a> {
     fn new(chars: &'a str) -> Self {
         Input {
-            chars: chars.chars().peekable(),
+            chars: chars,
             pos: Pos::default()
         }
     }
 
     fn peek(&mut self) -> Option<Positioned<char>> {
-        self.chars.peek().map(|&c| {
-            Positioned {
-                v: c,
-                pos: self.pos
-            }
-        })
+        self.chars.get(self.pos.index..)
+            .and_then(|cs| cs.chars().next())
+            .map(|c| {
+                Positioned {
+                    v: c,
+                    pos: self.pos
+                }
+            })
     }
 }
 
@@ -31,16 +30,26 @@ impl<'a> Iterator for Input<'a> {
     type Item = Positioned<char>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.chars.next().map(|c| {
-            let res = Positioned {
-                v: c,
-                pos: self.pos
-            };
+        self.chars.get(self.pos.index..)
+            .and_then(|cs| {
+                let mut cis = cs.char_indices();
 
-            self.pos = self.pos.advance(c);
+                cis.next().map(|(_, c)| {
+                    let res = Positioned {
+                        v: c,
+                        pos: self.pos
+                    };
 
-            res
-        })
+                    self.pos = self.pos.advance(
+                        cis.next()
+                            .map(|(i, _)| i)
+                            .unwrap_or_else(|| self.chars.len()),
+                        c
+                    );
+
+                    res
+                })
+            })
     }
 }
 

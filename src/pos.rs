@@ -16,16 +16,16 @@ impl Default for Pos {
 }
 
 impl Pos {
-    pub fn advance(&self, c: char) -> Self {
+    pub fn advance(&self, n: usize, c: char) -> Self {
         if c != '\n' {
             Pos {
-                index: self.index + 1,
+                index: self.index + n,
                 line: self.line,
                 col: self.col + 1
             }
         } else {
             Pos {
-                index: self.index + 1,
+                index: self.index + n,
                 line: self.line + 1,
                 col: 1
             }
