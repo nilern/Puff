@@ -25,7 +25,7 @@ pub struct Types {
 pub struct Mutator {
     heap: Heap,
     handles: HandlePool,
-    types: Types
+    pub types: Types
 }
 
 impl Mutator {

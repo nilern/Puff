@@ -38,6 +38,19 @@ impl Header {
     }
 }
 
+pub unsafe trait HeapObj {
+    fn header(&self) -> &Header {     
+        unsafe { &*((self as *const Self) as *const Header).offset(-1) }
+    }
+
+    fn r#type(&self) -> Gc<Type> { self.header().r#type() }
+}
+
+// HACK:
+unsafe impl HeapObj for () {}
+
+unsafe impl HeapObj for usize {}
+
 pub unsafe trait Indexed: Sized {
     type Item;
 

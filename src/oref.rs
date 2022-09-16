@@ -3,10 +3,27 @@ use std::mem::{size_of, transmute};
 use std::ptr::NonNull;
 
 use crate::r#type::{Type, NonIndexedType, IndexedType, BitsType};
-use crate::heap_obj::Header;
+use crate::heap_obj::{HeapObj, Header};
+use crate::mutator::Mutator;
+use crate::symbol::Symbol;
 
 trait Tagged {
     const TAG: usize;
+}
+
+trait DisplayWithin {
+    fn fmt_within(&self, mt: &Mutator, fmt: &mut fmt::Formatter) -> fmt::Result;
+}
+
+pub struct WithinMt<'a, T> {
+    v: T,
+    mt: &'a Mutator
+}
+
+impl<'a, T: DisplayWithin> Display for WithinMt<'a, T> {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        self.v.fmt_within(self.mt, fmt)
+    }
 }
 
 // TODO: Enforce `usize` at least 32 bits:
@@ -25,14 +42,19 @@ impl ORef {
     fn tag(self) -> usize { self.0 & Self::TAG_BITS }
 
     fn is_tagged<T: Tagged>(self) -> bool { self.tag() == T::TAG }
+
+    pub fn within(self, mt: &Mutator) -> WithinMt<Self> {
+        WithinMt {v: self, mt}
+    }
 }
 
-impl Display for ORef {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+impl DisplayWithin for ORef {
+    fn fmt_within(&self, mt: &Mutator, fmt: &mut fmt::Formatter) -> fmt::Result
+    {
         match self.tag() {
             Gc::<()>::TAG => unsafe {
                 let ptr = NonNull::new_unchecked(self.0 as *mut ());
-                Display::fmt(&Gc::new_unchecked(ptr), fmt)
+                Gc::new_unchecked(ptr).fmt_within(mt, fmt)
             },
             Fixnum::TAG =>
                 Display::fmt(&isize::from(Fixnum(self.0)), fmt),
@@ -125,13 +147,27 @@ impl From<Char> for char {
     }
 }
 
-pub struct Gc<T>(NonNull<T>);
+pub trait Reify {
+    fn reify(mt: &Mutator) -> Gc<Type>;
+}
 
-impl<T> Gc<T> {
+pub struct Gc<T: HeapObj>(NonNull<T>);
+
+impl<T: HeapObj> Gc<T> {
     const TAG: usize = 0;
 }
 
-impl<T> Debug for Gc<T> {
+impl<T: HeapObj> Gc<T> {
+    fn try_cast<U: HeapObj + Reify>(self, mt: &Mutator) -> Option<Gc<U>> {
+        if unsafe { self.as_ref() }.r#type() == U::reify(mt) {
+            Some(unsafe { self.unchecked_cast::<U>() })
+        } else {
+            None
+        }
+    }
+}
+
+impl<T: HeapObj> Debug for Gc<T> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         fmt.debug_tuple("Gc")
             .field(&self.0)
@@ -139,27 +175,38 @@ impl<T> Debug for Gc<T> {
     }
 }
 
-impl<T> Display for Gc<T> {
+impl<T: HeapObj> Display for Gc<T> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         write!(fmt, "#<object {:p}>", self.0)
     }
 }
 
-impl<T> Clone for Gc<T> {
+impl DisplayWithin for Gc<()> {
+    fn fmt_within(&self, mt: &Mutator, fmt: &mut fmt::Formatter) -> fmt::Result
+    {
+        if let Some(this) = self.try_cast::<Symbol>(mt) {
+            write!(fmt, "{}", unsafe { this.as_ref() }.name())
+        } else {
+            write!(fmt, "#<object {:p}>", self.0)
+        }
+    }
+}
+
+impl<T: HeapObj> Clone for Gc<T> {
     fn clone(&self) -> Self { Self(self.0) }
 }
 
-impl<T> Copy for Gc<T> {}
+impl<T: HeapObj> Copy for Gc<T> {}
 
-impl<T> PartialEq for Gc<T> {
+impl<T: HeapObj> PartialEq for Gc<T> {
     fn eq(&self, other: &Self) -> bool { self.0 == other.0 }
 }
 
-impl<T> From<Gc<T>> for ORef {
+impl<T: HeapObj> From<Gc<T>> for ORef {
     fn from(obj: Gc<T>) -> Self { Self(obj.0.as_ptr() as usize) }
 }
 
-impl<T> Gc<T> {
+impl<T: HeapObj> Gc<T> {
     pub unsafe fn new_unchecked(ptr: NonNull<T>) -> Self { Self(ptr) }
 
     pub unsafe fn as_ref(&self) -> &T { self.0.as_ref() }
@@ -174,7 +221,9 @@ impl<T> Gc<T> {
 
     pub fn is_marked(self) -> bool { self.header().is_marked() }
 
-    unsafe fn unchecked_cast<R>(self) -> Gc<R> { Gc::<R>(self.0.cast()) }
+    unsafe fn unchecked_cast<R: HeapObj>(self) -> Gc<R> {
+        Gc::<R>(self.0.cast())
+    }
 }
 
 pub unsafe trait AsType {

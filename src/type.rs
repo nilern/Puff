@@ -4,16 +4,16 @@ use std::ptr::NonNull;
 
 use crate::heap::Heap;
 use crate::oref::Gc;
-use crate::heap_obj::{Indexed, min_size_of_indexed, align_of_indexed,
+use crate::heap_obj::{HeapObj, Indexed, min_size_of_indexed, align_of_indexed,
     item_stride};
 
 #[repr(C)]
-pub struct Field<T> {
+pub struct Field<T: HeapObj> {
     pub r#type: Gc<T>,
     pub offset: usize
 }
 
-impl<T> Clone for Field<T> {
+impl<T: HeapObj> Clone for Field<T> {
     fn clone(&self) -> Self {
         Self {
             r#type: self.r#type,
@@ -22,9 +22,9 @@ impl<T> Clone for Field<T> {
     }
 }
 
-impl<T> Copy for Field<T> {}
+impl<T: HeapObj> Copy for Field<T> {}
 
-impl<T> Field<T> {
+impl<T: HeapObj> Field<T> {
     pub const TYPE_LEN: usize = 2;
 
     pub const TYPE_SIZE: usize = min_size_of_indexed::<Type>()
@@ -66,12 +66,16 @@ impl Type {
     fn fields(&self) -> &[Field<Type>] { self.indexed_field() }
 }
 
+unsafe impl HeapObj for Type {}
+
 unsafe impl Indexed for Type {
     type Item = Field<Type>;
 }
 
 #[repr(C)]
 pub struct NonIndexedType(Type);
+
+unsafe impl HeapObj for NonIndexedType {}
 
 impl NonIndexedType {
     pub fn new_unchecked(r#type: Type) -> Self { Self(r#type) }
@@ -94,6 +98,8 @@ impl NonIndexedType {
 #[repr(C)]
 pub struct BitsType(Type);
 
+unsafe impl HeapObj for BitsType {}
+
 impl BitsType {
     pub fn from_static<T>() -> Self {
         Self(Type {
@@ -105,6 +111,8 @@ impl BitsType {
 
 #[repr(C)]
 pub struct IndexedType(Type);
+
+unsafe impl HeapObj for IndexedType {}
 
 impl IndexedType {
     pub fn new_unchecked(r#type: Type) -> Self { Self(r#type) }

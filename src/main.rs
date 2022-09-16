@@ -32,11 +32,11 @@ fn main() {
             Ok(line) => {
                 rl.add_history_entry(line.as_str());
 
-                let reader = Reader::new(&mut mt, line.as_str());
+                let mut reader = Reader::new(line.as_str());
 
-                for res in reader {
+                while let Some(res) = reader.next(&mut mt) {
                     match res {
-                        Ok(sv) => println!("{}", *sv.v),
+                        Ok(sv) => println!("{}", sv.v.within(&mt)),
                         Err(err) => {
                             println!("Error: {:?}", err);
                             break;

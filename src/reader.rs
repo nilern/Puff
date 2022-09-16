@@ -59,15 +59,12 @@ impl<'a> Iterator for Input<'a> {
 // TODO: Proper error type:
 type ReadResult<T> = Result<Spanning<T>, ()>;
 
-pub struct Reader<'m, 'i> {
-    mt: &'m mut Mutator,
+pub struct Reader<'i> {
     input: Input<'i>
 }
 
-impl<'m, 'i> Reader<'m, 'i> {
-    pub fn new(mt: &'m mut Mutator, chars: &'i str) -> Self {
-        Reader {mt, input: Input::new(chars) }
-    }
+impl<'i> Reader<'i> {
+    pub fn new(chars: &'i str) -> Self { Reader {input: Input::new(chars) } }
 
     fn read_fixnum(&mut self, radix: u32, first_pc: Positioned<char>)
         -> ReadResult<Fixnum>
@@ -97,7 +94,7 @@ impl<'m, 'i> Reader<'m, 'i> {
         }
     }
 
-    fn read_symbol(&mut self, first_pc: Positioned<char>)
+    fn read_symbol(&mut self, mt: &mut Mutator, first_pc: Positioned<char>)
         -> Spanning<Gc<Symbol>>
     {
         let start = first_pc.pos;
@@ -113,17 +110,13 @@ impl<'m, 'i> Reader<'m, 'i> {
         let end = self.input.pos;
         Spanning {
             v: unsafe {
-                Symbol::new(self.mt, &self.input.chars[start.index..end.index])
+                Symbol::new(mt, &self.input.chars[start.index..end.index])
             },
             span: Span {start, end}
         }
     }
-}
 
-impl<'m, 'i> Iterator for Reader<'m, 'i> {
-    type Item = ReadResult<Handle>;
-
-    fn next(&mut self) -> Option<Self::Item> {
+    pub fn next(&mut self, mt: &mut Mutator) -> Option<ReadResult<Handle>> {
         while let Some(pc) = self.input.peek() {
             if pc.v.is_whitespace() {
                 self.input.next();
@@ -140,11 +133,11 @@ impl<'m, 'i> Iterator for Reader<'m, 'i> {
                 self.read_fixnum(radix, pc).map(|sv| sv.map(ORef::from))
             } else if pc.v.is_alphabetic() {
                 self.input.next();
-                Ok(self.read_symbol(pc).map(ORef::from))
+                Ok(self.read_symbol(mt, pc).map(ORef::from))
             } else {
                 Err(())
             }
-            .map(|res| res.map(|n| unsafe { self.mt.root(ORef::from(n)) }))
+            .map(|res| res.map(|n| unsafe { mt.root(ORef::from(n)) }))
         })
     }
 }
@@ -157,10 +150,14 @@ mod tests {
     fn read_fixnums() {
         let mut mt = Mutator::new(1 << 20 /* 1 MiB */).unwrap();
 
+        let mut reader = Reader::new("  5  23  ");
+        let mut vs = Vec::new();
+        while let Some(res) = reader.next(&mut mt) {
+            vs.push(res.unwrap().map(|v| *v));
+        }
+
         assert_eq!(
-            Reader::new(&mut mt, "  5  23  ")
-                .map(|res| res.unwrap().map(|v| *v))
-                .collect::<Vec<Spanning<ORef>>>(),
+            vs,
             [5isize, 23].into_iter()
                 .enumerate()
                 .map(|(i, n)| {

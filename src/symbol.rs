@@ -1,18 +1,25 @@
 use std::str;
 use std::collections::hash_map::DefaultHasher;
 
-use crate::oref::{Gc, Fixnum};
-use crate::heap_obj::Indexed;
+use crate::oref::{Reify, AsType, Gc, Fixnum};
+use crate::heap_obj::{HeapObj, Indexed};
 use crate::mutator::Mutator;
 use crate::util::hash;
+use crate::r#type::Type;
 
 #[repr(C)]
 pub struct Symbol {
     hash: Fixnum,
 }
 
+unsafe impl HeapObj for Symbol {}
+
 unsafe impl Indexed for Symbol {
     type Item = u8;
+}
+
+impl Reify for Symbol {
+    fn reify(mt: &Mutator) -> Gc<Type> { mt.types.symbol.as_type() }
 }
 
 impl Symbol {
@@ -37,7 +44,7 @@ impl Symbol {
         }
     }
 
-    fn name<'a>(&'a self) -> &'a str {
+    pub fn name<'a>(&'a self) -> &'a str {
         unsafe { str::from_utf8_unchecked(self.indexed_field()) }
     }
 }
