@@ -179,4 +179,40 @@ mod tests {
                 .collect::<Vec<Spanning<ORef>>>()
         );
     }
+
+    #[test]
+    fn read_symbols() {
+        let mut mt = Mutator::new(1 << 20 /* 1 MiB */).unwrap();
+
+        let mut reader = Reader::new("  foo  bar  ");
+        let mut vs = Vec::new();
+        while let Some(res) = reader.next(&mut mt) {
+            vs.push(res.unwrap().map(|v| *v));
+        }
+
+        assert_eq!(
+            vs,
+            ["foo", "bar"].into_iter()
+                .enumerate()
+                .map(|(i, name)| {
+                    let index = (5*i + 2) as usize;
+                    Spanning {
+                        v: ORef::from(Symbol::new(&mut mt, name)),
+                        span: Span {
+                            start: Pos {
+                                index,
+                                line: 1,
+                                col: index + 1
+                            },
+                            end: Pos {
+                                index: index + 3,
+                                line: 1,
+                                col: index + 3 + 1
+                            }
+                        }
+                    }
+                })
+                .collect::<Vec<Spanning<ORef>>>()
+        );
+    }
 }
