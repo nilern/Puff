@@ -1,11 +1,89 @@
 use std::str;
 use std::collections::hash_map::DefaultHasher;
+use std::alloc::{Layout, alloc, dealloc};
+use std::mem::{size_of, align_of};
+use std::ptr;
+use std::slice;
 
 use crate::oref::{Reify, AsType, Gc, Fixnum};
 use crate::heap_obj::{HeapObj, Indexed};
 use crate::mutator::Mutator;
 use crate::util::hash;
 use crate::r#type::Type;
+
+pub struct SymbolTable {
+    len: usize,
+    capacity: usize,
+    symbols: *mut Option<Gc<Symbol>>
+}
+
+impl Drop for SymbolTable {
+    fn drop(&mut self) {
+        unsafe {
+            dealloc(self.symbols as *mut u8, Layout::from_size_align_unchecked (
+                self.capacity * size_of::<Option<Gc<Symbol>>>(),
+                align_of::<Option<Gc<Symbol>>>()
+            ))
+        }
+    }
+}
+
+impl SymbolTable {
+    pub fn new() -> Self {
+        let capacity = 2;
+
+        let symbols = unsafe {
+            let size = capacity * size_of::<Option<Gc<Symbol>>>();
+            let symbols = alloc(Layout::from_size_align_unchecked(
+                size,
+                align_of::<Option<Gc<Symbol>>>()
+            ));
+            ptr::write_bytes(symbols, 0, size);
+            symbols as *mut Option<Gc<Symbol>>
+        };
+
+        Self { len: 0, capacity, symbols }
+    }
+
+    fn rehash(&mut self) {
+        let new_capacity = self.capacity * 2;
+
+        let new_symbols: &mut [Option<Gc<Symbol>>] = unsafe {
+            let size = new_capacity * size_of::<Option<Gc<Symbol>>>();
+            let new_symbols = alloc(Layout::from_size_align_unchecked(
+                size,
+                align_of::<Option<Gc<Symbol>>>()
+            ));
+            ptr::write_bytes(new_symbols, 0, size);
+            slice::from_raw_parts_mut(new_symbols as _, new_capacity)
+        };
+
+        unsafe { slice::from_raw_parts(self.symbols, self.capacity).iter() }
+            .filter_map(|&osym| osym)
+            .for_each(|sym| {
+                let hash = isize::from(unsafe { sym.as_ref().hash }) as usize;
+
+                let max_index = new_capacity - 1;
+                let mut collisions = 0;
+                let mut i = hash & max_index;
+                while new_symbols[i].is_some() {
+                    collisions += 1;
+                    i = (i + collisions) & max_index;
+                }
+                new_symbols[i] = Some(sym);
+            });
+
+        self.capacity = new_capacity;
+        unsafe { dealloc(
+            self.symbols as *mut u8,
+            Layout::from_size_align_unchecked (
+                self.capacity * size_of::<Option<Gc<Symbol>>>(),
+                align_of::<Option<Gc<Symbol>>>()
+            )
+        ) };
+        self.symbols = new_symbols.as_mut_ptr();
+    }
+}
 
 #[repr(C)]
 pub struct Symbol {
@@ -19,28 +97,68 @@ unsafe impl Indexed for Symbol {
 }
 
 impl Reify for Symbol {
-    fn reify(mt: &Mutator) -> Gc<Type> { mt.types.symbol.as_type() }
+    fn reify(mt: &Mutator) -> Gc<Type> { mt.types().symbol.as_type() }
 }
 
 impl Symbol {
     pub const TYPE_LEN: usize = 2;
 
-    /// Safety: May GC
-    pub unsafe fn new(mt: &mut Mutator, cs: &str) -> Gc<Self> {
-        let len = cs.len();
+    pub fn new(mt: &mut Mutator, cs: &str) -> Gc<Self> {
+        let symbols = mt.symbols_mut();
+        let hash = hash::<DefaultHasher, _>(cs);
 
-        if let Some(nptr) = mt.alloc_indexed(mt.types().symbol, len) {
-            let nptr = nptr.cast::<Self>();
-            let ptr = nptr.as_ptr();
+        loop {
+            unsafe {
+                let symbols_slice =
+                    slice::from_raw_parts_mut((*symbols).symbols,
+                        (*symbols).capacity);
 
-            ptr.write(Symbol {
-                hash: hash::<DefaultHasher, _>(cs)
-            });
-            (*ptr).indexed_field_mut().copy_from_slice(cs.as_bytes());
+                let max_index = (*symbols).capacity - 1;
+                let mut collisions = 0;
+                let mut i = (isize::from(hash) as usize) & max_index;
+                loop {
+                    match symbols_slice[i] {
+                        Some(isymbol) =>
+                            if isymbol.as_ref().hash == hash
+                                && isymbol.as_ref().name() == cs
+                            {
+                                return isymbol
+                            } else {
+                                // continue inner loop
+                            },
+                        None => 
+                            if ((*symbols).len + 1) * 2 > (*symbols).capacity {
+                                (*symbols).rehash();
+                                break; // continue outer loop
+                            } else {
+                                let len = cs.len();
 
-            Gc::new_unchecked(nptr)
-        } else {
-            todo!() // Need to GC, then retry
+                                if let Some(nptr) =
+                                    mt.alloc_indexed(mt.types().symbol, len)
+                                {
+                                    let nptr = nptr.cast::<Self>();
+                                    let ptr = nptr.as_ptr();
+
+                                    ptr.write(Symbol { hash });
+                                    (*ptr).indexed_field_mut()
+                                        .copy_from_slice(cs.as_bytes());
+
+                                    let sym = Gc::new_unchecked(nptr);
+
+                                    (*symbols).len += 1;
+                                    symbols_slice[i] = Some(sym);
+
+                                    return sym
+                                } else {
+                                    todo!() // Need to GC, then retry
+                                }
+                            }
+                    }
+
+                    collisions += 1;
+                    i = (i + collisions) & max_index;
+                }
+            }
         }
     }
 
@@ -58,7 +176,7 @@ mod tests {
     fn symbol_new() {
         let mut mt = Mutator::new(1 << 20 /* 1 MiB */).unwrap();
 
-        let sym = unsafe { Symbol::new(&mut mt, "foo") };
+        let sym = Symbol::new(&mut mt, "foo");
 
         unsafe {
             assert_eq!(sym.r#type(), mt.types().symbol.as_type());

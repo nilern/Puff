@@ -109,9 +109,7 @@ impl<'i> Reader<'i> {
 
         let end = self.input.pos;
         Spanning {
-            v: unsafe {
-                Symbol::new(mt, &self.input.chars[start.index..end.index])
-            },
+            v: Symbol::new(mt, &self.input.chars[start.index..end.index]),
             span: Span {start, end}
         }
     }

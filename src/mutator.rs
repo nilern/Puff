@@ -5,7 +5,7 @@ use std::alloc::Layout;
 use crate::heap::Heap;
 use crate::oref::{AsType, ORef, Gc};
 use crate::r#type::{Type, Field, IndexedType, NonIndexedType, BitsType};
-use crate::symbol::Symbol;
+use crate::symbol::{Symbol, SymbolTable};
 use crate::heap_obj::{Indexed, Header, min_size_of_indexed, align_of_indexed};
 use crate::handle::{Handle, HandlePool};
 
@@ -25,7 +25,8 @@ pub struct Types {
 pub struct Mutator {
     heap: Heap,
     handles: HandlePool,
-    pub types: Types
+    types: Types,
+    symbols: SymbolTable
 }
 
 impl Mutator {
@@ -115,12 +116,16 @@ impl Mutator {
             Some(Self {
                 heap,
                 handles: HandlePool::new(),
-                types: Types { r#type, symbol }
+                types: Types { r#type, symbol },
+                symbols: SymbolTable::new()
             })
         }
     }
 
     pub fn types(&self) -> &Types { &self.types }
+
+    // HACK: returns raw pointer because of lifetime issues in Symbol::new:
+    pub fn symbols_mut(&mut self) -> *mut SymbolTable { &mut self.symbols as _ }
 
     pub unsafe fn alloc_indexed(&mut self, r#type: Gc<IndexedType>, len: usize)
         -> Option<NonNull<u8>>
