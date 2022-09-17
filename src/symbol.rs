@@ -176,12 +176,24 @@ mod tests {
     fn symbol_new() {
         let mut mt = Mutator::new(1 << 20 /* 1 MiB */).unwrap();
 
-        let sym = Symbol::new(&mut mt, "foo");
-
+        let sym1 = Symbol::new(&mut mt, "foo");
         unsafe {
-            assert_eq!(sym.r#type(), mt.types().symbol.as_type());
-            assert_eq!(sym.as_ref().hash, hash::<DefaultHasher, _>("foo"));
-            assert_eq!(sym.as_ref().name(), "foo");
+            assert_eq!(sym1.r#type(), mt.types().symbol.as_type());
+            assert_eq!(sym1.as_ref().hash, hash::<DefaultHasher, _>("foo"));
+            assert_eq!(sym1.as_ref().name(), "foo");
         }
+
+        let sym2 = Symbol::new(&mut mt, "bar");
+        unsafe {
+            assert_eq!(sym2.r#type(), mt.types().symbol.as_type());
+            assert_eq!(sym2.as_ref().hash, hash::<DefaultHasher, _>("bar"));
+            assert_eq!(sym2.as_ref().name(), "bar");
+        }
+
+        let sym3 = Symbol::new(&mut mt, "foo");
+        assert_eq!(sym3, sym3);
+
+        assert_eq!(mt.symbols().len, 2);
+        assert_eq!(mt.symbols().capacity, 4);
     }
 }

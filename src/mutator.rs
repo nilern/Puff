@@ -124,6 +124,8 @@ impl Mutator {
 
     pub fn types(&self) -> &Types { &self.types }
 
+    pub fn symbols(&self) -> &SymbolTable { &self.symbols }
+
     // HACK: returns raw pointer because of lifetime issues in Symbol::new:
     pub fn symbols_mut(&mut self) -> *mut SymbolTable { &mut self.symbols as _ }
 
