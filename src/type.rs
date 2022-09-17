@@ -8,12 +8,12 @@ use crate::heap_obj::{HeapObj, Indexed, min_size_of_indexed, align_of_indexed,
     item_stride};
 
 #[repr(C)]
-pub struct Field<T: HeapObj> {
+pub struct Field<T> {
     pub r#type: Gc<T>,
     pub offset: usize
 }
 
-impl<T: HeapObj> Clone for Field<T> {
+impl<T> Clone for Field<T> {
     fn clone(&self) -> Self {
         Self {
             r#type: self.r#type,
@@ -22,9 +22,9 @@ impl<T: HeapObj> Clone for Field<T> {
     }
 }
 
-impl<T: HeapObj> Copy for Field<T> {}
+impl<T> Copy for Field<T> {}
 
-impl<T: HeapObj> Field<T> {
+impl<T> Field<T> {
     pub const TYPE_LEN: usize = 2;
 
     pub const TYPE_SIZE: usize = min_size_of_indexed::<Type>()

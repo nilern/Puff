@@ -151,14 +151,14 @@ pub trait Reify {
     fn reify(mt: &Mutator) -> Gc<Type>;
 }
 
-pub struct Gc<T: HeapObj>(NonNull<T>);
+pub struct Gc<T>(NonNull<T>);
 
-impl<T: HeapObj> Gc<T> {
+impl<T> Gc<T> {
     const TAG: usize = 0;
 }
 
 impl<T: HeapObj> Gc<T> {
-    fn try_cast<U: HeapObj + Reify>(self, mt: &Mutator) -> Option<Gc<U>> {
+    fn try_cast<U: Reify>(self, mt: &Mutator) -> Option<Gc<U>> {
         if unsafe { self.as_ref() }.r#type() == U::reify(mt) {
             Some(unsafe { self.unchecked_cast::<U>() })
         } else {
@@ -167,7 +167,7 @@ impl<T: HeapObj> Gc<T> {
     }
 }
 
-impl<T: HeapObj> Debug for Gc<T> {
+impl<T> Debug for Gc<T> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         fmt.debug_tuple("Gc")
             .field(&self.0)
@@ -175,7 +175,7 @@ impl<T: HeapObj> Debug for Gc<T> {
     }
 }
 
-impl<T: HeapObj> Display for Gc<T> {
+impl<T> Display for Gc<T> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         write!(fmt, "#<object {:p}>", self.0)
     }
@@ -192,21 +192,21 @@ impl DisplayWithin for Gc<()> {
     }
 }
 
-impl<T: HeapObj> Clone for Gc<T> {
+impl<T> Clone for Gc<T> {
     fn clone(&self) -> Self { Self(self.0) }
 }
 
-impl<T: HeapObj> Copy for Gc<T> {}
+impl<T> Copy for Gc<T> {}
 
-impl<T: HeapObj> PartialEq for Gc<T> {
+impl<T> PartialEq for Gc<T> {
     fn eq(&self, other: &Self) -> bool { self.0 == other.0 }
 }
 
-impl<T: HeapObj> From<Gc<T>> for ORef {
+impl<T> From<Gc<T>> for ORef {
     fn from(obj: Gc<T>) -> Self { Self(obj.0.as_ptr() as usize) }
 }
 
-impl<T: HeapObj> Gc<T> {
+impl<T> Gc<T> {
     pub unsafe fn new_unchecked(ptr: NonNull<T>) -> Self { Self(ptr) }
 
     pub unsafe fn as_ref(&self) -> &T { self.0.as_ref() }
@@ -221,9 +221,7 @@ impl<T: HeapObj> Gc<T> {
 
     pub fn is_marked(self) -> bool { self.header().is_marked() }
 
-    unsafe fn unchecked_cast<R: HeapObj>(self) -> Gc<R> {
-        Gc::<R>(self.0.cast())
-    }
+    unsafe fn unchecked_cast<R>(self) -> Gc<R> { Gc::<R>(self.0.cast()) }
 }
 
 pub unsafe trait AsType {
