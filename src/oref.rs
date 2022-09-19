@@ -6,6 +6,7 @@ use crate::r#type::{Type, NonIndexedType, IndexedType, BitsType};
 use crate::heap_obj::{HeapObj, Header};
 use crate::mutator::Mutator;
 use crate::symbol::Symbol;
+use crate::list::{Pair, EmptyList};
 
 trait Tagged {
     const TAG: usize;
@@ -186,6 +187,31 @@ impl DisplayWithin for Gc<()> {
     {
         if let Some(this) = self.try_cast::<Symbol>(mt) {
             write!(fmt, "{}", unsafe { this.as_ref() }.name())
+        } else if let Some(this) = self.try_cast::<Pair>(mt) {
+            write!(fmt, "(")?;
+            unsafe { this.as_ref().car.fmt_within(mt, fmt)?; }
+
+            let mut ls = ORef::from(unsafe { this.as_ref().cdr });
+            loop {
+                if let Ok(ls_obj) = Gc::<()>::try_from(ls) {
+                    if let Some(pair) = ls_obj.try_cast::<Pair>(mt) {
+                        write!(fmt, " ")?;
+                        unsafe { pair.as_ref().car.fmt_within(mt, fmt)?; }
+                        ls = unsafe { pair.as_ref().cdr };
+                        continue;
+                    } else if let Some(_) = ls_obj.try_cast::<EmptyList>(mt) {
+                        break;
+                    }
+                }
+
+                write!(fmt, " . ")?;
+                ls.fmt_within(mt, fmt)?;
+                break;
+            }
+
+            write!(fmt, ")")
+        } else if let Some(this) = self.try_cast::<EmptyList>(mt) {
+            write!(fmt, "()")
         } else {
             write!(fmt, "#<object {:p}>", self.0)
         }
@@ -204,6 +230,18 @@ impl<T> PartialEq for Gc<T> {
 
 impl<T> From<Gc<T>> for ORef {
     fn from(obj: Gc<T>) -> Self { Self(obj.0.as_ptr() as usize) }
+}
+
+impl TryFrom<ORef> for Gc<()> {
+    type Error = ();
+
+    fn try_from(obj: ORef) -> Result<Self, Self::Error> {
+        if obj.tag() == Gc::<()>::TAG {
+            Ok(unsafe { Self(NonNull::new_unchecked(obj.0 as *mut ())) })
+        } else {
+            Err(())
+        }
+    }
 }
 
 impl<T> Gc<T> {

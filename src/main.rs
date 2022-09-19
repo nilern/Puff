@@ -7,6 +7,7 @@ mod pos;
 mod symbol;
 mod mutator;
 mod heap_obj;
+mod list;
 mod util;
 
 use rustyline::error::ReadlineError;

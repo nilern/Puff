@@ -4,6 +4,7 @@ use std::slice;
 
 use crate::r#type::Type;
 use crate::oref::Gc;
+use crate::mutator::Mutator;
 
 pub struct Header(usize);
 
@@ -87,6 +88,10 @@ pub unsafe trait Indexed: Sized {
             slice::from_raw_parts_mut(fields_ptr, *header_len)
         }
     }
+}
+
+pub trait Singleton: Sized {
+    fn instance(mt: &Mutator) -> Gc<Self>;
 }
 
 pub const fn min_size_of_indexed<T: Indexed>() -> usize {

@@ -8,6 +8,7 @@ use crate::r#type::{Type, Field, IndexedType, NonIndexedType, BitsType};
 use crate::symbol::{Symbol, SymbolTable};
 use crate::heap_obj::{Indexed, Header, min_size_of_indexed, align_of_indexed};
 use crate::handle::{Handle, HandlePool};
+use crate::list::{EmptyList, Pair};
 
 const USIZE_TYPE_SIZE: usize = min_size_of_indexed::<Type>();
 
@@ -19,13 +20,20 @@ const USIZE_TYPE_LAYOUT: Layout = unsafe {
 
 pub struct Types {
     pub r#type: Gc<IndexedType>,
-    pub symbol: Gc<IndexedType>
+    pub symbol: Gc<IndexedType>,
+    pub pair: Gc<NonIndexedType>,
+    pub empty_list: Gc<NonIndexedType>
+}
+
+pub struct Singletons {
+    pub empty_list: Gc<EmptyList>
 }
 
 pub struct Mutator {
     heap: Heap,
     handles: HandlePool,
     types: Types,
+    singletons: Singletons,
     symbols: SymbolTable
 }
 
@@ -91,6 +99,14 @@ impl Mutator {
             // Create other `.types`:
             // -----------------------------------------------------------------
 
+            let mut any = Gc::new_unchecked(Type::bootstrap_new(
+                &mut heap, r#type, 0
+            )?);
+            *any.as_mut() = Type {
+                min_size: 0,
+                align: 1
+            };
+
             let mut u8_type = Gc::new_unchecked(Type::bootstrap_new(
                 &mut heap, r#type, 0
             )?);
@@ -111,12 +127,37 @@ impl Mutator {
                 }
             ]);
 
+            let mut pair = Gc::new_unchecked(Type::bootstrap_new(
+                &mut heap, r#type, Pair::TYPE_LEN
+            )?);
+            *pair.as_mut() = NonIndexedType::from_static::<Pair>();
+            pair.as_type().as_mut().indexed_field_mut().copy_from_slice(&[
+                Field { r#type: any, offset: 0 },
+                Field {
+                    r#type: any,
+                    offset: size_of::<Gc<()>>()
+                }
+            ]);
+
+            let mut empty_list = Gc::new_unchecked(Type::bootstrap_new(
+                &mut heap, r#type, EmptyList::TYPE_LEN
+            )?);
+            *empty_list.as_mut() = NonIndexedType::from_static::<EmptyList>();
+
+            // Create singleton instances:
+            // -----------------------------------------------------------------
+
+            let empty_list_inst = Gc::new_unchecked(heap.alloc_nonindexed(
+                empty_list
+            )?.cast::<EmptyList>());
+
             // -----------------------------------------------------------------
 
             Some(Self {
                 heap,
                 handles: HandlePool::new(),
-                types: Types { r#type, symbol },
+                types: Types { r#type, symbol, pair, empty_list },
+                singletons: Singletons { empty_list: empty_list_inst },
                 symbols: SymbolTable::new()
             })
         }
@@ -124,10 +165,18 @@ impl Mutator {
 
     pub fn types(&self) -> &Types { &self.types }
 
+    pub fn singletons(&self) -> &Singletons { &self.singletons }
+
     pub fn symbols(&self) -> &SymbolTable { &self.symbols }
 
     // HACK: returns raw pointer because of lifetime issues in Symbol::new:
     pub fn symbols_mut(&mut self) -> *mut SymbolTable { &mut self.symbols as _ }
+
+    pub unsafe fn alloc_nonindexed(&mut self, r#type: Gc<NonIndexedType>)
+        -> Option<NonNull<u8>>
+    {
+        self.heap.alloc_nonindexed(r#type)
+    }
 
     pub unsafe fn alloc_indexed(&mut self, r#type: Gc<IndexedType>, len: usize)
         -> Option<NonNull<u8>>

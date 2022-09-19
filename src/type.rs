@@ -79,6 +79,13 @@ unsafe impl HeapObj for NonIndexedType {}
 
 impl NonIndexedType {
     pub fn new_unchecked(r#type: Type) -> Self { Self(r#type) }
+    
+    pub fn from_static<T>() -> Self {
+        Self(Type {
+            align: align_of::<T>(),
+            min_size: size_of::<T>()
+        })
+    }
 
     pub fn align(&self) -> usize { self.0.align }
 

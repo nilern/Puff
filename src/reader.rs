@@ -3,6 +3,8 @@ use crate::handle::Handle;
 use crate::pos::{Pos, Positioned, Span, Spanning};
 use crate::mutator::Mutator;
 use crate::symbol::Symbol;
+use crate::list::{EmptyList, Pair};
+use crate::heap_obj::Singleton;
 
 struct Input<'a> {
     chars: &'a str,
@@ -114,6 +116,48 @@ impl<'i> Reader<'i> {
         }
     }
 
+    fn read_list(&mut self, mt: &mut Mutator, lparen: Positioned<char>)
+        -> ReadResult<Handle>
+    {
+        let start = lparen.pos;
+        let mut vs: Vec<Handle> = Vec::new();
+
+        loop {
+            while let Some(pc) = self.input.peek() {
+                if pc.v.is_whitespace() {
+                    self.input.next();
+                } else {
+                    break;
+                }
+            }
+
+            match self.input.peek() {
+                Some(pc) =>
+                    if pc.v != ')' {
+                        match self.next(mt) {
+                            Some(res) => vs.push(res?.v),
+                            None => return Err(()) // FIXME
+                        }
+                    } else {
+                        self.input.next();
+                        break;
+                    },
+                None => return Err(()) // FIXME
+            }
+        }
+
+        let mut ls: Handle = unsafe { mt.root(EmptyList::instance(mt).into()) };
+        for v in vs.iter().rev() {
+            let new_ls = Pair::new(mt, v.clone(), ls);
+            ls = unsafe { mt.root(new_ls.into()) };
+        }
+        
+        Ok(Spanning {
+            v: ls,
+            span: Span {start, end: self.input.pos}
+        })
+    }
+
     pub fn next(&mut self, mt: &mut Mutator) -> Option<ReadResult<Handle>> {
         while let Some(pc) = self.input.peek() {
             if pc.v.is_whitespace() {
@@ -126,16 +170,25 @@ impl<'i> Reader<'i> {
         self.input.peek().map(|pc| {
             let radix = 10;
 
-            if pc.v.is_digit(radix) {
-                self.input.next();
-                self.read_fixnum(radix, pc).map(|sv| sv.map(ORef::from))
-            } else if pc.v.is_alphabetic() {
-                self.input.next();
-                Ok(self.read_symbol(mt, pc).map(ORef::from))
-            } else {
-                Err(())
+            match pc.v {
+                '(' => {
+                    self.input.next();
+                    self.read_list(mt, pc)
+                },
+                c if c.is_digit(radix) => {
+                    self.input.next();
+                    self.read_fixnum(radix, pc).map(|sv| sv.map(ORef::from))
+                        .map(|res|
+                            res.map(|n| unsafe { mt.root(ORef::from(n)) }))
+                },
+                c if c.is_alphabetic() => {
+                    self.input.next();
+                    Ok(self.read_symbol(mt, pc).map(ORef::from))
+                        .map(|res|
+                            res.map(|n| unsafe { mt.root(ORef::from(n)) }))
+                },
+                _ => Err(())
             }
-            .map(|res| res.map(|n| unsafe { mt.root(ORef::from(n)) }))
         })
     }
 }
