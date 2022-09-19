@@ -259,7 +259,7 @@ impl<T> Gc<T> {
 
     pub fn is_marked(self) -> bool { self.header().is_marked() }
 
-    unsafe fn unchecked_cast<R>(self) -> Gc<R> { Gc::<R>(self.0.cast()) }
+    pub unsafe fn unchecked_cast<R>(self) -> Gc<R> { Gc::<R>(self.0.cast()) }
 }
 
 pub unsafe trait AsType {

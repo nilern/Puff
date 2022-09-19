@@ -6,7 +6,8 @@ use crate::heap::Heap;
 use crate::oref::{AsType, ORef, Gc};
 use crate::r#type::{Type, Field, IndexedType, NonIndexedType, BitsType};
 use crate::symbol::{Symbol, SymbolTable};
-use crate::heap_obj::{Indexed, Header, min_size_of_indexed, align_of_indexed};
+use crate::heap_obj::{NonIndexed, Indexed, Header, min_size_of_indexed,
+    align_of_indexed};
 use crate::handle::{Handle, HandlePool};
 use crate::list::{EmptyList, Pair};
 
@@ -182,6 +183,13 @@ impl Mutator {
         -> Option<NonNull<u8>>
     {
         self.heap.alloc_indexed(r#type, len)
+    }
+
+    pub unsafe fn alloc_static<T: NonIndexed>(&mut self)
+        -> Option<NonNull<T>>
+    {
+        self.heap.alloc_nonindexed(T::reify_nonindexed(self))
+            .map(NonNull::cast::<T>)
     }
 
     pub unsafe fn root(&mut self, oref: ORef) -> Handle {

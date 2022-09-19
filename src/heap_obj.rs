@@ -2,8 +2,8 @@ use std::ptr::NonNull;
 use std::mem::{transmute, size_of, align_of};
 use std::slice;
 
-use crate::r#type::Type;
-use crate::oref::Gc;
+use crate::r#type::{Type, NonIndexedType};
+use crate::oref::{Reify, Gc};
 use crate::mutator::Mutator;
 
 pub struct Header(usize);
@@ -51,6 +51,12 @@ pub unsafe trait HeapObj {
 unsafe impl HeapObj for () {}
 
 unsafe impl HeapObj for usize {}
+
+pub unsafe trait NonIndexed: Reify {
+    fn reify_nonindexed(mt: &Mutator) -> Gc<NonIndexedType> {
+        unsafe { Self::reify(mt).unchecked_cast::<NonIndexedType>() }
+    }
+}
 
 pub unsafe trait Indexed: Sized {
     type Item;

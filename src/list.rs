@@ -1,6 +1,6 @@
 use crate::oref::{AsType, Reify, ORef, Gc};
 use crate::handle::Handle;
-use crate::heap_obj::Singleton;
+use crate::heap_obj::{NonIndexed, Singleton};
 use crate::mutator::Mutator;
 use crate::r#type::Type;
 
@@ -29,14 +29,14 @@ impl Reify for Pair {
     fn reify(mt: &Mutator) -> Gc<Type> { mt.types().pair.as_type() }
 }
 
+unsafe impl NonIndexed for Pair {}
+
 impl Pair {
     pub const TYPE_LEN: usize = 2;
 
     pub fn new(mt: &mut Mutator, car: Handle, cdr: Handle) -> Gc<Self> {
         unsafe {
-            if let Some(nptr) = mt.alloc_nonindexed(mt.types().pair) {
-                let nptr = nptr.cast::<Self>();
-
+            if let Some(nptr) = mt.alloc_static::<Self>() {
                 nptr.as_ptr().write(Pair {
                     car: *car,
                     cdr: *cdr
