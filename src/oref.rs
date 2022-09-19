@@ -185,35 +185,35 @@ impl<T> Display for Gc<T> {
 impl DisplayWithin for Gc<()> {
     fn fmt_within(&self, mt: &Mutator, fmt: &mut fmt::Formatter) -> fmt::Result
     {
-        if let Some(this) = self.try_cast::<Symbol>(mt) {
-            write!(fmt, "{}", unsafe { this.as_ref() }.name())
-        } else if let Some(this) = self.try_cast::<Pair>(mt) {
-            write!(fmt, "(")?;
-            unsafe { this.as_ref().car.fmt_within(mt, fmt)?; }
+        unsafe {
+            if let Some(this) = self.try_cast::<Symbol>(mt) {
+                write!(fmt, "{}", this.as_ref().name())
+            } else if let Some(this) = self.try_cast::<Pair>(mt) {
+                write!(fmt, "({}", this.as_ref().car.within(mt))?;
 
-            let mut ls = ORef::from(unsafe { this.as_ref().cdr });
-            loop {
-                if let Ok(ls_obj) = Gc::<()>::try_from(ls) {
-                    if let Some(pair) = ls_obj.try_cast::<Pair>(mt) {
-                        write!(fmt, " ")?;
-                        unsafe { pair.as_ref().car.fmt_within(mt, fmt)?; }
-                        ls = unsafe { pair.as_ref().cdr };
-                        continue;
-                    } else if let Some(_) = ls_obj.try_cast::<EmptyList>(mt) {
-                        break;
+                let mut ls = this.as_ref().cdr;
+                loop {
+                    if let Ok(ls_obj) = Gc::<()>::try_from(ls) {
+                        if let Some(pair) = ls_obj.try_cast::<Pair>(mt) {
+                            write!(fmt, " {}", pair.as_ref().car.within(mt))?;
+
+                            ls = pair.as_ref().cdr;
+                            continue;
+                        } else if let Some(_) = ls_obj.try_cast::<EmptyList>(mt) {
+                            break;
+                        }
                     }
+
+                    write!(fmt, " . {}", ls.within(mt))?;
+                    break;
                 }
 
-                write!(fmt, " . ")?;
-                ls.fmt_within(mt, fmt)?;
-                break;
+                write!(fmt, ")")
+            } else if let Some(this) = self.try_cast::<EmptyList>(mt) {
+                write!(fmt, "()")
+            } else {
+                write!(fmt, "#<object {:p}>", self.0)
             }
-
-            write!(fmt, ")")
-        } else if let Some(this) = self.try_cast::<EmptyList>(mt) {
-            write!(fmt, "()")
-        } else {
-            write!(fmt, "#<object {:p}>", self.0)
         }
     }
 }
