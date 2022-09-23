@@ -47,6 +47,10 @@ impl ORef {
     pub fn within(self, mt: &Mutator) -> WithinMt<Self> {
         WithinMt {v: self, mt}
     }
+
+    pub unsafe fn unchecked_cast<T>(self) -> Gc<T> {
+        Gc::new_unchecked(NonNull::new_unchecked(self.0 as *mut T))
+    }
 }
 
 impl DisplayWithin for ORef {
@@ -209,7 +213,7 @@ impl DisplayWithin for Gc<()> {
                 }
 
                 write!(fmt, ")")
-            } else if let Some(this) = self.try_cast::<EmptyList>(mt) {
+            } else if let Some(_) = self.try_cast::<EmptyList>(mt) {
                 write!(fmt, "()")
             } else {
                 write!(fmt, "#<object {:p}>", self.0)
@@ -237,7 +241,7 @@ impl TryFrom<ORef> for Gc<()> {
 
     fn try_from(obj: ORef) -> Result<Self, Self::Error> {
         if obj.tag() == Gc::<()>::TAG {
-            Ok(unsafe { Self(NonNull::new_unchecked(obj.0 as *mut ())) })
+            Ok(unsafe { obj.unchecked_cast::<()>() })
         } else {
             Err(())
         }

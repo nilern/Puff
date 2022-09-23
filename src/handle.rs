@@ -1,10 +1,11 @@
 use std::alloc::{Layout, alloc, dealloc};
 use std::cell::Cell;
-use std::mem::{size_of, align_of};
+use std::mem::{size_of, align_of, transmute};
 use std::ops::Deref;
 use std::ptr::NonNull;
+use std::marker::PhantomData;
 
-use crate::oref::ORef;
+use crate::oref::{ORef, Gc};
 
 struct LiveHandleImpl {
     oref: ORef,
@@ -35,6 +36,19 @@ impl Clone for Handle {
 impl Drop for Handle {
     fn drop(&mut self) {
         unsafe { (*self.0).rc.set((*self.0).rc.get() - 1); }
+    }
+}
+
+pub struct HandleT<T> {
+    handle: Handle,
+    phantom: PhantomData<*const T>
+}
+
+impl<T> Deref for HandleT<T> {
+    type Target = Gc<T>;
+
+    fn deref(&self) -> &Self::Target {
+        unsafe { transmute::<_, &Self::Target>(&*self.handle) }
     }
 }
  

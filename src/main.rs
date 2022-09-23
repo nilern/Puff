@@ -8,6 +8,8 @@ mod symbol;
 mod mutator;
 mod heap_obj;
 mod list;
+mod array;
+mod bytecode;
 mod util;
 
 use rustyline::error::ReadlineError;

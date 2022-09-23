@@ -10,6 +10,8 @@ use crate::heap_obj::{NonIndexed, Indexed, Header, min_size_of_indexed,
     align_of_indexed};
 use crate::handle::{Handle, HandlePool};
 use crate::list::{EmptyList, Pair};
+use crate::bytecode::Bytecode;
+use crate::array::Array;
 
 const USIZE_TYPE_SIZE: usize = min_size_of_indexed::<Type>();
 
@@ -23,7 +25,8 @@ pub struct Types {
     pub r#type: Gc<IndexedType>,
     pub symbol: Gc<IndexedType>,
     pub pair: Gc<NonIndexedType>,
-    pub empty_list: Gc<NonIndexedType>
+    pub empty_list: Gc<NonIndexedType>,
+    pub bytecode: Gc<IndexedType>
 }
 
 pub struct Singletons {
@@ -145,6 +148,33 @@ impl Mutator {
             )?);
             *empty_list.as_mut() = NonIndexedType::from_static::<EmptyList>();
 
+            let mut array_of_any = Gc::new_unchecked(Type::bootstrap_new(
+                &mut heap, r#type, Array::<ORef>::TYPE_LEN
+            )?);
+            *array_of_any.as_mut() = IndexedType::new_unchecked(Type {
+                min_size: min_size_of_indexed::<Array::<ORef>>(),
+                align: align_of_indexed::<Array::<ORef>>()
+            });
+            array_of_any.as_type().as_mut().indexed_field_mut()
+                .copy_from_slice(&[
+                    Field { r#type: any, offset: 0 }
+                ]);
+
+            let mut bytecode = Gc::new_unchecked(Type::bootstrap_new(
+                &mut heap, r#type, Bytecode::TYPE_LEN
+            )?);
+            *bytecode.as_mut() = IndexedType::new_unchecked(Type {
+                min_size: min_size_of_indexed::<Bytecode>(),
+                align: align_of_indexed::<Bytecode>()
+            });
+            bytecode.as_type().as_mut().indexed_field_mut().copy_from_slice(&[
+                Field { r#type: array_of_any.as_type(), offset: 0 },
+                Field {
+                    r#type: u8_type.as_type(),
+                    offset: min_size_of_indexed::<Type>()
+                }
+            ]);
+
             // Create singleton instances:
             // -----------------------------------------------------------------
 
@@ -157,7 +187,7 @@ impl Mutator {
             Some(Self {
                 heap,
                 handles: HandlePool::new(),
-                types: Types { r#type, symbol, pair, empty_list },
+                types: Types { r#type, symbol, pair, empty_list,  bytecode },
                 singletons: Singletons { empty_list: empty_list_inst },
                 symbols: SymbolTable::new()
             })
