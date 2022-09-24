@@ -51,6 +51,18 @@ impl ORef {
     pub unsafe fn unchecked_cast<T>(self) -> Gc<T> {
         Gc::new_unchecked(NonNull::new_unchecked(self.0 as *mut T))
     }
+
+    pub fn try_cast<T: Reify>(self, mt: &Mutator) -> Option<Gc<T>>
+        where Gc<T::Kind>: AsType
+    {
+        if let Ok(obj) = Gc::<()>::try_from(self) {
+            obj.try_cast::<T>(mt)
+        } else {
+            None
+        }
+    }
+
+    pub fn is_truthy(self, _: &Mutator) -> bool { true } // TODO: false
 }
 
 impl DisplayWithin for ORef {

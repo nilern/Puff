@@ -48,7 +48,7 @@ fn main() {
                             println!("");
 
                             let code = {
-                                let code = compile(&mut mt, sv.v);
+                                let code = compile(&mut mt, *sv.v);
                                 mt.root_t(code)
                             };
                             println!("{}", code.within(&mt));

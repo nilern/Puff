@@ -227,7 +227,9 @@ impl Mutator {
 
     pub fn regs(&self) -> &[ORef] { &self.regs }
 
-    pub fn regs_mut(&mut self) -> &mut Vec<ORef> { &mut self.regs }
+    pub fn push(&mut self, v: ORef) { self.regs.push(v); }
+
+    pub fn pop(&mut self) -> ORef { self.regs.pop().unwrap() }
 
     pub unsafe fn alloc_nonindexed(&mut self, r#type: Gc<NonIndexedType>)
         -> Option<NonNull<u8>>

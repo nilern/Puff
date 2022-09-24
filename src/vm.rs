@@ -16,12 +16,30 @@ pub fn run(mt: &mut Mutator, code: HandleT<Bytecode>) -> ORef {
             match op {
                 Opcode::Const => {
                     let i = unsafe { mt.code().as_ref().instrs()[ip] } as usize;
+                    ip += 1;
+
                     unsafe {
                         let c = mt.consts().as_ref().indexed_field()[i];
-                        mt.regs_mut().push(c);
+                        mt.push(c);
                     }
-                    ip += 1;
                 },
+
+                Opcode::Brf => {
+                    let d = unsafe { mt.code().as_ref().instrs()[ip] } as usize;
+                    
+                    if mt.pop().is_truthy(mt) {
+                        ip += 1;
+                    } else {
+                        ip += d;
+                    }
+                },
+
+                Opcode::Br => {
+                    let d = unsafe { mt.code().as_ref().instrs()[ip] } as usize;
+                    
+                    ip += d;
+                },
+
                 Opcode::Ret => return mt.regs()[mt.regs().len() - 1]
             }
         } else {

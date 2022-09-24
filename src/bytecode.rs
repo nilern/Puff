@@ -10,6 +10,8 @@ use crate::r#type::IndexedType;
 
 pub enum Opcode {
     Const,
+    Brf,
+    Br,
     Ret
 }
 
@@ -46,21 +48,36 @@ impl DisplayWithin for Gc<Bytecode> {
         writeln!(fmt, "#<bytecode")?;
 
         unsafe {
-            let mut instrs = self.as_ref().instrs().iter();
-            while let Some(&byte) = instrs.next() {
+            let mut instrs = self.as_ref().instrs().iter().enumerate();
+            while let Some((i, &byte)) = instrs.next() {
                 if let Ok(op) = Opcode::try_from(byte) {
                     match op {
                         Opcode::Const =>
-                            if let Some(i) = instrs.next() {
+                            if let Some((_, ci)) = instrs.next() {
                                 let c = self.as_ref()
                                     .consts.as_ref()
-                                    .indexed_field()[*i as usize];
-                                writeln!(fmt, "  const {} ; {}", i,
+                                    .indexed_field()[*ci as usize];
+                                writeln!(fmt, "  {}: const {} ; {}", i, ci,
                                     c.within(mt))?;
                             } else {
                                 todo!()
                             },
-                        Opcode::Ret => writeln!(fmt, "  ret")?
+
+                        Opcode::Brf =>
+                            if let Some((_, d)) = instrs.next() {
+                                writeln!(fmt, "  {}: brf {}", i, d)?;
+                            } else {
+                                todo!()
+                            },
+
+                        Opcode::Br =>
+                            if let Some((_, d)) = instrs.next() {
+                                writeln!(fmt, "  {}: br {}", i, d)?;
+                            } else {
+                                todo!()
+                            },
+
+                        Opcode::Ret => writeln!(fmt, "  {}: ret", i)?
                     }
                 } else {
                     todo!();
@@ -111,12 +128,36 @@ impl Builder {
         }
     }
 
-    pub fn r#const(&mut self, v: Handle) {
+    pub fn r#const(&mut self, mt: &mut Mutator, v: ORef) {
         self.instrs.push(Opcode::Const as u8);
 
         if let Ok(i) = u8::try_from(self.consts.len()) {
-            self.consts.push(v);
+            self.consts.push(mt.root(v));
             self.instrs.push(i);
+        } else {
+            todo!()
+        }
+    }
+
+    #[must_use]
+    pub fn brf(&mut self) -> usize {
+        self.instrs.push(Opcode::Brf as u8);
+        let i = self.instrs.len();
+        self.instrs.push(0);
+        i
+    }
+
+    #[must_use]
+    pub fn br(&mut self) -> usize {
+        self.instrs.push(Opcode::Br as u8);
+        let i = self.instrs.len();
+        self.instrs.push(0);
+        i
+    }
+
+    pub fn backpatch(&mut self, i: usize) {
+        if let Ok(d) = u8::try_from(self.instrs.len() - i) {
+            self.instrs[i] = d;
         } else {
             todo!()
         }
