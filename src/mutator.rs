@@ -8,7 +8,7 @@ use crate::r#type::{Type, Field, IndexedType, NonIndexedType, BitsType};
 use crate::symbol::{Symbol, SymbolTable};
 use crate::heap_obj::{NonIndexed, Indexed, Header, min_size_of_indexed,
     align_of_indexed};
-use crate::handle::{Handle, HandlePool};
+use crate::handle::{Handle, HandleT, HandlePool};
 use crate::list::{EmptyList, Pair};
 use crate::bytecode::Bytecode;
 use crate::array::Array;
@@ -26,6 +26,7 @@ pub struct Types {
     pub symbol: Gc<IndexedType>,
     pub pair: Gc<NonIndexedType>,
     pub empty_list: Gc<NonIndexedType>,
+    pub array_of_any: Gc<IndexedType>,
     pub bytecode: Gc<IndexedType>
 }
 
@@ -187,7 +188,8 @@ impl Mutator {
             Some(Self {
                 heap,
                 handles: HandlePool::new(),
-                types: Types { r#type, symbol, pair, empty_list,  bytecode },
+                types: Types { r#type, symbol, pair, empty_list,  bytecode,
+                    array_of_any },
                 singletons: Singletons { empty_list: empty_list_inst },
                 symbols: SymbolTable::new()
             })
@@ -222,8 +224,12 @@ impl Mutator {
             .map(NonNull::cast::<T>)
     }
 
-    pub unsafe fn root(&mut self, oref: ORef) -> Handle {
-        self.handles.root(oref)
+    pub fn root(&mut self, oref: ORef) -> Handle {
+        unsafe { self.handles.root(oref) }
+    }
+
+    pub fn root_t<T>(&mut self, obj: Gc<T>) -> HandleT<T> {
+        unsafe { self.handles.root_t(obj) }
     }
 }
 

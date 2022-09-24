@@ -10,6 +10,7 @@ mod heap_obj;
 mod list;
 mod array;
 mod bytecode;
+mod compiler;
 mod util;
 
 use rustyline::error::ReadlineError;
@@ -17,6 +18,7 @@ use rustyline;
 
 use reader::Reader;
 use mutator::Mutator;
+use compiler::compile;
 
 const PROMPT: &'static str = "molysite> ";
 const HISTORY_FILENAME: &'static str = ".molysite-history.txt";
@@ -39,7 +41,12 @@ fn main() {
 
                 while let Some(res) = reader.next(&mut mt) {
                     match res {
-                        Ok(sv) => println!("{}", sv.v.within(&mt)),
+                        Ok(sv) => {
+                            println!("{}", sv.v.within(&mt));
+
+                            let code = compile(&mut mt, sv.v);
+                            println!("{}", code.within(&mt));
+                        },
                         Err(err) => {
                             println!("Error: {:?}", err);
                             break;

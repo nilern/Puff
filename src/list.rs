@@ -1,14 +1,16 @@
-use crate::oref::{AsType, Reify, ORef, Gc};
+use crate::oref::{Reify, ORef, Gc};
 use crate::handle::Handle;
 use crate::heap_obj::{NonIndexed, Singleton};
 use crate::mutator::Mutator;
-use crate::r#type::Type;
+use crate::r#type::NonIndexedType;
 
 #[repr(C)]
 pub struct EmptyList;
 
 impl Reify for EmptyList {
-    fn reify(mt: &Mutator) -> Gc<Type> { mt.types().empty_list.as_type() }
+    type Kind = NonIndexedType;
+
+    fn reify(mt: &Mutator) -> Gc<Self::Kind> { mt.types().empty_list }
 }
 
 impl Singleton for EmptyList {
@@ -26,7 +28,9 @@ pub struct Pair {
 }
 
 impl Reify for Pair {
-    fn reify(mt: &Mutator) -> Gc<Type> { mt.types().pair.as_type() }
+    type Kind = NonIndexedType;
+
+    fn reify(mt: &Mutator) -> Gc<NonIndexedType> { mt.types().pair }
 }
 
 unsafe impl NonIndexed for Pair {}

@@ -51,6 +51,18 @@ impl<T> Deref for HandleT<T> {
         unsafe { transmute::<_, &Self::Target>(&*self.handle) }
     }
 }
+
+impl TryFrom<Handle> for HandleT<()> {
+    type Error = ();
+
+    fn try_from(handle: Handle) -> Result<Self, Self::Error> {
+        if handle.tag() == Gc::<()>::TAG {
+            Ok(Self {handle, phantom: Default::default()})
+        } else {
+            Err(())
+        }
+    }
+}
  
 pub struct HandlePool {
     free: Option<NonNull<FreeHandleImpl>>,
@@ -108,6 +120,13 @@ impl HandlePool {
         self.live = Some(handle);
 
         Handle(handle.as_ptr())
+    }
+
+    pub unsafe fn root_t<T>(&mut self, obj: Gc<T>) -> HandleT<T> {
+        HandleT {
+            handle: self.root(obj.into()),
+            phantom: Default::default()
+        }
     }
 
     fn grow(&mut self) {

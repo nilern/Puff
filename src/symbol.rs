@@ -5,11 +5,11 @@ use std::mem::{size_of, align_of};
 use std::ptr;
 use std::slice;
 
-use crate::oref::{Reify, AsType, Gc, Fixnum};
+use crate::oref::{Reify,  Gc, Fixnum};
 use crate::heap_obj::{HeapObj, Indexed};
 use crate::mutator::Mutator;
 use crate::util::hash;
-use crate::r#type::Type;
+use crate::r#type::IndexedType;
 
 pub struct SymbolTable {
     len: usize,
@@ -97,7 +97,9 @@ unsafe impl Indexed for Symbol {
 }
 
 impl Reify for Symbol {
-    fn reify(mt: &Mutator) -> Gc<Type> { mt.types().symbol.as_type() }
+    type Kind = IndexedType;
+
+    fn reify(mt: &Mutator) -> Gc<Self::Kind> { mt.types().symbol }
 }
 
 impl Symbol {

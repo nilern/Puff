@@ -146,10 +146,10 @@ impl<'i> Reader<'i> {
             }
         }
 
-        let mut ls: Handle = unsafe { mt.root(EmptyList::instance(mt).into()) };
+        let mut ls: Handle = mt.root(EmptyList::instance(mt).into());
         for v in vs.iter().rev() {
             let new_ls = Pair::new(mt, v.clone(), ls);
-            ls = unsafe { mt.root(new_ls.into()) };
+            ls = mt.root(new_ls.into());
         }
         
         Ok(Spanning {
@@ -179,13 +179,13 @@ impl<'i> Reader<'i> {
                     self.input.next();
                     self.read_fixnum(radix, pc).map(|sv| sv.map(ORef::from))
                         .map(|res|
-                            res.map(|n| unsafe { mt.root(ORef::from(n)) }))
+                            res.map(|n| mt.root(ORef::from(n))))
                 },
                 c if c.is_alphabetic() => {
                     self.input.next();
                     Ok(self.read_symbol(mt, pc).map(ORef::from))
                         .map(|res|
-                            res.map(|n| unsafe { mt.root(ORef::from(n)) }))
+                            res.map(|n| mt.root(ORef::from(n))))
                 },
                 _ => Err(())
             }

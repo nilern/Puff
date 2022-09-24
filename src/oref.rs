@@ -12,7 +12,7 @@ trait Tagged {
     const TAG: usize;
 }
 
-trait DisplayWithin {
+pub trait DisplayWithin {
     fn fmt_within(&self, mt: &Mutator, fmt: &mut fmt::Formatter) -> fmt::Result;
 }
 
@@ -40,7 +40,7 @@ impl ORef {
 
     const SHIFT: usize = Self::TAG_SIZE;
 
-    fn tag(self) -> usize { self.0 & Self::TAG_BITS }
+    pub fn tag(self) -> usize { self.0 & Self::TAG_BITS }
 
     fn is_tagged<T: Tagged>(self) -> bool { self.tag() == T::TAG }
 
@@ -153,18 +153,22 @@ impl From<Char> for char {
 }
 
 pub trait Reify {
-    fn reify(mt: &Mutator) -> Gc<Type>;
+    type Kind;
+
+    fn reify(mt: &Mutator) -> Gc<Self::Kind>;
 }
 
 pub struct Gc<T>(NonNull<T>);
 
 impl<T> Gc<T> {
-    const TAG: usize = 0;
+    pub const TAG: usize = 0;
 }
 
 impl<T: HeapObj> Gc<T> {
-    fn try_cast<U: Reify>(self, mt: &Mutator) -> Option<Gc<U>> {
-        if unsafe { self.as_ref() }.r#type() == U::reify(mt) {
+    pub fn try_cast<U: Reify>(self, mt: &Mutator) -> Option<Gc<U>>
+        where Gc<U::Kind>: AsType
+    {
+        if unsafe { self.as_ref() }.r#type() == U::reify(mt).as_type() {
             Some(unsafe { self.unchecked_cast::<U>() })
         } else {
             None
@@ -264,6 +268,10 @@ impl<T> Gc<T> {
     pub fn is_marked(self) -> bool { self.header().is_marked() }
 
     pub unsafe fn unchecked_cast<R>(self) -> Gc<R> { Gc::<R>(self.0.cast()) }
+
+    pub fn within(self, mt: &Mutator) -> WithinMt<Self> {
+        WithinMt {v: self, mt}
+    }
 }
 
 pub unsafe trait AsType {

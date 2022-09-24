@@ -61,7 +61,7 @@ pub unsafe trait NonIndexed: Reify {
 pub unsafe trait Indexed: Sized {
     type Item;
 
-    fn indexed_field(&self) -> &[Self::Item] {
+    fn indexed_field_ptr(&self) -> *const Self::Item {
         let ptr = self as *const Self;
 
         unsafe {
@@ -69,8 +69,28 @@ pub unsafe trait Indexed: Sized {
 
             let mut fields_addr = ptr.add(1) as usize;
             fields_addr = (fields_addr + field_align - 1) & !(field_align - 1);
-            let fields_ptr = fields_addr as *const Self::Item;
+            fields_addr as *const Self::Item
+        }
+    }
 
+    fn indexed_field_ptr_mut(&mut self) -> *mut Self::Item {
+        let ptr = self as *mut Self;
+
+        unsafe {
+            let field_align = align_of::<Self::Item>();
+
+            let mut fields_addr = ptr.add(1) as usize;
+            fields_addr = (fields_addr + field_align - 1) & !(field_align - 1);
+            fields_addr as *mut Self::Item
+        }
+    }
+
+    fn indexed_field(&self) -> &[Self::Item] {
+        let ptr = self as *const Self;
+
+        let fields_ptr = self.indexed_field_ptr();
+
+        unsafe {
             let header_len = ((ptr as *const Header).offset(-1) as *const usize)
                 .offset(-1);
 
@@ -81,13 +101,9 @@ pub unsafe trait Indexed: Sized {
     fn indexed_field_mut(&mut self) -> &mut[Self::Item] {
         let ptr = self as *mut Self;
 
+        let fields_ptr = self.indexed_field_ptr_mut();
+
         unsafe {
-            let field_align = align_of::<Self::Item>();
-
-            let mut fields_addr = ptr.add(1) as usize;
-            fields_addr = (fields_addr + field_align - 1) & !(field_align - 1);
-            let fields_ptr = fields_addr as *mut Self::Item;
-
             let header_len = ((ptr as *const Header).offset(-1) as *const usize)
                 .offset(-1);
 
