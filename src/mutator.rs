@@ -37,9 +37,14 @@ pub struct Singletons {
 pub struct Mutator {
     heap: Heap,
     handles: HandlePool,
+
     types: Types,
     singletons: Singletons,
-    symbols: SymbolTable
+    symbols: SymbolTable,
+
+    regs: Vec<ORef>,
+    code: Option<Gc<Bytecode>>,
+    consts: Option<Gc<Array<ORef>>>
 }
 
 impl Mutator {
@@ -188,10 +193,15 @@ impl Mutator {
             Some(Self {
                 heap,
                 handles: HandlePool::new(),
+
                 types: Types { r#type, symbol, pair, empty_list,  bytecode,
                     array_of_any },
                 singletons: Singletons { empty_list: empty_list_inst },
-                symbols: SymbolTable::new()
+                symbols: SymbolTable::new(),
+
+                regs: Vec::new(),
+                code: None,
+                consts: None
             })
         }
     }
@@ -204,6 +214,20 @@ impl Mutator {
 
     // HACK: returns raw pointer because of lifetime issues in Symbol::new:
     pub fn symbols_mut(&mut self) -> *mut SymbolTable { &mut self.symbols as _ }
+
+    pub fn set_code(&mut self, code: HandleT<Bytecode>) {
+        self.code = Some(*code);
+        unsafe { self.consts = Some(code.as_ref().consts); }
+        self.regs.truncate(0);
+    }
+
+    pub unsafe fn code(&self) -> Gc<Bytecode> { self.code.unwrap() }
+
+    pub unsafe fn consts(&self) -> Gc<Array<ORef>> { self.consts.unwrap() }
+
+    pub fn regs(&self) -> &[ORef] { &self.regs }
+
+    pub fn regs_mut(&mut self) -> &mut Vec<ORef> { &mut self.regs }
 
     pub unsafe fn alloc_nonindexed(&mut self, r#type: Gc<NonIndexedType>)
         -> Option<NonNull<u8>>

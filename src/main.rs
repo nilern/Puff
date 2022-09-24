@@ -11,6 +11,7 @@ mod list;
 mod array;
 mod bytecode;
 mod compiler;
+mod vm;
 mod util;
 
 use rustyline::error::ReadlineError;
@@ -44,8 +45,18 @@ fn main() {
                         Ok(sv) => {
                             println!("{}", sv.v.within(&mt));
 
-                            let code = compile(&mut mt, sv.v);
+                            println!("");
+
+                            let code = {
+                                let code = compile(&mut mt, sv.v);
+                                mt.root_t(code)
+                            };
                             println!("{}", code.within(&mt));
+
+                            println!("");
+
+                            let v = vm::run(&mut mt, code);
+                            println!("{}", v.within(&mt));
                         },
                         Err(err) => {
                             println!("Error: {:?}", err);

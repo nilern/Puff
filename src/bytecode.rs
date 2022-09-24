@@ -8,7 +8,7 @@ use crate::mutator::Mutator;
 use crate::handle::{Handle, HandleT};
 use crate::r#type::IndexedType;
 
-enum Opcode {
+pub enum Opcode {
     Const,
     Ret
 }
@@ -27,7 +27,7 @@ impl TryFrom<u8> for Opcode {
 
 #[repr(C)]
 pub struct Bytecode {
-    consts: Gc<Array<ORef>>
+    pub consts: Gc<Array<ORef>>
 }
 
 unsafe impl Indexed for Bytecode {
@@ -95,7 +95,7 @@ impl Bytecode {
         }
     }
 
-    fn instrs(&self) -> &[u8] { self.indexed_field() }
+    pub fn instrs(&self) -> &[u8] { self.indexed_field() }
 }
 
 pub struct Builder {
