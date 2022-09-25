@@ -1,57 +1,35 @@
 use crate::bytecode::{self, Bytecode};
-use crate::oref::{ORef, Gc, WithinMt};
-use crate::handle::{Handle, HandleT};
+use crate::oref::{ORef, Gc};
+use crate::handle::Handle;
 use crate::list::{Pair, EmptyList};
 use crate::mutator::Mutator;
 use crate::symbol::Symbol;
 use crate::heap_obj::Singleton;
 
 pub fn compile(mt: &mut Mutator, expr: ORef) -> Gc<Bytecode> {
-    let mut builder = bytecode::Builder::new();
+    let anf = analyze(mt, expr);
 
-    emit(mt, &mut builder, true, expr);
-
-    return builder.build(mt);
+    emit(mt, &anf)
 }
 
 mod anf {
     use super::*;
 
-    pub enum Expr {
-        If(Box<Block>, Box<Block>, Box<Block>),
+    pub enum Triv {
         Const(Handle)
     }
 
-    enum Stmt {
-        Def(HandleT<Symbol>, Expr),
-        Expr(Expr)
-    }
-
-    pub struct Block {
-        stmts: Vec<Stmt>,
-        body: Expr
-    }
-
-    pub struct BlockBuilder {
-        stmts: Vec<Stmt>
-    }
-
-    impl BlockBuilder {
-        pub fn new() -> Self { Self {stmts: Vec::new()} }
-
-        pub fn build(self, body: Expr) -> Block {
-            Block {
-                stmts: self.stmts,
-                body
-            }
-        }
+    pub enum Expr {
+        If(Box<Expr>, Box<Expr>, Box<Expr>),
+        Triv(Triv)
     }
 }
 
-fn analyze(mt: &mut Mutator, expr: ORef) -> anf::Block {
-    fn analyze_expr(mt: &mut Mutator, block: &mut anf::BlockBuilder,
-        expr: ORef
-    ) -> anf::Expr {
+fn analyze(mt: &mut Mutator, expr: ORef) -> anf::Expr {
+    use anf::Expr::*;
+    use anf::Triv::*;
+
+    fn analyze_expr(mt: &mut Mutator, expr: ORef) -> anf::Expr {
         if let Ok(expr) = Gc::<()>::try_from(expr.clone()) {
             if let Some(_) = expr.try_cast::<Symbol>(mt) {
                 todo!();
@@ -70,28 +48,24 @@ fn analyze(mt: &mut Mutator, expr: ORef) -> anf::Block {
             }
         }
 
-        anf::Expr::Const(mt.root(expr))
+        Triv(Const(mt.root(expr)))
     }
 
     fn analyze_if(mt: &mut Mutator, args: ORef) -> anf::Expr {
         if let Some(args) = args.try_cast::<Pair>(mt) {
-            let cond = analyze_block(mt, unsafe { args.as_ref().car });
+            let cond = analyze_expr(mt, unsafe { args.as_ref().car });
 
             let branches = unsafe { args.as_ref().cdr };
             if let Some(branches) = branches.try_cast::<Pair>(mt) {
-                let conseq = analyze_block(mt, unsafe { branches.as_ref().car });
+                let conseq = analyze_expr(mt, unsafe { branches.as_ref().car });
 
                 let branches = unsafe { branches.as_ref().cdr };
                 if let Some(branches) = branches.try_cast::<Pair>(mt) {
-                    let alt = analyze_block(mt, unsafe { branches.as_ref().car });
+                    let alt = analyze_expr(mt, unsafe { branches.as_ref().car });
 
                     let branches = unsafe { branches.as_ref().cdr };
                     if branches == EmptyList::instance(mt).into() {
-                        anf::Expr::If(
-                            Box::new(cond),
-                            Box::new(conseq),
-                            Box::new(alt)
-                        )
+                        If(Box::new(cond), Box::new(conseq), Box::new(alt))
                     } else {
                         todo!()
                     }
@@ -106,70 +80,41 @@ fn analyze(mt: &mut Mutator, expr: ORef) -> anf::Block {
         }
     }
 
-    fn analyze_block(mt: &mut Mutator, expr: ORef) -> anf::Block {
-        let mut block = anf::BlockBuilder::new();
-        let body = analyze_expr(mt, &mut block, expr);
-        block.build(body)
-    }
-
-    analyze_block(mt, expr)
+    analyze_expr(mt, expr)
 }
 
-fn emit(mt: &mut Mutator, builder: &mut bytecode::Builder, tail: bool,
-    expr: ORef)
-{
-    if let Ok(expr) = Gc::<()>::try_from(expr.clone()) {
-        if let Some(_) = expr.try_cast::<Symbol>(mt) {
-            todo!();
-        } else if let Some(ls) = expr.try_cast::<Pair>(mt) {
-            if let Ok(callee) = Gc::<()>::try_from(unsafe { ls.as_ref().car }) {
-                if let Some(callee) = callee.try_cast::<Symbol>(mt) {
-                    if unsafe { callee.as_ref().name() == "if" } {
-                        let args = unsafe { ls.as_ref().cdr };
-                        return emit_if(mt, builder, tail, args);
-                    }
-                }
-            }
+fn emit(mt: &mut Mutator, expr: &anf::Expr) -> Gc<Bytecode> {
+    use anf::Expr::*;
+    use anf::Triv::*;
 
-            todo!()
-        }
-    }
+    fn emit_expr(mt: &mut Mutator, builder: &mut bytecode::Builder, tail: bool,
+        expr: &anf::Expr)
+    {
+        match *expr {
+            If(ref cond, ref conseq, ref alt) => {
+                emit_expr(mt, builder, false, cond);
+                let brf_i = builder.brf();
 
-    builder.r#const(mt, expr);
-    if tail { builder.ret(); }
-}
+                emit_expr(mt, builder, tail, conseq);
+                let br_i = if tail { None } else { Some(builder.br()) };
 
-fn emit_if(mt: &mut Mutator, builder: &mut bytecode::Builder, tail: bool,
-    args: ORef)
-{
-    if let Some(args) = args.try_cast::<Pair>(mt) {
-        emit(mt, builder, false, unsafe { args.as_ref().car });
-        let brf_i = builder.brf();
+                builder.backpatch(brf_i);
 
-        let branches = unsafe { args.as_ref().cdr };
-        if let Some(branches) = branches.try_cast::<Pair>(mt) {
-            emit(mt, builder, tail, unsafe { branches.as_ref().car });
-            let br_i = if tail { None } else { Some(builder.br()) };
-
-            builder.backpatch(brf_i);
-
-            let branches = unsafe { branches.as_ref().cdr };
-            if let Some(branches) = branches.try_cast::<Pair>(mt) {
-                emit(mt, builder, tail, unsafe { branches.as_ref().car });
+                emit_expr(mt, builder, tail, alt);
 
                 if let Some(br_i) = br_i { builder.backpatch(br_i); }
+            },
 
-                let branches = unsafe { branches.as_ref().cdr };
-                if branches != EmptyList::instance(mt).into() {
-                    todo!()
-                }
-            } else {
-                todo!()
+            Triv(Const(ref c)) => {
+                builder.r#const(mt, **c);
+                if tail { builder.ret(); }
             }
-        } else {
-            todo!()
         }
-    } else {
-        todo!()
     }
+
+    let mut builder = bytecode::Builder::new();
+
+    emit_expr(mt, &mut builder, true, expr);
+
+    builder.build(mt)
 }
