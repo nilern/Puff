@@ -24,7 +24,7 @@ struct Compiler<'a> {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-struct Id(usize);
+pub struct Id(usize);
 
 impl Id {
     fn fresh(cmp: &mut Compiler) -> Self {
