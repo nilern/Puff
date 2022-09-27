@@ -1,4 +1,5 @@
 use std::collections::hash_map::HashMap;
+use std::collections::hash_set::HashSet;
 use std::rc::Rc;
 
 use crate::bytecode::{self, Bytecode};
@@ -13,7 +14,7 @@ pub fn compile(mt: &mut Mutator, expr: ORef) -> Gc<Bytecode> {
     let mut cmp = Compiler::new(mt);
 
     let anf = cmp.analyze(expr);
-
+    Compiler::liveness(&anf);
     cmp.emit(&anf)
 }
 
@@ -23,7 +24,7 @@ struct Compiler<'a> {
     names: HashMap<Id, HandleT<Symbol>>
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Id(usize);
 
 impl Id {
@@ -211,6 +212,43 @@ impl<'a> Compiler<'a> {
         }
 
         analyze_expr(self, &Rc::new(Env::Empty), expr)
+    }
+
+    fn liveness(expr: &anf::Expr) {
+        use anf::Expr::{self, *};
+        use anf::Triv::*;
+
+        type LiveVars = HashSet<Id>;
+
+        fn live_ins(expr: &Expr, mut live_outs: LiveVars) -> LiveVars {
+            match expr {
+                &Let(ref bindings, ref body) => {
+                    live_outs = live_ins(&body, live_outs);
+
+                    for (id, val) in bindings.iter().rev() {
+                        live_outs.remove(id);
+                        live_outs = live_ins(val, live_outs);
+                    }
+                },
+
+                &If(ref cond, ref conseq, ref alt) => {
+                    let conseq_outs = live_outs.clone();
+                    let alt_ins = live_ins(alt, live_outs);
+                    let mut conseq_ins = live_ins(conseq, conseq_outs);
+
+                    conseq_ins.extend(alt_ins);
+                    live_outs = live_ins(cond, conseq_ins);
+                },
+
+                &Triv(Use(id)) => { live_outs.insert(id); },
+
+                &Triv(Const(_)) => ()
+            }
+
+            live_outs
+        }
+
+        live_ins(expr, LiveVars::new());
     }
 
     fn emit(&mut self, expr: &anf::Expr) -> Gc<Bytecode> {
