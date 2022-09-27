@@ -10,6 +10,8 @@ use crate::r#type::IndexedType;
 
 pub enum Opcode {
     Const,
+    Local,
+    PopNNT,
     Brf,
     Br,
     Ret
@@ -59,6 +61,20 @@ impl DisplayWithin for Gc<Bytecode> {
                                     .indexed_field()[*ci as usize];
                                 writeln!(fmt, "  {}: const {} ; {}", i, ci,
                                     c.within(mt))?;
+                            } else {
+                                todo!()
+                            },
+
+                        Opcode::Local =>
+                            if let Some((_, reg)) = instrs.next() {
+                                writeln!(fmt, "  {}: local {}", i, reg)?;
+                            } else {
+                                todo!()
+                            },
+
+                        Opcode::PopNNT =>
+                            if let Some((_, n)) = instrs.next() {
+                                writeln!(fmt, "  {}: popnnt {}", i, n)?;
                             } else {
                                 todo!()
                             },
@@ -137,6 +153,16 @@ impl Builder {
         } else {
             todo!()
         }
+    }
+
+    pub fn local(&mut self, reg: u8) {
+        self.instrs.push(Opcode::Local as u8);
+        self.instrs.push(reg);
+    }
+
+    pub fn popnnt(&mut self, n: u8) {
+        self.instrs.push(Opcode::PopNNT as u8);
+        self.instrs.push(n);
     }
 
     #[must_use]

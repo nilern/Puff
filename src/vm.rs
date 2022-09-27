@@ -24,6 +24,20 @@ pub fn run(mt: &mut Mutator, code: HandleT<Bytecode>) -> ORef {
                     }
                 },
 
+                Opcode::Local => {
+                    let i = unsafe { mt.code().as_ref().instrs()[ip] } as usize;
+                    ip += 1;
+
+                    mt.push(mt.regs()[i]);
+                },
+
+                Opcode::PopNNT => {
+                    let n = unsafe { mt.code().as_ref().instrs()[ip] };
+                    ip += 1;
+
+                    mt.popnnt(n);
+                },
+
                 Opcode::Brf => {
                     let d = unsafe { mt.code().as_ref().instrs()[ip] } as usize;
                     

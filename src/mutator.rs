@@ -231,6 +231,14 @@ impl Mutator {
 
     pub fn pop(&mut self) -> ORef { self.regs.pop().unwrap() }
 
+    pub fn popnnt(&mut self, n: u8) {
+        let len = self.regs.len();
+        let top = self.regs[len - 1];
+        let new_len = len - n as usize;
+        self.regs.truncate(new_len);
+        self.regs[new_len - 1] = top;
+    }
+
     pub unsafe fn alloc_nonindexed(&mut self, r#type: Gc<NonIndexedType>)
         -> Option<NonNull<u8>>
     {
