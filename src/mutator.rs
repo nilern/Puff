@@ -12,6 +12,7 @@ use crate::handle::{Handle, HandleT, HandlePool};
 use crate::list::{EmptyList, Pair};
 use crate::bytecode::Bytecode;
 use crate::array::Array;
+use crate::closure::Closure;
 
 const USIZE_TYPE_SIZE: usize = min_size_of_indexed::<Type>();
 
@@ -27,7 +28,8 @@ pub struct Types {
     pub pair: Gc<NonIndexedType>,
     pub empty_list: Gc<NonIndexedType>,
     pub array_of_any: Gc<IndexedType>,
-    pub bytecode: Gc<IndexedType>
+    pub bytecode: Gc<IndexedType>,
+    pub closure: Gc<IndexedType>
 }
 
 pub struct Singletons {
@@ -177,7 +179,22 @@ impl Mutator {
                 Field { r#type: array_of_any.as_type(), offset: 0 },
                 Field {
                     r#type: u8_type.as_type(),
-                    offset: min_size_of_indexed::<Type>()
+                    offset: min_size_of_indexed::<Bytecode>()
+                }
+            ]);
+
+            let mut closure = Gc::new_unchecked(Type::bootstrap_new(
+                &mut heap, r#type, Closure::TYPE_LEN
+            )?);
+            *closure.as_mut() = IndexedType::new_unchecked(Type {
+                min_size: min_size_of_indexed::<Closure>(),
+                align: align_of_indexed::<Closure>()
+            });
+            closure.as_type().as_mut().indexed_field_mut().copy_from_slice(&[
+                Field { r#type: bytecode.as_type(), offset: 0 },
+                Field {
+                    r#type: any,
+                    offset: min_size_of_indexed::<Closure>()
                 }
             ]);
 
@@ -194,8 +211,7 @@ impl Mutator {
                 heap,
                 handles: HandlePool::new(),
 
-                types: Types { r#type, symbol, pair, empty_list,  bytecode,
-                    array_of_any },
+                types: Types { r#type, symbol, pair, empty_list,  bytecode, array_of_any, closure },
                 singletons: Singletons { empty_list: empty_list_inst },
                 symbols: SymbolTable::new(),
 

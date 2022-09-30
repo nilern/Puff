@@ -9,6 +9,7 @@ mod mutator;
 mod heap_obj;
 mod list;
 mod array;
+mod closure;
 mod bytecode;
 mod compiler;
 mod vm;

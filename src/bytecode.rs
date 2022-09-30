@@ -11,9 +11,11 @@ use crate::r#type::IndexedType;
 pub enum Opcode {
     Const,
     Local,
+    Clover,
     PopNNT,
     Brf,
     Br,
+    r#Fn,
     Ret
 }
 
@@ -45,62 +47,9 @@ impl Reify for Bytecode {
 }
 
 impl DisplayWithin for Gc<Bytecode> {
-    fn fmt_within(&self, mt: &Mutator, fmt: &mut fmt::Formatter) -> fmt::Result
-    {
+    fn fmt_within(&self, mt: &Mutator, fmt: &mut fmt::Formatter) -> fmt::Result {
         writeln!(fmt, "#<bytecode")?;
-
-        unsafe {
-            let mut instrs = self.as_ref().instrs().iter().enumerate();
-            while let Some((i, &byte)) = instrs.next() {
-                if let Ok(op) = Opcode::try_from(byte) {
-                    match op {
-                        Opcode::Const =>
-                            if let Some((_, ci)) = instrs.next() {
-                                let c = self.as_ref()
-                                    .consts.as_ref()
-                                    .indexed_field()[*ci as usize];
-                                writeln!(fmt, "  {}: const {} ; {}", i, ci,
-                                    c.within(mt))?;
-                            } else {
-                                todo!()
-                            },
-
-                        Opcode::Local =>
-                            if let Some((_, reg)) = instrs.next() {
-                                writeln!(fmt, "  {}: local {}", i, reg)?;
-                            } else {
-                                todo!()
-                            },
-
-                        Opcode::PopNNT =>
-                            if let Some((_, n)) = instrs.next() {
-                                writeln!(fmt, "  {}: popnnt {}", i, n)?;
-                            } else {
-                                todo!()
-                            },
-
-                        Opcode::Brf =>
-                            if let Some((_, d)) = instrs.next() {
-                                writeln!(fmt, "  {}: brf {}", i, d)?;
-                            } else {
-                                todo!()
-                            },
-
-                        Opcode::Br =>
-                            if let Some((_, d)) = instrs.next() {
-                                writeln!(fmt, "  {}: br {}", i, d)?;
-                            } else {
-                                todo!()
-                            },
-
-                        Opcode::Ret => writeln!(fmt, "  {}: ret", i)?
-                    }
-                } else {
-                    todo!();
-                }
-            }
-        }
-
+        unsafe { self.as_ref().disassemble(mt, fmt, "  ")?; }
         write!(fmt, ">")
     }
 }
@@ -129,6 +78,81 @@ impl Bytecode {
     }
 
     pub fn instrs(&self) -> &[u8] { self.indexed_field() }
+
+    fn disassemble(&self, mt: &Mutator, fmt: &mut fmt::Formatter, indent: &str) -> fmt::Result {
+        unsafe {
+            let mut instrs = self.instrs().iter().enumerate();
+            while let Some((i, &byte)) = instrs.next() {
+                if let Ok(op) = Opcode::try_from(byte) {
+                    match op {
+                        Opcode::Const =>
+                            if let Some((_, ci)) = instrs.next() {
+                                let c = self
+                                    .consts.as_ref()
+                                    .indexed_field()[*ci as usize];
+                                if let Some(code) = c.try_cast::<Bytecode>(mt) {
+                                    writeln!(fmt, "{}{}: const {}", indent, i, ci)?;
+                                    code.as_ref().disassemble(mt, fmt, &(indent.to_string() + "  "))?;
+                                } else {
+                                    writeln!(fmt, "{}{}: const {} ; {}", indent, i, ci,
+                                        c.within(mt))?;
+                                }
+                            } else {
+                                todo!()
+                            },
+
+                        Opcode::Local =>
+                            if let Some((_, reg)) = instrs.next() {
+                                writeln!(fmt, "{}{}: local {}", indent, i, reg)?;
+                            } else {
+                                todo!()
+                            },
+
+                        Opcode::Clover =>
+                            if let Some((_, j)) = instrs.next() {
+                                writeln!(fmt, "{}{}: clover {}", indent, i, j)?;
+                            } else {
+                                todo!()
+                            },
+
+                        Opcode::PopNNT =>
+                            if let Some((_, n)) = instrs.next() {
+                                writeln!(fmt, "{}{}: popnnt {}", indent, i, n)?;
+                            } else {
+                                todo!()
+                            },
+
+                        Opcode::Brf =>
+                            if let Some((_, d)) = instrs.next() {
+                                writeln!(fmt, "{}{}: brf {}", indent, i, d)?;
+                            } else {
+                                todo!()
+                            },
+
+                        Opcode::Br =>
+                            if let Some((_, d)) = instrs.next() {
+                                writeln!(fmt, "{}{}: br {}", indent, i, d)?;
+                            } else {
+                                todo!()
+                            },
+
+                        Opcode::r#Fn =>
+                            if let Some((_, len)) = instrs.next() {
+                                writeln!(fmt, "{}{}: fn {}", indent, i, len)?;
+                            } else {
+                                todo!()
+                            },
+
+                        Opcode::Ret => writeln!(fmt, "{}{}: ret", indent, i)?
+                    }
+                } else {
+                    todo!();
+                }
+            }
+        }
+
+        Ok(())
+    }
 }
 
 pub struct Builder {
@@ -155,14 +179,19 @@ impl Builder {
         }
     }
 
-    pub fn local(&mut self, reg: u8) {
+    pub fn local(&mut self, reg: usize) {
         self.instrs.push(Opcode::Local as u8);
-        self.instrs.push(reg);
+        self.instrs.push(u8::try_from(reg).unwrap());
     }
 
-    pub fn popnnt(&mut self, n: u8) {
+    pub fn clover(&mut self, i: usize) {
+        self.instrs.push(Opcode::Clover as u8);
+        self.instrs.push(u8::try_from(i).unwrap());
+    }
+
+    pub fn popnnt(&mut self, n: usize) {
         self.instrs.push(Opcode::PopNNT as u8);
-        self.instrs.push(n);
+        self.instrs.push(u8::try_from(n).unwrap());
     }
 
     #[must_use]
@@ -187,6 +216,11 @@ impl Builder {
         } else {
             todo!()
         }
+    }
+
+    pub fn r#fn(&mut self, len: usize) {
+        self.instrs.push(Opcode::r#Fn as u8);
+        self.instrs.push(u8::try_from(len).unwrap());
     }
 
     pub fn ret(&mut self) {
