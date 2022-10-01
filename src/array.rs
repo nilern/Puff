@@ -29,8 +29,7 @@ impl<T> Array<T> {
 impl Array<ORef> {
     pub fn from_handles(mt: &mut Mutator, handles: &[Handle]) -> Gc<Self> {
         unsafe {
-            if let Some(nptr) = mt.alloc_indexed(Self::reify(mt), handles.len())
-            {
+            if let Some(nptr) = mt.alloc_indexed(Self::reify(mt), handles.len()) {
                 let mut nptr = nptr.cast::<Self>();
 
                 nptr.as_ptr().write(Array {phantom: Default::default()});

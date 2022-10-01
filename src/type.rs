@@ -128,7 +128,7 @@ impl IndexedType {
 
     fn min_size(&self) -> usize { self.0.min_size }
 
-    fn indexed_field(&self) ->&Field<NonIndexedType> {
+    fn indexed_field(&self) -> &Field<NonIndexedType> {
         let fields = self.0.fields();
         unsafe { transmute::<&Field<Type>, &Field<NonIndexedType>>(
             &fields[fields.len() - 1]

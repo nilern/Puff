@@ -29,9 +29,7 @@ impl Header {
 
     pub fn is_marked(&self) -> bool { (self.0 & Self::MARK_BIT) == 1 }
 
-    pub unsafe fn initialize_indexed<T>(obj: NonNull<T>, header: Self,
-        len: usize
-    ) {
+    pub unsafe fn initialize_indexed<T>(obj: NonNull<T>, header: Self, len: usize) {
         let header_ptr = (obj.as_ptr() as *mut Header).offset(-1);
         let header_len = (header_ptr as *mut usize).offset(-1);
         header_len.write(len);

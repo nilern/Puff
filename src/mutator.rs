@@ -115,8 +115,8 @@ impl Mutator {
                 &mut heap, r#type, 0
             )?);
             *any.as_mut() = Type {
-                min_size: 0,
-                align: 1
+                min_size: size_of::<ORef>(),
+                align: align_of::<ORef>()
             };
 
             let mut u8_type = Gc::new_unchecked(Type::bootstrap_new(
