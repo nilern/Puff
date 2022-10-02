@@ -7,6 +7,8 @@ use crate::heap_obj::{HeapObj, Header};
 use crate::mutator::Mutator;
 use crate::symbol::Symbol;
 use crate::list::{Pair, EmptyList};
+use crate::closure::Closure;
+use crate::bytecode::Bytecode;
 
 trait Tagged {
     const TAG: usize;
@@ -95,6 +97,8 @@ impl Fixnum {
     const MIN: isize = -(1 << (ORef::PAYLOAD_BITS - 1));
 
     const MAX: isize = (1 << (ORef::PAYLOAD_BITS - 1)) - 1;
+
+    pub unsafe fn from_oref_unchecked(oref: ORef) -> Self { Self(oref.0) }
 }
 
 impl From<Fixnum> for ORef {
@@ -231,6 +235,10 @@ impl DisplayWithin for Gc<()> {
                 write!(fmt, ")")
             } else if let Some(_) = self.try_cast::<EmptyList>(mt) {
                 write!(fmt, "()")
+            } else if let Some(_) = self.try_cast::<Closure>(mt) {
+                write!(fmt, "#<fn>")
+            } else if let Some(code) = self.try_cast::<Bytecode>(mt) {
+                write!(fmt, "{}", code.within(mt))
             } else {
                 write!(fmt, "#<object {:p}>", self.0)
             }

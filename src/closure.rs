@@ -6,7 +6,7 @@ use crate::r#type::IndexedType;
 
 #[repr(C)]
 pub struct Closure {
-    code: Gc<Bytecode>
+    pub code: Gc<Bytecode>
 }
 
 impl Closure {
@@ -26,7 +26,6 @@ impl Reify for Closure {
 impl Closure {
     pub const TYPE_LEN: usize = 2;
 
-    /// Safety: `code` and `clovers` must point into `mt` registers, not the managed heap.
     pub fn new(mt: &mut Mutator, len: usize) -> Gc<Self> {
         unsafe {
             if let Some(nptr) = mt.alloc_indexed(Self::reify(mt), len)

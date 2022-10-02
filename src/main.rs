@@ -21,6 +21,7 @@ use rustyline;
 use reader::Reader;
 use mutator::Mutator;
 use compiler::compile;
+use closure::Closure;
 
 const PROMPT: &'static str = "molysite> ";
 const HISTORY_FILENAME: &'static str = ".molysite-history.txt";
@@ -56,7 +57,11 @@ fn main() {
 
                             println!("");
 
-                            let v = vm::run(&mut mt, code);
+                            mt.push((*code).into());
+                            let f = Closure::new(&mut mt, 0);
+                            mt.pop();
+                            mt.push(f.into());
+                            let v = vm::run(&mut mt);
                             println!("{}", v.within(&mt));
                         },
                         Err(err) => {

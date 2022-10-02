@@ -8,6 +8,7 @@ use crate::mutator::Mutator;
 use crate::handle::{Handle, HandleT};
 use crate::r#type::IndexedType;
 
+#[derive(Debug)]
 pub enum Opcode {
     Const,
     Local,
@@ -16,6 +17,8 @@ pub enum Opcode {
     Brf,
     Br,
     r#Fn,
+    Call,
+    TailCall,
     Ret
 }
 
@@ -31,8 +34,79 @@ impl TryFrom<u8> for Opcode {
     }
 }
 
+const HIGH_BIT: u8 = 0b10000000;
+
+fn encode_prune_mask(dest: &mut Vec<u8>, mask: &[bool]) {
+    for chunk in mask.chunks(7) {
+        let mut byte = HIGH_BIT;
+
+        for (i, &prune) in chunk.iter().enumerate() {
+            byte |= (prune as u8) << (6 - i);
+        }
+
+        dest.push(byte);
+    }
+
+    while dest.len() > 0 && dest[dest.len() - 1] == HIGH_BIT {
+        dest.pop();
+    }
+
+    if dest.len() > 0 {
+        let last_index = dest.len() - 1;
+        dest[last_index] &= !HIGH_BIT;
+    } else {
+        dest.push(0);
+    }
+}
+
+pub fn decode_prune_mask(bytes: &[u8]) -> Prunes {
+    let byte = *bytes.get(0).unwrap();
+    Prunes {
+        is_nonempty: true,
+        byte_index: 0,
+        bit_index: 0,
+        byte,
+        bytes
+    }
+}
+
+pub struct Prunes<'a> {
+    is_nonempty: bool,
+    byte_index: usize,
+    bit_index: usize,
+    byte: u8,
+    bytes: &'a [u8]
+}
+
+impl<'a> Iterator for Prunes<'a> {
+    type Item = bool;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.is_nonempty {
+            let prune = (self.byte >> (6 - self.bit_index)) & 1 == 1;
+
+            if self.bit_index < 6 {
+                self.bit_index += 1;
+            } else {
+                self.is_nonempty = self.byte & HIGH_BIT == HIGH_BIT;
+
+                if self.is_nonempty {
+                    self.byte_index += 1;
+                    self.bit_index = 0;
+                    self.byte = self.bytes[self.byte_index];
+                }
+            }
+
+            Some(prune)
+        } else {
+            None
+        }
+    }
+}
+
 #[repr(C)]
 pub struct Bytecode {
+    pub arity: usize,
     pub consts: Gc<Array<ORef>>
 }
 
@@ -55,9 +129,9 @@ impl DisplayWithin for Gc<Bytecode> {
 }
 
 impl Bytecode {
-    pub const TYPE_LEN: usize = 2;
+    pub const TYPE_LEN: usize = 3;
 
-    pub fn new(mt: &mut Mutator, consts: HandleT<Array<ORef>>, instrs: &[u8])
+    pub fn new(mt: &mut Mutator, arity: usize, consts: HandleT<Array<ORef>>, instrs: &[u8])
         -> Gc<Self>
     {
         unsafe {
@@ -66,6 +140,7 @@ impl Bytecode {
                 let mut nptr = nptr.cast::<Self>();
 
                 nptr.as_ptr().write(Bytecode {
+                    arity,
                     consts: *consts
                 });
                 nptr.as_mut().indexed_field_mut().copy_from_slice(instrs);
@@ -81,6 +156,16 @@ impl Bytecode {
 
     fn disassemble(&self, mt: &Mutator, fmt: &mut fmt::Formatter, indent: &str) -> fmt::Result {
         unsafe {
+            write!(fmt, "{}(", indent)?;
+            if self.arity > 0 {
+                write!(fmt, "_")?;
+
+                for _ in 1..self.arity {
+                    write!(fmt, " _")?;
+                }
+            }
+            writeln!(fmt, ")");
+
             let mut instrs = self.instrs().iter().enumerate();
             while let Some((i, &byte)) = instrs.next() {
                 if let Ok(op) = Opcode::try_from(byte) {
@@ -143,6 +228,34 @@ impl Bytecode {
                                 todo!()
                             },
 
+                        Opcode::Call =>
+                            if let Some((j, argc)) = instrs.next() {
+                                write!(fmt, "{}{}: call {} #b", indent, i, argc)?;
+
+                                let mut mask_len = 0;
+                                for (i, prune) in decode_prune_mask(&self.instrs()[j + 1..]).enumerate() {
+                                    write!(fmt, "{}", (prune as u8))?;
+                                    if i % 7 == 0 {
+                                        mask_len += 1;
+                                    }
+                                }
+
+                                writeln!(fmt, "")?;
+
+                                for _ in 0..mask_len {
+                                    instrs.next();
+                                }
+                            } else {
+                                todo!()
+                            },
+
+                        Opcode::TailCall =>
+                            if let Some((_, argc)) = instrs.next() {
+                                writeln!(fmt, "{}{}: tailcall {}", indent, i, argc)?;
+                            } else {
+                                todo!()
+                            },
+
                         Opcode::Ret => writeln!(fmt, "{}{}: ret", indent, i)?
                     }
                 } else {
@@ -156,18 +269,21 @@ impl Bytecode {
 }
 
 pub struct Builder {
+    arity: usize,
     consts: Vec<Handle>,
     instrs: Vec<u8>
 }
 
 impl Builder {
-    pub fn new() -> Self {
+    pub fn new(arity: usize) -> Self {
         Self {
+            arity,
             consts: Vec::new(),
             instrs: Vec::new()
         }
     }
 
+    // TODO: Deduplicate constants
     pub fn r#const(&mut self, mt: &mut Mutator, v: ORef) {
         self.instrs.push(Opcode::Const as u8);
 
@@ -223,6 +339,17 @@ impl Builder {
         self.instrs.push(u8::try_from(len).unwrap());
     }
 
+    pub fn call(&mut self, argc: usize, prune_mask: &[bool]) {
+        self.instrs.push(Opcode::Call as u8);
+        self.instrs.push(u8::try_from(argc.checked_add(1).unwrap()).unwrap());
+        encode_prune_mask(&mut self.instrs, prune_mask);
+    }
+
+    pub fn tailcall(&mut self, argc: usize) {
+        self.instrs.push(Opcode::TailCall as u8);
+        self.instrs.push(u8::try_from(argc.checked_add(1).unwrap()).unwrap());
+    }
+
     pub fn ret(&mut self) {
         self.instrs.push(Opcode::Ret as u8);
     }
@@ -230,6 +357,6 @@ impl Builder {
     pub fn build(self, mt: &mut Mutator) -> Gc<Bytecode> {
         let consts = Array::<ORef>::from_handles(mt, &self.consts);
         let consts = mt.root_t(consts);
-        Bytecode::new(mt, consts, &self.instrs)
+        Bytecode::new(mt, self.arity, consts, &self.instrs)
     }
 }

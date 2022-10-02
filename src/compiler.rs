@@ -46,9 +46,10 @@ mod anf {
     }
 
     pub enum Expr {
-        Let(Vec<Binding>, Box<Expr>),
+        Let(Vec<Binding>, Box<Expr>, /* popnnt?: */ bool),
         If(Box<Expr>, Box<Expr>, Box<Expr>),
         r#Fn(LiveVars, Params, Box<Expr>),
+        Call(Id, Vec<Id>, LiveVars),
         Triv(Triv)
     }
 
@@ -110,7 +111,7 @@ impl<'a> Compiler<'a> {
                         }
                     }
 
-                    todo!()
+                    return analyze_call(cmp, env, ls);
                 }
             }
 
@@ -175,7 +176,7 @@ impl<'a> Compiler<'a> {
                     if args == EmptyList::instance(cmp.mt).into() {
                         let (env, bindings) = analyze_bindings(cmp, env, bindings);
                         let body = analyze_expr(cmp, &env, body);
-                        Let(bindings, Box::new(body))
+                        Let(bindings, Box::new(body), true)
                     } else {
                         todo!()
                     }
@@ -263,7 +264,34 @@ impl<'a> Compiler<'a> {
             }
         }
 
-        analyze_expr(self, &Rc::new(Env::Empty), expr)
+        fn analyze_call(cmp: &mut Compiler, env: &Rc<Env>, expr: Gc<Pair>) -> anf::Expr {
+            let mut bindings = Vec::new();
+            let mut arg_ids = Vec::new();
+
+            let anf_callee = analyze_expr(cmp, env, unsafe { expr.as_ref().car });
+            let callee_id = Id::fresh(cmp);
+            bindings.push((callee_id, anf_callee));
+
+            let mut args = unsafe { expr.as_ref().cdr };
+            while let Some(args_pair) = args.try_cast::<Pair>(cmp.mt) {
+                let anf_arg = analyze_expr(cmp, env, unsafe { args_pair.as_ref().car });
+                let arg_id = Id::fresh(cmp);
+                bindings.push((arg_id, anf_arg));
+                arg_ids.push(arg_id);
+
+                args = unsafe { args_pair.as_ref().cdr };
+            }
+
+            if args == EmptyList::instance(cmp.mt).into() {
+                Let(bindings, Box::new(Call(callee_id, arg_ids, HashSet::new())), false)
+            } else {
+                todo!()
+            }
+        }
+
+        let params = vec![Id::fresh(self)];
+        let body = analyze_expr(self, &Rc::new(Env::Empty), expr);
+        r#Fn(LiveVars::new(), params, Box::new(body))        
     }
 
     fn liveness(expr: &mut anf::Expr) {
@@ -272,7 +300,7 @@ impl<'a> Compiler<'a> {
 
         fn live_ins(expr: &mut Expr, mut live_outs: LiveVars) -> LiveVars {
             match expr {
-                &mut Let(ref mut bindings, ref mut body) => {
+                &mut Let(ref mut bindings, ref mut body, _) => {
                     live_outs = live_ins(body, live_outs);
 
                     for (id, val) in bindings.iter_mut().rev() {
@@ -291,7 +319,11 @@ impl<'a> Compiler<'a> {
                 },
 
                 &mut r#Fn(ref mut fvs, ref params, ref mut body) => {
-                    let mut free_vars = live_ins(body, LiveVars::new());
+                    let mut free_vars = {
+                        let mut live_outs = LiveVars::new();
+                        live_outs.insert(params[0]); // "self" closure should always be live
+                        live_ins(body, live_outs)
+                    };
 
                     for param in params {
                         free_vars.remove(param);
@@ -300,6 +332,16 @@ impl<'a> Compiler<'a> {
                     fvs.extend(free_vars.iter());
 
                     live_outs.extend(free_vars);
+                },
+
+                &mut Call(callee, ref args, ref mut call_live_outs) => {
+                    call_live_outs.extend(live_outs.iter());
+
+                    for &arg in args.iter().rev() {
+                        live_outs.insert(arg);
+                    }
+
+                    live_outs.insert(callee);
                 },
 
                 &mut Triv(Use(id)) => { live_outs.insert(id); },
@@ -322,34 +364,11 @@ impl<'a> Compiler<'a> {
             Clover(usize)
         }
 
-        struct Locals {
-            id: Id, 
-            reg: usize,
-            parent: Option<Rc<Locals>>
-        }
-
-        impl Locals {
-            fn get(locals: &Option<Rc<Locals>>, id: Id) -> Option<usize> {
-                let mut locals = locals.clone();
-                loop {
-                    if let Some(locs) = locals {
-                        match *locs {
-                            Self {id: rid, reg, parent: _} if rid == id => return Some(reg),
-                            Self {ref parent, ..} => locals = parent.clone()
-                        }
-                    } else {
-                        return None;
-                    }
-                }
-            }
-        }
-
         #[derive(Clone)]
         struct Env {
             clovers: Rc<HashMap<Id, usize>>,
-            params: Rc<HashMap<Id, usize>>,
-            locals: Option<Rc<Locals>>,
-            len: usize
+            reg_ids: Vec<Option<Id>>,
+            id_regs: HashMap<Id, usize>
         }
 
         impl Env {
@@ -359,71 +378,139 @@ impl<'a> Compiler<'a> {
                     clovers.insert(id, i);
                 }
 
-                let mut params = HashMap::new();
+                let mut reg_ids = Vec::with_capacity(param_ids.len());
+                let mut id_regs = HashMap::new();
                 for (i, &id) in param_ids.iter().enumerate() {
-                    params.insert(id, i);
+                    reg_ids.push(Some(id));
+                    id_regs.insert(id, i);
                 }
 
                 Self {
                     clovers: Rc::new(clovers),
-                    params: Rc::new(params),
-                    locals: None,
-                    len: param_ids.len()
+                    reg_ids,
+                    id_regs
                 }
             }
 
-            fn r#let(parent: &Env, id: Id) -> Self {
-                let reg = parent.len;
-                Self {
-                    clovers: parent.clovers.clone(),
-                    params: parent.params.clone(),
-                    locals: Some(Rc::new(Locals {id, reg, parent: parent.locals.clone()})),
-                    len: reg.checked_add(1).unwrap()
+            fn push(&mut self) {
+                self.reg_ids.push(None);
+            }
+
+            fn name_top(&mut self, id: Id) {
+                let reg = self.reg_ids.len() - 1;
+
+                self.reg_ids[reg] = Some(id);
+                self.id_regs.insert(id, reg);
+            }
+
+            fn popnnt(&mut self, n: usize) {
+                let last_index = self.reg_ids.len() - 1;
+                for oid in &self.reg_ids[(last_index - n)..last_index] {
+                    if let Some(id) = oid {
+                        self.id_regs.remove(id);
+                    }
                 }
+
+                self.reg_ids.truncate(self.reg_ids.len() - n);
+            }
+
+            fn pop(&mut self) {
+                if let Some(id) = self.reg_ids.pop().flatten() {
+                    self.id_regs.remove(&id);
+                }
+            }
+
+            fn closure(&mut self, nclovers: usize) {
+                self.reg_ids.truncate(self.reg_ids.len() - nclovers);
+            }
+
+            fn call(&mut self, prunes: &[bool]) {
+                let mut prune_count = 0;
+                for (reg, &prune) in prunes.iter().enumerate() {
+                    if let Some(id) = self.reg_ids[reg] {
+                        if prune {
+                            self.id_regs.remove(&id);
+                            prune_count += 1;
+                        } else {
+                            *self.id_regs.get_mut(&id).unwrap() -= prune_count;
+                        }
+                    }
+                }
+
+                for (reg, &prune) in prunes.iter().enumerate().rev() {
+                    if prune {
+                        self.reg_ids.remove(reg);
+                    }
+                }
+
+                self.reg_ids.push(None);
             }
 
             fn get(&self, id: Id) -> Loc {
-                Locals::get(&self.locals, id).map(Loc::Reg)
-                    .or_else(|| self.params.get(&id).map(|&reg| Loc::Reg(reg)))
+                self.id_regs.get(&id).map(|&reg| Loc::Reg(reg))
                     .or_else(|| self.clovers.get(&id).map(|&i| Loc::Clover(i)))
                     .unwrap()
             }
-        }
 
-        fn emit_use(builder: &mut bytecode::Builder, env: &Env, r#use: Id) {
-            match env.get(r#use) {
-                Loc::Reg(reg) => builder.local(reg),
-                Loc::Clover(i) => builder.clover(i)
+            fn prune_mask(&self, live_outs: &HashSet<Id>) -> Vec<bool> {
+                let mut mask = vec![true; self.reg_ids.len()];
+
+                for id in live_outs {
+                    if let Some(&reg) = self.id_regs.get(id) {
+                        mask[reg] = false;
+                    }
+                }
+
+                mask
             }
         }
 
-        fn emit_expr(cmp: &mut Compiler, builder: &mut bytecode::Builder, env: &Env, tail: bool,
+        fn emit_use(builder: &mut bytecode::Builder, env: &mut Env, r#use: Id) {
+            match env.get(r#use) {
+                Loc::Reg(reg) => {
+                    builder.local(reg);
+                    env.push();
+                },
+                Loc::Clover(i) => {
+                    builder.clover(i);
+                    env.push();
+                }
+            }
+        }
+
+        fn emit_expr(cmp: &mut Compiler, builder: &mut bytecode::Builder, env: &mut Env, tail: bool,
             expr: &anf::Expr)
         {
             match *expr {
-                Let(ref bindings, ref body) => {
-                    let mut env = env.clone();
+                Let(ref bindings, ref body, popnnt) => {
                     for &(id, ref val) in bindings {
-                        emit_expr(cmp, builder, &env, false, val);
-                        env = Env::r#let(&env, id);
+                        emit_expr(cmp, builder, env, false, val);
+                        env.name_top(id);
                     }
 
-                    emit_expr(cmp, builder, &env, tail, &**body);
+                    emit_expr(cmp, builder, env, tail, &**body);
 
                     let nbs = bindings.len();
-                    if !tail && nbs > 0 { builder.popnnt(nbs); }
+                    if popnnt && !tail && nbs > 0 {
+                        builder.popnnt(nbs);
+                        env.popnnt(nbs);
+                    }
                 },
 
+                // FIXME: Coalesce registers at join point:
                 If(ref cond, ref conseq, ref alt) => {
                     emit_expr(cmp, builder, env, false, cond);
                     let brf_i = builder.brf();
+                    env.pop();
+
+                    let mut alt_env = env.clone();
 
                     emit_expr(cmp, builder, env, tail, conseq);
                     let br_i = if tail { None } else { Some(builder.br()) };
 
                     builder.backpatch(brf_i);
 
-                    emit_expr(cmp, builder, env, tail, alt);
+                    emit_expr(cmp, builder, &mut alt_env, tail, alt);
 
                     if let Some(br_i) = br_i { builder.backpatch(br_i); }
                 },
@@ -436,36 +523,59 @@ impl<'a> Compiler<'a> {
                         cmp.mt.root_t(code)
                     };
                     builder.r#const(cmp.mt, (*code).into());
+                    env.push();
 
                     for &fv in fvs.iter() {
-                        emit_use(builder, &env, fv);
+                        emit_use(builder, env, fv);
+                        env.push();
                     }
 
                     builder.r#fn(fvs.len());
+                    env.closure(fvs.len());
 
                     if tail { builder.ret(); }
                 },
 
+                Call(_, ref args, ref live_outs) => {
+                    // Due to `anf::Expr` construction in `analyze`, code for callee and args already emitted.
+
+                    if tail {
+                        builder.tailcall(args.len());
+                    } else {
+                        let prunes = env.prune_mask(live_outs);
+                        builder.call(args.len(), &prunes);
+                        env.call(&prunes);
+                    }
+                },
+
                 Triv(Use(id)) => {
                     emit_use(builder, env, id);
+
                     if tail { builder.ret(); }
                 },
 
                 Triv(Const(ref c)) => {
                     builder.r#const(cmp.mt, **c);
+                    env.push();
+
                     if tail { builder.ret(); }
                 }
             }
         }
 
         fn emit_fn(cmp: &mut Compiler, clovers: &[Id], params: &[Id], body: &anf::Expr) -> Gc<Bytecode> {
-            let mut builder = bytecode::Builder::new();
+            let mut builder = bytecode::Builder::new(params.len());
 
-            emit_expr(cmp, &mut builder, &Rc::new(Env::r#fn(clovers, params)), true, body);
+            emit_expr(cmp, &mut builder, &mut Env::r#fn(clovers, params), true, body);
 
             builder.build(cmp.mt)
         }
 
-        emit_fn(self, &[], &[], expr)
+        if let Fn(ref fvs, ref params, ref body) = expr {
+            let fvs = fvs.iter().map(|&id| id).collect::<Vec<Id>>();
+            emit_fn(self, &fvs, params, body)
+        } else {
+            todo!()
+        }
     }
 }

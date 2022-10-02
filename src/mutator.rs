@@ -3,7 +3,7 @@ use std::mem::{align_of, size_of};
 use std::alloc::Layout;
 
 use crate::heap::Heap;
-use crate::oref::{AsType, ORef, Gc};
+use crate::oref::{AsType, ORef, Gc, Fixnum};
 use crate::r#type::{Type, Field, IndexedType, NonIndexedType, BitsType};
 use crate::symbol::{Symbol, SymbolTable};
 use crate::heap_obj::{NonIndexed, Indexed, Header, min_size_of_indexed,
@@ -36,6 +36,38 @@ pub struct Singletons {
     pub empty_list: Gc<EmptyList>
 }
 
+struct Regs {
+    regs: Vec<ORef>,
+    start: usize
+}
+
+impl Regs {
+    fn new() -> Self {
+        Self {
+            regs: Vec::new(),
+            start: 0
+        }
+    }
+
+    fn as_slice(&self) -> &[ORef] { &self.regs[self.start..] }
+
+    fn pop(&mut self) -> Option<ORef> { self.regs.pop() }
+
+    fn push(&mut self, v: ORef) { self.regs.push(v) }
+
+    fn enter(&mut self, new_len: usize) {
+        self.start = self.regs.len() - new_len;
+    }
+
+    fn popnnt(&mut self, n: usize) {
+        let len = self.regs.len();
+        let top = self.regs[len - 1];
+        let new_len = len - n as usize;
+        self.regs.truncate(new_len);
+        self.regs[new_len - 1] = top;
+    }
+}
+
 pub struct Mutator {
     heap: Heap,
     handles: HandlePool,
@@ -44,9 +76,10 @@ pub struct Mutator {
     singletons: Singletons,
     symbols: SymbolTable,
 
-    regs: Vec<ORef>,
     code: Option<Gc<Bytecode>>,
-    consts: Option<Gc<Array<ORef>>>
+    consts: Option<Gc<Array<ORef>>>,
+    regs: Regs,
+    stack: Vec<ORef>
 }
 
 impl Mutator {
@@ -176,7 +209,8 @@ impl Mutator {
                 align: align_of_indexed::<Bytecode>()
             });
             bytecode.as_type().as_mut().indexed_field_mut().copy_from_slice(&[
-                Field { r#type: array_of_any.as_type(), offset: 0 },
+                Field { r#type: usize_type.as_type(), offset: 0 },
+                Field { r#type: array_of_any.as_type(), offset: size_of::<usize>() },
                 Field {
                     r#type: u8_type.as_type(),
                     offset: min_size_of_indexed::<Bytecode>()
@@ -215,9 +249,10 @@ impl Mutator {
                 singletons: Singletons { empty_list: empty_list_inst },
                 symbols: SymbolTable::new(),
 
-                regs: Vec::new(),
                 code: None,
-                consts: None
+                consts: None,
+                regs: Regs::new(),
+                stack: Vec::new()
             })
         }
     }
@@ -231,28 +266,47 @@ impl Mutator {
     // HACK: returns raw pointer because of lifetime issues in Symbol::new:
     pub fn symbols_mut(&mut self) -> *mut SymbolTable { &mut self.symbols as _ }
 
-    pub fn set_code(&mut self, code: HandleT<Bytecode>) {
-        self.code = Some(*code);
+    pub fn set_code(&mut self, code: Gc<Bytecode>) {
+        self.code = Some(code);
         unsafe { self.consts = Some(code.as_ref().consts); }
-        self.regs.truncate(0);
     }
 
     pub unsafe fn code(&self) -> Gc<Bytecode> { self.code.unwrap() }
 
     pub unsafe fn consts(&self) -> Gc<Array<ORef>> { self.consts.unwrap() }
 
-    pub fn regs(&self) -> &[ORef] { &self.regs }
+    pub fn regs(&self) -> &[ORef] { self.regs.as_slice() }
+
+    pub fn regs_enter(&mut self, len: usize) { self.regs.enter(len); }
 
     pub fn push(&mut self, v: ORef) { self.regs.push(v); }
 
     pub fn pop(&mut self) -> ORef { self.regs.pop().unwrap() }
 
-    pub fn popnnt(&mut self, n: u8) {
-        let len = self.regs.len();
-        let top = self.regs[len - 1];
-        let new_len = len - n as usize;
-        self.regs.truncate(new_len);
-        self.regs[new_len - 1] = top;
+    pub fn popnnt(&mut self, n: usize) { self.regs.popnnt(n); }
+
+    pub fn stack_len(&self) -> usize { self.stack.len() }
+
+    pub fn save(&mut self, reg: usize) {
+        self.stack.push(self.regs.as_slice()[reg]);
+    }
+
+    pub fn finish_frame(&mut self, len: usize, ip: usize) {
+        self.stack.push(Fixnum::try_from(len as isize).unwrap().into());
+        self.stack.push(Fixnum::try_from(ip as isize).unwrap().into());
+    }
+
+    pub fn pop_frame(&mut self) -> (usize, usize) {
+        let ip = unsafe { isize::from(Fixnum::from_oref_unchecked(self.stack.pop().unwrap())) as usize };
+        let frame_len = unsafe { isize::from(Fixnum::from_oref_unchecked(self.stack.pop().unwrap())) as usize };
+
+        let start = self.stack.len() - frame_len;
+        for &v in &self.stack[start..] {
+            self.regs.push(v);
+        }
+        self.stack.truncate(start);
+
+        (frame_len, ip)
     }
 
     pub unsafe fn alloc_nonindexed(&mut self, r#type: Gc<NonIndexedType>)
