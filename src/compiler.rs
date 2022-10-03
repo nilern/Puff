@@ -463,6 +463,70 @@ impl<'a> Compiler<'a> {
 
                 mask
             }
+
+            fn join_prune_masks(l: &Self, r: &Self, live_outs: &HashSet<Id>) -> (Vec<bool>, Vec<bool>) {
+                let mut lmask = Vec::new();
+                let mut rmask = Vec::new();
+
+                let mut loids = l.reg_ids.iter();
+                let mut roids = r.reg_ids.iter();
+                loop {
+                    match loids.next() {
+                        Some(Some(lid)) if live_outs.contains(lid) =>
+                            loop {
+                                match roids.next() {
+                                    Some(Some(rid)) if rid == lid => {
+                                        lmask.push(false);
+                                        rmask.push(false);
+                                        break;
+                                    },
+                                    Some(_) => rmask.push(true),
+                                    None => unreachable!()
+                                }
+                            },
+
+                        Some(_) =>
+                            match roids.next() {
+                                Some(Some(rid)) if live_outs.contains(rid) => {
+                                    lmask.push(true);
+
+                                    loop {
+                                        match loids.next() {
+                                            Some(Some(lid)) if lid == rid => {
+                                                lmask.push(false);
+                                                rmask.push(false);
+                                                break;
+                                            },
+                                            Some(_) => lmask.push(true),
+                                            None => unreachable!()
+                                        }
+                                    }
+                                },
+
+                                Some(_) => {
+                                    lmask.push(false);
+                                    rmask.push(false);
+                                }
+
+                                None => {
+                                    lmask.push(false);
+                                    break;
+                                }
+                            },
+
+                        None => break
+                    }
+                }
+
+                for _ in loids { lmask.push(false); }
+                for _ in roids { rmask.push(false); }
+
+                // Must not prune top, it is the `if` result:
+                if let Some(top) = lmask.last_mut() { *top = false; }
+                if let Some(top) = rmask.last_mut() { *top = false; }
+
+                (lmask, rmask)
+            }
         }
 
         fn emit_use(builder: &mut bytecode::Builder, env: &mut Env, r#use: Id) {
