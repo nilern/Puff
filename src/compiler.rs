@@ -638,8 +638,8 @@ impl<'a> Compiler<'a> {
                 },
 
                 If(ref cond, ref conseq, ref alt, ref live_outs) => {
-                    let conseq_label = f.create_block();
-                    let alt_label = f.create_block();
+                    let mut conseq_label = f.create_block();
+                    let mut alt_label = f.create_block();
                     let join = if let Cont::Next = cont { Cont::Label(f.create_block()) } else { cont };
 
                     current = emit_expr(cmp, env, f, current, Cont::Next, cond);
@@ -648,9 +648,9 @@ impl<'a> Compiler<'a> {
 
                     let mut alt_env = env.clone();
 
-                    let _ = emit_expr(cmp, env, f, conseq_label, join, conseq);
+                    conseq_label = emit_expr(cmp, env, f, conseq_label, join, conseq);
 
-                    let _ = emit_expr(cmp, &mut alt_env, f, alt_label, join, alt);
+                    alt_label = emit_expr(cmp, &mut alt_env, f, alt_label, join, alt);
 
                     let (conseq_mask, alt_mask) = Env::join_prune_masks(env, &alt_env, live_outs);
                     env.prune(&conseq_mask);
