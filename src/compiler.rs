@@ -96,7 +96,9 @@ mod cfg {
 
         pub fn insert_prune(&mut self, label: Label, prunes: Vec<bool>) {
             let block = &mut self.blocks[label];
-            block.insert(block.len() - 2, Instr::Prune(prunes));
+            if let Instr::Goto(_) = block.last().unwrap() {
+                block.insert(block.len() - 2, Instr::Prune(prunes));
+            }
         }
     }
 }
