@@ -75,7 +75,26 @@ pub fn run(mt: &mut Mutator) -> ORef {
                     mt.popnnt(n as usize);
                 },
 
-                Opcode::Prune => todo!(),
+                Opcode::Prune => {
+                    let regs_len = mt.regs().len();
+                    let mut mask_len = 0;
+                    let mut free_reg = 0;
+                    unsafe {
+                        for (reg, prune) in decode_prune_mask(&mt.code().as_ref().instrs()[ip..]).enumerate() {
+                            if !prune && reg < regs_len {
+                                mt.regs_mut()[free_reg] = mt.regs()[reg];
+                                free_reg += 1;
+                            }
+
+                            if reg % 7 == 0 {
+                                mask_len += 1;
+                            }
+                        }
+                    }
+                    mt.truncate_regs(free_reg);
+
+                    ip += mask_len;
+                },
 
                 Opcode::Brf => {
                     let d = unsafe { mt.code().as_ref().instrs()[ip] } as usize;

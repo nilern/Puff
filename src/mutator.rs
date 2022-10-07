@@ -51,6 +51,8 @@ impl Regs {
 
     fn as_slice(&self) -> &[ORef] { &self.regs[self.start..] }
 
+    fn as_mut_slice(&mut self) -> &mut [ORef] { &mut self.regs[self.start..] }
+
     fn pop(&mut self) -> Option<ORef> { self.regs.pop() }
 
     fn push(&mut self, v: ORef) { self.regs.push(v) }
@@ -66,6 +68,8 @@ impl Regs {
         self.regs.truncate(new_len);
         self.regs[new_len - 1] = top;
     }
+
+    fn truncate(&mut self, n: usize) { self.regs.truncate(self.start + n); }
 }
 
 pub struct Mutator {
@@ -276,6 +280,10 @@ impl Mutator {
     pub unsafe fn consts(&self) -> Gc<Array<ORef>> { self.consts.unwrap() }
 
     pub fn regs(&self) -> &[ORef] { self.regs.as_slice() }
+
+    pub fn regs_mut(&mut self) -> &mut [ORef] { self.regs.as_mut_slice() }
+
+    pub fn truncate_regs(&mut self, len: usize) { self.regs.truncate(len) }
 
     pub fn regs_enter(&mut self, len: usize) { self.regs.enter(len); }
 
