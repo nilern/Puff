@@ -166,7 +166,7 @@ impl Bytecode {
                     write!(fmt, " _")?;
                 }
             }
-            writeln!(fmt, ")");
+            writeln!(fmt, ")")?;
 
             let mut instrs = self.instrs().iter().enumerate();
             while let Some((i, &byte)) = instrs.next() {
@@ -214,7 +214,7 @@ impl Bytecode {
 
                             let mut mask_len = 0;
                             for (i, prune) in decode_prune_mask(&self.instrs()[i + 1..]).enumerate() {
-                                write!(fmt, "{}", (prune as u8))?;
+                                write!(fmt, "{}", prune as u8)?;
                                 if i % 7 == 0 {
                                     mask_len += 1;
                                 }
@@ -329,11 +329,13 @@ impl Builder {
         self.instrs.push(u8::try_from(i).unwrap());
     }
 
+    // Optimize: No-op if n = 0:
     pub fn popnnt(&mut self, n: usize) {
         self.instrs.push(Opcode::PopNNT as u8);
         self.instrs.push(u8::try_from(n).unwrap());
     }
 
+    // OPITIMIZE: No-op if nothing to prune:
     pub fn prune(&mut self, prunes: &[bool]) {
         self.instrs.push(Opcode::Prune as u8);
         encode_prune_mask(&mut self.instrs, prunes);

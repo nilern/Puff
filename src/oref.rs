@@ -19,8 +19,8 @@ pub trait DisplayWithin {
 }
 
 pub struct WithinMt<'a, T> {
-    v: T,
-    mt: &'a Mutator
+    pub v: T,
+    pub mt: &'a Mutator
 }
 
 impl<'a, T: DisplayWithin> Display for WithinMt<'a, T> {

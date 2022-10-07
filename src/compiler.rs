@@ -1,9 +1,10 @@
 use std::collections::hash_map::HashMap;
 use std::collections::hash_set::HashSet;
 use std::rc::Rc;
+use std::fmt;
 
 use crate::bytecode::{self, Bytecode};
-use crate::oref::{ORef, Gc};
+use crate::oref::{WithinMt, DisplayWithin, ORef, Gc};
 use crate::handle::{Handle, HandleT};
 use crate::list::{Pair, EmptyList};
 use crate::mutator::Mutator;
@@ -16,6 +17,7 @@ pub fn compile(mt: &mut Mutator, expr: ORef) -> Gc<Bytecode> {
     let mut anf = cmp.analyze(expr);
     Compiler::liveness(&mut anf);
     let cfg = cmp.to_cfg(&anf);
+    println!("{}", cfg.within(cmp.mt));
     cmp.emit(&cfg)
 }
 
@@ -79,11 +81,51 @@ mod cfg {
         Ret
     }
 
+    impl Instr {
+        pub fn fmt(&self, mt: &Mutator, fmt: &mut fmt::Formatter, indent: &str) -> fmt::Result {
+            use Instr::*;
+
+            match self {
+                &Const(ref c) => writeln!(fmt, "{}const {}", indent, c.within(mt)),
+                &Local(reg) => writeln!(fmt, "{}local {}", indent, reg),
+                &Clover(i) => writeln!(fmt, "{}clover {}", indent, i),
+
+                &PopNNT(n) => writeln!(fmt, "{}popnnt {}", indent, n),
+                &Prune(ref prunes) => {
+                    write!(fmt, "{}prune #b", indent)?;
+                    for &prune in prunes { write!(fmt, "{}", prune as u8)?; }
+                    writeln!(fmt, "")
+                }
+
+                &If(conseq, alt) => writeln!(fmt, "{}if {} {}", indent, conseq, alt),
+                &Goto(dest) => writeln!(fmt, "{}goto {}", indent, dest),
+
+                &Code(ref code) => {
+                    writeln!(fmt, "{}code", indent)?;
+                    code.fmt(mt, fmt, &(indent.to_string() + "  "))
+                },
+                &Closure(len) => writeln!(fmt, "{}closure {}", indent, len),
+
+                &Call(argc, ref prunes) => {
+                    write!(fmt, "{}call {} #b", indent, argc)?;
+                    for &prune in prunes { write!(fmt, "{}", prune as u8)?; }
+                    writeln!(fmt, "")
+                },
+                &TailCall(argc) => writeln!(fmt, "{}tailcall {}", indent, argc),
+                &Ret => writeln!(fmt, "{}ret", indent)
+            }
+        }
+    }
+
     pub type Block = Vec<Instr>;
 
     pub struct Fn {
         pub arity: usize,
         pub blocks: Vec<Block>
+    }
+
+    impl DisplayWithin for &Fn {
+        fn fmt_within(&self, mt: &Mutator, fmt: &mut fmt::Formatter) -> fmt::Result { self.fmt(mt, fmt, "") }
     }
 
     impl Fn {
@@ -107,6 +149,30 @@ mod cfg {
                 _ => Successors::new([0, 0], 0)
             }
         }
+
+        pub fn fmt(&self, mt: &Mutator, fmt: &mut fmt::Formatter, indent: &str) -> fmt::Result {
+            write!(fmt, "{}(", indent)?;
+            if self.arity > 0 {
+                write!(fmt, "_")?;
+
+                for _ in 1..self.arity {
+                    write!(fmt, " _")?;
+                }
+            }
+            writeln!(fmt, ")")?;
+
+            for (label, block) in self.blocks.iter().enumerate() {
+                writeln!(fmt, "{}{}:", indent, label)?;
+
+                for instr in block.iter() {
+                    instr.fmt(mt, fmt, &(indent.to_string() + "  "))?;
+                }
+            }
+
+            Ok(())
+        }
+
+        pub fn within<'a>(&'a self, mt: &'a Mutator) -> WithinMt<&'a Self> { WithinMt {v: self, mt} }
     }
 
     pub struct Successors {
@@ -801,7 +867,9 @@ impl<'a> Compiler<'a> {
             po
         }
 
-        fn emit_instr(cmp: &mut Compiler, builder: &mut bytecode::Builder, instr: &cfg::Instr) {
+        fn emit_instr(cmp: &mut Compiler, builder: &mut bytecode::Builder, instr: &cfg::Instr,
+            rpo_next: Option<cfg::Label>
+        ) {
             match instr {
                 &Const(ref c) => builder.r#const(cmp.mt, **c),
                 &Local(reg) => builder.local(reg),
@@ -811,7 +879,7 @@ impl<'a> Compiler<'a> {
                 &Prune(ref prunes) => builder.prune(prunes),
 
                 &If(_, alt) => builder.brf(alt),
-                &Goto(dest) => builder.br(dest),
+                &Goto(dest) => if dest != rpo_next.unwrap() { builder.br(dest) },
 
                 &Code(ref code) => {
                     let code = emit_fn(cmp, code).into();
@@ -825,11 +893,13 @@ impl<'a> Compiler<'a> {
             }
         }
 
-        fn emit_block(cmp: &mut Compiler, builder: &mut bytecode::Builder, f: &cfg::Fn, label: cfg::Label) {
+        fn emit_block(cmp: &mut Compiler, builder: &mut bytecode::Builder, f: &cfg::Fn, label: cfg::Label,
+            rpo_next: Option<cfg::Label>
+        ) {
             builder.label(label);
 
             for instr in f.blocks[label].iter() {
-                emit_instr(cmp, builder, instr)
+                emit_instr(cmp, builder, instr, rpo_next);
             }
         }
 
@@ -838,8 +908,9 @@ impl<'a> Compiler<'a> {
 
             let mut builder = bytecode::Builder::new(f.arity);
 
-            for &label in po.iter().rev() {
-                emit_block(cmp, &mut builder, f, label);
+            let mut rpo = po.iter().rev().peekable();
+            while let Some(&label) = rpo.next() {
+                emit_block(cmp, &mut builder, f, label, rpo.peek().map(|&&label| label));
             }
 
             builder.build(cmp.mt)
