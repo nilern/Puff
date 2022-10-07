@@ -15,7 +15,8 @@ pub fn compile(mt: &mut Mutator, expr: ORef) -> Gc<Bytecode> {
 
     let mut anf = cmp.analyze(expr);
     Compiler::liveness(&mut anf);
-    cmp.emit(&anf)
+    let cfg = cmp.to_cfg(&anf);
+    cmp.emit(&cfg)
 }
 
 struct Compiler<'a> {
@@ -96,8 +97,50 @@ mod cfg {
 
         pub fn insert_prune(&mut self, label: Label, prunes: Vec<bool>) {
             let block = &mut self.blocks[label];
-            if let Instr::Goto(_) = block.last().unwrap() {
-                block.insert(block.len() - 2, Instr::Prune(prunes));
+            block.insert(block.len() - 1, Instr::Prune(prunes));
+        }
+
+        pub fn successors(&self, label: Label) -> Successors {
+            match self.blocks[label].last().unwrap() {
+                Instr::If(conseq, alt) => Successors::new([*conseq, *alt], 2),
+                Instr::Goto(succ) => Successors::new([*succ, 0], 1),
+                _ => Successors::new([0, 0], 0)
+            }
+        }
+    }
+
+    pub struct Successors {
+        start: usize,
+        end: usize,
+        items: [Label; 2]
+    }
+
+    impl Successors {
+        fn new(items: [Label; 2], len: usize) -> Self { Successors {start: 0, end: len, items} }
+    }
+
+    impl Iterator for Successors {
+        type Item = Label;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            if self.start < self.end {
+                let label = self.items[self.start];
+                self.start += 1;
+                Some(label)
+            } else {
+                None
+            }
+        }
+    }
+
+    impl DoubleEndedIterator for Successors {
+        fn next_back(&mut self) -> Option<Self::Item> {
+            if self.start < self.end {
+                let label = self.items[self.end - 1];
+                self.end -= 1;
+                Some(label)
+            } else {
+                None
             }
         }
     }
@@ -502,6 +545,7 @@ impl<'a> Compiler<'a> {
                     .unwrap()
             }
 
+            // OPTIMIZE: No need to encode (and eventually decode) callee and args pruning:
             fn prune_mask(&self, live_outs: &HashSet<Id>) -> Vec<bool> {
                 let mut mask = vec![true; self.reg_ids.len()];
 
@@ -654,10 +698,13 @@ impl<'a> Compiler<'a> {
 
                     alt_label = emit_expr(cmp, &mut alt_env, f, alt_label, join, alt);
 
-                    let (conseq_mask, alt_mask) = Env::join_prune_masks(env, &alt_env, live_outs);
-                    env.prune(&conseq_mask);
-                    f.insert_prune(conseq_label, conseq_mask);
-                    f.insert_prune(alt_label, alt_mask);
+                    if let Cont::Ret = cont {
+                    } else {
+                        let (conseq_mask, alt_mask) = Env::join_prune_masks(env, &alt_env, live_outs);
+                        env.prune(&conseq_mask);
+                        f.insert_prune(conseq_label, conseq_mask);
+                        f.insert_prune(alt_label, alt_mask);
+                    }
 
                     if let Cont::Label(join_label) = join { join_label } else { current }
                 },
@@ -719,7 +766,8 @@ impl<'a> Compiler<'a> {
 
         fn emit_fn(cmp: &Compiler, clovers: &[Id], params: &[Id], body: &anf::Expr) -> cfg::Fn {
             let mut f = cfg::Fn::new(params.len());
-            let _ = emit_expr(cmp, &mut Env::new(clovers, params), &mut f, 0, Cont::Ret, body);
+            let current = f.create_block();
+            let _ = emit_expr(cmp, &mut Env::new(clovers, params), &mut f, current, Cont::Ret, body);
             f
         }
 
@@ -731,291 +779,72 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    fn emit(&mut self, expr: &anf::Expr) -> Gc<Bytecode> {
-        use anf::Expr::*;
-        use anf::Triv::*;
+    fn emit(&mut self, f: &cfg::Fn) -> Gc<Bytecode> {
+        use cfg::Instr::*;
 
-        enum Loc {
-            Reg(usize),
-            Clover(usize)
+        fn cfg_po(f: &cfg::Fn) -> Vec<cfg::Label> {
+            fn block_po(f: &cfg::Fn, label: cfg::Label, visited: &mut HashSet<cfg::Label>, po: &mut Vec<cfg::Label>) {
+                if !visited.contains(&label) {
+                    visited.insert(label);
+
+                    for succ in f.successors(label).rev() { // In reverse so that `brf` can fall through
+                        block_po(f, succ, visited, po);
+                    }
+
+                    po.push(label);
+                }
+            }
+
+            let mut po = Vec::new();
+            let mut visited = HashSet::new();
+            block_po(f, 0, &mut visited, &mut po);
+            po
         }
 
-        #[derive(Clone)]
-        struct Env {
-            clovers: Rc<HashMap<Id, usize>>,
-            reg_ids: Vec<Option<Id>>,
-            id_regs: HashMap<Id, usize>
-        }
+        fn emit_instr(cmp: &mut Compiler, builder: &mut bytecode::Builder, instr: &cfg::Instr) {
+            match instr {
+                &Const(ref c) => builder.r#const(cmp.mt, **c),
+                &Local(reg) => builder.local(reg),
+                &Clover(i) => builder.clover(i),
 
-        impl Env {
-            fn r#fn(clover_ids: &[Id], param_ids: &[Id]) -> Self {
-                let mut clovers = HashMap::new();
-                for (i, &id) in clover_ids.iter().enumerate() {
-                    clovers.insert(id, i);
-                }
+                &PopNNT(n) => builder.popnnt(n),
+                &Prune(ref prunes) => builder.prune(prunes),
 
-                let mut reg_ids = Vec::with_capacity(param_ids.len());
-                let mut id_regs = HashMap::new();
-                for (i, &id) in param_ids.iter().enumerate() {
-                    reg_ids.push(Some(id));
-                    id_regs.insert(id, i);
-                }
+                &If(_, alt) => builder.brf(alt),
+                &Goto(dest) => builder.br(dest),
 
-                Self {
-                    clovers: Rc::new(clovers),
-                    reg_ids,
-                    id_regs
-                }
-            }
+                &Code(ref code) => {
+                    let code = emit_fn(cmp, code).into();
+                    builder.r#const(cmp.mt, code);
+                },
+                &Closure(len) => builder.r#fn(len),
 
-            fn push(&mut self) {
-                self.reg_ids.push(None);
-            }
-
-            fn name_top(&mut self, id: Id) {
-                let reg = self.reg_ids.len() - 1;
-
-                self.reg_ids[reg] = Some(id);
-                self.id_regs.insert(id, reg);
-            }
-
-            fn popnnt(&mut self, n: usize) {
-                let last_index = self.reg_ids.len() - 1;
-                for oid in &self.reg_ids[(last_index - n)..last_index] {
-                    if let Some(id) = oid {
-                        self.id_regs.remove(id);
-                    }
-                }
-
-                self.reg_ids.truncate(self.reg_ids.len() - n);
-            }
-
-            fn pop(&mut self) {
-                if let Some(id) = self.reg_ids.pop().flatten() {
-                    self.id_regs.remove(&id);
-                }
-            }
-
-            fn closure(&mut self, nclovers: usize) {
-                self.reg_ids.truncate(self.reg_ids.len() - nclovers);
-            }
-
-            fn call(&mut self, prunes: &[bool]) {
-                let mut prune_count = 0;
-                for (reg, &prune) in prunes.iter().enumerate() {
-                    if let Some(id) = self.reg_ids[reg] {
-                        if prune {
-                            self.id_regs.remove(&id);
-                            prune_count += 1;
-                        } else {
-                            *self.id_regs.get_mut(&id).unwrap() -= prune_count;
-                        }
-                    }
-                }
-
-                for (reg, &prune) in prunes.iter().enumerate().rev() {
-                    if prune {
-                        self.reg_ids.remove(reg);
-                    }
-                }
-
-                self.reg_ids.push(None);
-            }
-
-            fn get(&self, id: Id) -> Loc {
-                self.id_regs.get(&id).map(|&reg| Loc::Reg(reg))
-                    .or_else(|| self.clovers.get(&id).map(|&i| Loc::Clover(i)))
-                    .unwrap()
-            }
-
-            fn prune_mask(&self, live_outs: &HashSet<Id>) -> Vec<bool> {
-                let mut mask = vec![true; self.reg_ids.len()];
-
-                for id in live_outs {
-                    if let Some(&reg) = self.id_regs.get(id) {
-                        mask[reg] = false;
-                    }
-                }
-
-                mask
-            }
-
-            fn join_prune_masks(l: &Self, r: &Self, live_outs: &HashSet<Id>) -> (Vec<bool>, Vec<bool>) {
-                let mut lmask = Vec::new();
-                let mut rmask = Vec::new();
-
-                let mut loids = l.reg_ids.iter();
-                let mut roids = r.reg_ids.iter();
-                loop {
-                    match loids.next() {
-                        Some(Some(lid)) if live_outs.contains(lid) =>
-                            loop {
-                                match roids.next() {
-                                    Some(Some(rid)) if rid == lid => {
-                                        lmask.push(false);
-                                        rmask.push(false);
-                                        break;
-                                    },
-                                    Some(_) => rmask.push(true),
-                                    None => unreachable!()
-                                }
-                            },
-
-                        Some(_) =>
-                            match roids.next() {
-                                Some(Some(rid)) if live_outs.contains(rid) => {
-                                    lmask.push(true);
-
-                                    loop {
-                                        match loids.next() {
-                                            Some(Some(lid)) if lid == rid => {
-                                                lmask.push(false);
-                                                rmask.push(false);
-                                                break;
-                                            },
-                                            Some(_) => lmask.push(true),
-                                            None => unreachable!()
-                                        }
-                                    }
-                                },
-
-                                Some(_) => {
-                                    lmask.push(false);
-                                    rmask.push(false);
-                                }
-
-                                None => {
-                                    lmask.push(false);
-                                    break;
-                                }
-                            },
-
-                        None => break
-                    }
-                }
-
-                for _ in loids { lmask.push(false); }
-                for _ in roids { rmask.push(false); }
-
-                // Must not prune top, it is the `if` result:
-                if let Some(top) = lmask.last_mut() { *top = false; }
-                if let Some(top) = rmask.last_mut() { *top = false; }
-
-                (lmask, rmask)
+                &Call(argc, ref prunes) => builder.call(argc, prunes),
+                &TailCall(argc) => builder.tailcall(argc),
+                &Ret => builder.ret()
             }
         }
 
-        fn emit_use(builder: &mut bytecode::Builder, env: &mut Env, r#use: Id) {
-            match env.get(r#use) {
-                Loc::Reg(reg) => {
-                    builder.local(reg);
-                    env.push();
-                },
-                Loc::Clover(i) => {
-                    builder.clover(i);
-                    env.push();
-                }
+        fn emit_block(cmp: &mut Compiler, builder: &mut bytecode::Builder, f: &cfg::Fn, label: cfg::Label) {
+            builder.label(label);
+
+            for instr in f.blocks[label].iter() {
+                emit_instr(cmp, builder, instr)
             }
         }
 
-        fn emit_expr(cmp: &mut Compiler, builder: &mut bytecode::Builder, env: &mut Env, tail: bool,
-            expr: &anf::Expr)
-        {
-            match *expr {
-                Let(ref bindings, ref body, popnnt) => {
-                    for &(id, ref val) in bindings {
-                        emit_expr(cmp, builder, env, false, val);
-                        env.name_top(id);
-                    }
+        fn emit_fn(cmp: &mut Compiler, f: &cfg::Fn) -> Gc<Bytecode> {
+            let po = cfg_po(f);
 
-                    emit_expr(cmp, builder, env, tail, &**body);
+            let mut builder = bytecode::Builder::new(f.arity);
 
-                    let nbs = bindings.len();
-                    if popnnt && !tail && nbs > 0 {
-                        builder.popnnt(nbs);
-                        env.popnnt(nbs);
-                    }
-                },
-
-                // FIXME: Coalesce registers at join point:
-                If(ref cond, ref conseq, ref alt, _) => {
-                    emit_expr(cmp, builder, env, false, cond);
-                    let brf_i = builder.brf();
-                    env.pop();
-
-                    let mut alt_env = env.clone();
-
-                    emit_expr(cmp, builder, env, tail, conseq);
-                    let br_i = if tail { None } else { Some(builder.br()) };
-
-                    builder.backpatch(brf_i);
-
-                    emit_expr(cmp, builder, &mut alt_env, tail, alt);
-
-                    if let Some(br_i) = br_i { builder.backpatch(br_i); }
-                },
-
-                Fn(ref fvs, ref params, ref body) => {
-                    let fvs = fvs.iter().map(|&id| id).collect::<Vec<Id>>();
-
-                    let code = {
-                        let code = emit_fn(cmp, &fvs, params, body);
-                        cmp.mt.root_t(code)
-                    };
-                    builder.r#const(cmp.mt, (*code).into());
-                    env.push();
-
-                    for &fv in fvs.iter() {
-                        emit_use(builder, env, fv);
-                        env.push();
-                    }
-
-                    builder.r#fn(fvs.len());
-                    env.closure(fvs.len());
-
-                    if tail { builder.ret(); }
-                },
-
-                Call(_, ref args, ref live_outs) => {
-                    // Due to `anf::Expr` construction in `analyze`, code for callee and args already emitted.
-
-                    if tail {
-                        builder.tailcall(args.len());
-                    } else {
-                        let prunes = env.prune_mask(live_outs);
-                        builder.call(args.len(), &prunes);
-                        env.call(&prunes);
-                    }
-                },
-
-                Triv(Use(id)) => {
-                    emit_use(builder, env, id);
-
-                    if tail { builder.ret(); }
-                },
-
-                Triv(Const(ref c)) => {
-                    builder.r#const(cmp.mt, **c);
-                    env.push();
-
-                    if tail { builder.ret(); }
-                }
+            for &label in po.iter().rev() {
+                emit_block(cmp, &mut builder, f, label);
             }
-        }
-
-        fn emit_fn(cmp: &mut Compiler, clovers: &[Id], params: &[Id], body: &anf::Expr) -> Gc<Bytecode> {
-            let mut builder = bytecode::Builder::new(params.len());
-
-            emit_expr(cmp, &mut builder, &mut Env::r#fn(clovers, params), true, body);
 
             builder.build(cmp.mt)
         }
 
-        if let Fn(ref fvs, ref params, ref body) = expr {
-            let fvs = fvs.iter().map(|&id| id).collect::<Vec<Id>>();
-            emit_fn(self, &fvs, params, body)
-        } else {
-            todo!()
-        }
+        emit_fn(self, f)
     }
 }

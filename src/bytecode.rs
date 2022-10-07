@@ -1,5 +1,6 @@
 use std::fmt;
 use std::mem::transmute;
+use std::collections::hash_map::HashMap;
 
 use crate::oref::{Reify, DisplayWithin, ORef, Gc};
 use crate::heap_obj::Indexed;
@@ -14,6 +15,7 @@ pub enum Opcode {
     Local,
     Clover,
     PopNNT,
+    Prune,
     Brf,
     Br,
     r#Fn,
@@ -207,6 +209,24 @@ impl Bytecode {
                                 todo!()
                             },
 
+                        Opcode::Prune => {
+                            write!(fmt, "{}{}: prune #b", indent, i)?;
+
+                            let mut mask_len = 0;
+                            for (i, prune) in decode_prune_mask(&self.instrs()[i + 1..]).enumerate() {
+                                write!(fmt, "{}", (prune as u8))?;
+                                if i % 7 == 0 {
+                                    mask_len += 1;
+                                }
+                            }
+
+                            writeln!(fmt, "")?;
+
+                            for _ in 0..mask_len {
+                                instrs.next();
+                            }
+                        },
+
                         Opcode::Brf =>
                             if let Some((_, d)) = instrs.next() {
                                 writeln!(fmt, "{}{}: brf {}", indent, i, d)?;
@@ -271,7 +291,9 @@ impl Bytecode {
 pub struct Builder {
     arity: usize,
     consts: Vec<Handle>,
-    instrs: Vec<u8>
+    instrs: Vec<u8>,
+    label_indices: HashMap<usize, usize>,
+    br_dests: HashMap<usize, usize>
 }
 
 impl Builder {
@@ -279,7 +301,9 @@ impl Builder {
         Self {
             arity,
             consts: Vec::new(),
-            instrs: Vec::new()
+            instrs: Vec::new(),
+            label_indices: HashMap::new(),
+            br_dests: HashMap::new()
         }
     }
 
@@ -310,28 +334,25 @@ impl Builder {
         self.instrs.push(u8::try_from(n).unwrap());
     }
 
-    #[must_use]
-    pub fn brf(&mut self) -> usize {
+    pub fn prune(&mut self, prunes: &[bool]) {
+        self.instrs.push(Opcode::Prune as u8);
+        encode_prune_mask(&mut self.instrs, prunes);
+    }
+
+    pub fn label(&mut self, label: usize) {
+        self.label_indices.insert(label, self.instrs.len());
+    }
+
+    pub fn brf(&mut self, label: usize) {
         self.instrs.push(Opcode::Brf as u8);
-        let i = self.instrs.len();
+        self.br_dests.insert(self.instrs.len(), label);
         self.instrs.push(0);
-        i
     }
 
-    #[must_use]
-    pub fn br(&mut self) -> usize {
+    pub fn br(&mut self, label: usize) {
         self.instrs.push(Opcode::Br as u8);
-        let i = self.instrs.len();
+        self.br_dests.insert(self.instrs.len(), label);
         self.instrs.push(0);
-        i
-    }
-
-    pub fn backpatch(&mut self, i: usize) {
-        if let Ok(d) = u8::try_from(self.instrs.len() - i) {
-            self.instrs[i] = d;
-        } else {
-            todo!()
-        }
     }
 
     pub fn r#fn(&mut self, len: usize) {
@@ -354,7 +375,19 @@ impl Builder {
         self.instrs.push(Opcode::Ret as u8);
     }
 
-    pub fn build(self, mt: &mut Mutator) -> Gc<Bytecode> {
+    fn backpatch(&mut self) {
+        for (&i, dest) in self.br_dests.iter() {
+            if let Ok(d) = u8::try_from(self.label_indices[dest] - i) {
+                self.instrs[i] = d;
+            } else {
+                todo!()
+            }
+        }
+    }
+
+    pub fn build(mut self, mt: &mut Mutator) -> Gc<Bytecode> {
+        self.backpatch();
+
         let consts = Array::<ORef>::from_handles(mt, &self.consts);
         let consts = mt.root_t(consts);
         Bytecode::new(mt, self.arity, consts, &self.instrs)

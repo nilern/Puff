@@ -75,6 +75,8 @@ pub fn run(mt: &mut Mutator) -> ORef {
                     mt.popnnt(n as usize);
                 },
 
+                Opcode::Prune => todo!(),
+
                 Opcode::Brf => {
                     let d = unsafe { mt.code().as_ref().instrs()[ip] } as usize;
                     
