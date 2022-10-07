@@ -39,6 +39,8 @@ impl TryFrom<u8> for Opcode {
 const HIGH_BIT: u8 = 0b10000000;
 
 fn encode_prune_mask(dest: &mut Vec<u8>, mask: &[bool]) {
+    let start_len = dest.len();
+
     for chunk in mask.chunks(7) {
         let mut byte = HIGH_BIT;
 
@@ -49,11 +51,11 @@ fn encode_prune_mask(dest: &mut Vec<u8>, mask: &[bool]) {
         dest.push(byte);
     }
 
-    while dest.len() > 0 && dest[dest.len() - 1] == HIGH_BIT {
+    while dest.len() > start_len && dest[dest.len() - 1] == HIGH_BIT {
         dest.pop();
     }
 
-    if dest.len() > 0 {
+    if dest.len() > start_len {
         let last_index = dest.len() - 1;
         dest[last_index] &= !HIGH_BIT;
     } else {
