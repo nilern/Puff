@@ -1,15 +1,16 @@
 use std::collections::hash_map::HashMap;
 use std::collections::hash_set::HashSet;
 use std::rc::Rc;
-use std::fmt;
 
 use crate::bytecode::{self, Bytecode};
-use crate::oref::{WithinMt, DisplayWithin, ORef, Gc};
-use crate::handle::{Handle, HandleT};
+use crate::oref::{ORef, Gc};
+use crate::handle::HandleT;
 use crate::list::{Pair, EmptyList};
 use crate::mutator::Mutator;
 use crate::symbol::Symbol;
 use crate::heap_obj::Singleton;
+use crate::anf;
+use crate::cfg;
 
 pub fn compile(mt: &mut Mutator, expr: ORef) -> Gc<Bytecode> {
     let mut cmp = Compiler::new(mt);
@@ -24,191 +25,14 @@ pub fn compile(mt: &mut Mutator, expr: ORef) -> Gc<Bytecode> {
 struct Compiler<'a> {
     mt: &'a mut Mutator,
     name_counter: usize,
-    names: HashMap<Id, HandleT<Symbol>>
+    names: HashMap<anf::Id, HandleT<Symbol>>
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Id(usize);
-
-impl Id {
+impl anf::Id {
     fn fresh(cmp: &mut Compiler) -> Self {
         let i = cmp.name_counter;
         cmp.name_counter = i + 1;
-        Self(i)
-    }
-}
-
-type LiveVars = HashSet<Id>;
-
-mod anf {
-    use super::*;
-
-    pub enum Triv {
-        Use(Id),
-        Const(Handle)
-    }
-
-    pub enum Expr {
-        Let(Vec<Binding>, Box<Expr>, /* popnnt?: */ bool),
-        If(Box<Expr>, Box<Expr>, Box<Expr>, LiveVars),
-        r#Fn(LiveVars, Params, Box<Expr>),
-        Call(Id, Vec<Id>, LiveVars),
-        Triv(Triv)
-    }
-
-    pub type Binding = (Id, Expr);
-
-    pub type Params = Vec<Id>;
-}
-
-mod cfg {
-    use super::*;
-
-    pub type Label = usize;
-
-    pub enum Instr {
-        Const(Handle),
-        Local(usize),
-        Clover(usize),
-        PopNNT(usize),
-        Prune(Vec<bool>),
-        If(Label, Label),
-        Goto(Label),
-        Code(Fn),
-        Closure(usize),
-        Call(usize, Vec<bool>),
-        TailCall(usize),
-        Ret
-    }
-
-    impl Instr {
-        pub fn fmt(&self, mt: &Mutator, fmt: &mut fmt::Formatter, indent: &str) -> fmt::Result {
-            use Instr::*;
-
-            match self {
-                &Const(ref c) => writeln!(fmt, "{}const {}", indent, c.within(mt)),
-                &Local(reg) => writeln!(fmt, "{}local {}", indent, reg),
-                &Clover(i) => writeln!(fmt, "{}clover {}", indent, i),
-
-                &PopNNT(n) => writeln!(fmt, "{}popnnt {}", indent, n),
-                &Prune(ref prunes) => {
-                    write!(fmt, "{}prune #b", indent)?;
-                    for &prune in prunes { write!(fmt, "{}", prune as u8)?; }
-                    writeln!(fmt, "")
-                }
-
-                &If(conseq, alt) => writeln!(fmt, "{}if {} {}", indent, conseq, alt),
-                &Goto(dest) => writeln!(fmt, "{}goto {}", indent, dest),
-
-                &Code(ref code) => {
-                    writeln!(fmt, "{}code", indent)?;
-                    code.fmt(mt, fmt, &(indent.to_string() + "  "))
-                },
-                &Closure(len) => writeln!(fmt, "{}closure {}", indent, len),
-
-                &Call(argc, ref prunes) => {
-                    write!(fmt, "{}call {} #b", indent, argc)?;
-                    for &prune in prunes { write!(fmt, "{}", prune as u8)?; }
-                    writeln!(fmt, "")
-                },
-                &TailCall(argc) => writeln!(fmt, "{}tailcall {}", indent, argc),
-                &Ret => writeln!(fmt, "{}ret", indent)
-            }
-        }
-    }
-
-    pub type Block = Vec<Instr>;
-
-    pub struct Fn {
-        pub arity: usize,
-        pub blocks: Vec<Block>
-    }
-
-    impl DisplayWithin for &Fn {
-        fn fmt_within(&self, mt: &Mutator, fmt: &mut fmt::Formatter) -> fmt::Result { self.fmt(mt, fmt, "") }
-    }
-
-    impl Fn {
-        pub fn new(arity: usize) -> Self { Fn { arity, blocks: Vec::new() } }
-
-        pub fn create_block(&mut self) -> Label {
-            let label = self.blocks.len();
-            self.blocks.push(Vec::new());
-            label
-        }
-
-        pub fn insert_prune(&mut self, label: Label, prunes: Vec<bool>) {
-            let block = &mut self.blocks[label];
-            block.insert(block.len() - 1, Instr::Prune(prunes));
-        }
-
-        pub fn successors(&self, label: Label) -> Successors {
-            match self.blocks[label].last().unwrap() {
-                Instr::If(conseq, alt) => Successors::new([*conseq, *alt], 2),
-                Instr::Goto(succ) => Successors::new([*succ, 0], 1),
-                _ => Successors::new([0, 0], 0)
-            }
-        }
-
-        pub fn fmt(&self, mt: &Mutator, fmt: &mut fmt::Formatter, indent: &str) -> fmt::Result {
-            write!(fmt, "{}(", indent)?;
-            if self.arity > 0 {
-                write!(fmt, "_")?;
-
-                for _ in 1..self.arity {
-                    write!(fmt, " _")?;
-                }
-            }
-            writeln!(fmt, ")")?;
-
-            for (label, block) in self.blocks.iter().enumerate() {
-                writeln!(fmt, "{}{}:", indent, label)?;
-
-                for instr in block.iter() {
-                    instr.fmt(mt, fmt, &(indent.to_string() + "  "))?;
-                }
-            }
-
-            Ok(())
-        }
-
-        pub fn within<'a>(&'a self, mt: &'a Mutator) -> WithinMt<&'a Self> { WithinMt {v: self, mt} }
-    }
-
-    pub struct Successors {
-        start: usize,
-        end: usize,
-        items: [Label; 2]
-    }
-
-    impl Successors {
-        fn new(items: [Label; 2], len: usize) -> Self { Successors {start: 0, end: len, items} }
-    }
-
-    impl Iterator for Successors {
-        type Item = Label;
-
-        fn next(&mut self) -> Option<Self::Item> {
-            if self.start < self.end {
-                let label = self.items[self.start];
-                self.start += 1;
-                Some(label)
-            } else {
-                None
-            }
-        }
-    }
-
-    impl DoubleEndedIterator for Successors {
-        fn next_back(&mut self) -> Option<Self::Item> {
-            if self.start < self.end {
-                let label = self.items[self.end - 1];
-                self.end -= 1;
-                Some(label)
-            } else {
-                None
-            }
-        }
+        Self::from(i)
     }
 }
 
@@ -226,12 +50,12 @@ impl<'a> Compiler<'a> {
         use anf::Triv::*;
 
         enum Env {
-            Binding(Id, HandleT<Symbol>, Rc<Env>),
+            Binding(anf::Id, HandleT<Symbol>, Rc<Env>),
             Empty
         }
 
         impl Env {
-            fn get(env: &Rc<Env>, name: Gc<Symbol>) -> Option<Id> {
+            fn get(env: &Rc<Env>, name: Gc<Symbol>) -> Option<anf::Id> {
                 let mut env = env.clone();
                 loop {
                     match &*env {
@@ -286,7 +110,7 @@ impl<'a> Compiler<'a> {
 
                             if unsafe { binding.as_ref().cdr } == EmptyList::instance(cmp.mt).into() {
                                 if let Some(name) = pat.try_cast::<Symbol>(cmp.mt) {
-                                    let id = Id::fresh(cmp);
+                                    let id = anf::Id::fresh(cmp);
                                     anf_bs.push((id, analyze_expr(cmp, &env, val)));
                                     Rc::new(Env::Binding(id, cmp.mt.root_t(name), env.clone()))
                                 } else {
@@ -356,7 +180,7 @@ impl<'a> Compiler<'a> {
 
                         let branches = unsafe { branches.as_ref().cdr };
                         if branches == EmptyList::instance(cmp.mt).into() {
-                            If(Box::new(cond), Box::new(conseq), Box::new(alt), LiveVars::new())
+                            If(Box::new(cond), Box::new(conseq), Box::new(alt), anf::LiveVars::new())
                         } else {
                             todo!()
                         }
@@ -374,12 +198,12 @@ impl<'a> Compiler<'a> {
         fn analyze_fn(cmp: &mut Compiler, env: &Rc<Env>, args: ORef) -> anf::Expr {
             // TODO: Reject duplicate parameter names:
             fn analyze_params(cmp: &mut Compiler, env: &Rc<Env>, mut params: ORef) -> (Rc<Env>, anf::Params) {
-                let mut anf_ps = vec![Id::fresh(cmp)]; // Id for "self" closure
+                let mut anf_ps = vec![anf::Id::fresh(cmp)]; // Id for "self" closure
                 let mut env = env.clone();
 
                 while let Some(ps_pair) = params.try_cast::<Pair>(cmp.mt) {
                     if let Some(param) = unsafe { ps_pair.as_ref().car }.try_cast::<Symbol>(cmp.mt) {
-                        let id = Id::fresh(cmp);
+                        let id = anf::Id::fresh(cmp);
                         anf_ps.push(id);
                         env = Rc::new(Env::Binding(id, cmp.mt.root_t(param), env.clone()));
                     } else {
@@ -406,7 +230,7 @@ impl<'a> Compiler<'a> {
                         let (env, params) = analyze_params(cmp, env, params);
                         let body = analyze_expr(cmp, &env, body);
 
-                        r#Fn(LiveVars::new(), params, Box::new(body))
+                        r#Fn(anf::LiveVars::new(), params, Box::new(body))
                     } else {
                         todo!()
                     }
@@ -423,13 +247,13 @@ impl<'a> Compiler<'a> {
             let mut arg_ids = Vec::new();
 
             let anf_callee = analyze_expr(cmp, env, unsafe { expr.as_ref().car });
-            let callee_id = Id::fresh(cmp);
+            let callee_id = anf::Id::fresh(cmp);
             bindings.push((callee_id, anf_callee));
 
             let mut args = unsafe { expr.as_ref().cdr };
             while let Some(args_pair) = args.try_cast::<Pair>(cmp.mt) {
                 let anf_arg = analyze_expr(cmp, env, unsafe { args_pair.as_ref().car });
-                let arg_id = Id::fresh(cmp);
+                let arg_id = anf::Id::fresh(cmp);
                 bindings.push((arg_id, anf_arg));
                 arg_ids.push(arg_id);
 
@@ -443,16 +267,16 @@ impl<'a> Compiler<'a> {
             }
         }
 
-        let params = vec![Id::fresh(self)];
+        let params = vec![anf::Id::fresh(self)];
         let body = analyze_expr(self, &Rc::new(Env::Empty), expr);
-        r#Fn(LiveVars::new(), params, Box::new(body))        
+        r#Fn(anf::LiveVars::new(), params, Box::new(body))        
     }
 
     fn liveness(expr: &mut anf::Expr) {
         use anf::Expr::{self, *};
         use anf::Triv::*;
 
-        fn live_ins(expr: &mut Expr, mut live_outs: LiveVars) -> LiveVars {
+        fn live_ins(expr: &mut Expr, mut live_outs: anf::LiveVars) -> anf::LiveVars {
             match expr {
                 &mut Let(ref mut bindings, ref mut body, _) => {
                     live_outs = live_ins(body, live_outs);
@@ -476,7 +300,7 @@ impl<'a> Compiler<'a> {
 
                 &mut r#Fn(ref mut fvs, ref params, ref mut body) => {
                     let mut free_vars = {
-                        let mut live_outs = LiveVars::new();
+                        let mut live_outs = anf::LiveVars::new();
                         live_outs.insert(params[0]); // "self" closure should always be live
                         live_ins(body, live_outs)
                     };
@@ -508,7 +332,7 @@ impl<'a> Compiler<'a> {
             live_outs
         }
 
-        live_ins(expr, LiveVars::new());
+        live_ins(expr, anf::LiveVars::new());
     }
 
     fn to_cfg(&self, expr: &anf::Expr) -> cfg::Fn {
@@ -522,13 +346,13 @@ impl<'a> Compiler<'a> {
 
         #[derive(Clone)]
         struct Env {
-            clovers: Rc<HashMap<Id, usize>>,
-            reg_ids: Vec<Option<Id>>,
-            id_regs: HashMap<Id, usize>
+            clovers: Rc<HashMap<anf::Id, usize>>,
+            reg_ids: Vec<Option<anf::Id>>,
+            id_regs: HashMap<anf::Id, usize>
         }
 
         impl Env {
-            fn new(clover_ids: &[Id], param_ids: &[Id]) -> Self {
+            fn new(clover_ids: &[anf::Id], param_ids: &[anf::Id]) -> Self {
                 let mut clovers = HashMap::new();
                 for (i, &id) in clover_ids.iter().enumerate() {
                     clovers.insert(id, i);
@@ -552,7 +376,7 @@ impl<'a> Compiler<'a> {
                 self.reg_ids.push(None);
             }
 
-            fn name_top(&mut self, id: Id) {
+            fn name_top(&mut self, id: anf::Id) {
                 let reg = self.reg_ids.len() - 1;
 
                 self.reg_ids[reg] = Some(id);
@@ -605,14 +429,14 @@ impl<'a> Compiler<'a> {
                 self.reg_ids.push(None);
             }
 
-            fn get(&self, id: Id) -> Loc {
+            fn get(&self, id: anf::Id) -> Loc {
                 self.id_regs.get(&id).map(|&reg| Loc::Reg(reg))
                     .or_else(|| self.clovers.get(&id).map(|&i| Loc::Clover(i)))
                     .unwrap()
             }
 
             // OPTIMIZE: No need to encode (and eventually decode) callee and args pruning:
-            fn prune_mask(&self, live_outs: &HashSet<Id>) -> Vec<bool> {
+            fn prune_mask(&self, live_outs: &anf::LiveVars) -> Vec<bool> {
                 let mut mask = vec![true; self.reg_ids.len()];
 
                 for id in live_outs {
@@ -624,7 +448,7 @@ impl<'a> Compiler<'a> {
                 mask
             }
 
-            fn join_prune_masks(l: &Self, r: &Self, live_outs: &HashSet<Id>) -> (Vec<bool>, Vec<bool>) {
+            fn join_prune_masks(l: &Self, r: &Self, live_outs: &anf::LiveVars) -> (Vec<bool>, Vec<bool>) {
                 let mut lmask = Vec::new();
                 let mut rmask = Vec::new();
 
@@ -706,7 +530,7 @@ impl<'a> Compiler<'a> {
             }
         }
 
-        fn emit_use(env: &mut Env, f: &mut cfg::Fn, current: cfg::Label, r#use: Id) {
+        fn emit_use(env: &mut Env, f: &mut cfg::Fn, current: cfg::Label, r#use: anf::Id) {
             match env.get(r#use) {
                 Loc::Reg(reg) => {
                     f.blocks[current].push(cfg::Instr::Local(reg));
@@ -776,7 +600,7 @@ impl<'a> Compiler<'a> {
                 },
 
                 Fn(ref fvs, ref params, ref body) => {
-                    let fvs = fvs.iter().map(|&id| id).collect::<Vec<Id>>();
+                    let fvs = fvs.iter().map(|&id| id).collect::<Vec<anf::Id>>();
 
                     let code = emit_fn(cmp, &fvs, params, body);
                     f.blocks[current].push(cfg::Instr::Code(code));
@@ -830,7 +654,7 @@ impl<'a> Compiler<'a> {
             }
         }
 
-        fn emit_fn(cmp: &Compiler, clovers: &[Id], params: &[Id], body: &anf::Expr) -> cfg::Fn {
+        fn emit_fn(cmp: &Compiler, clovers: &[anf::Id], params: &[anf::Id], body: &anf::Expr) -> cfg::Fn {
             let mut f = cfg::Fn::new(params.len());
             let current = f.create_block();
             let _ = emit_expr(cmp, &mut Env::new(clovers, params), &mut f, current, Cont::Ret, body);
@@ -838,7 +662,7 @@ impl<'a> Compiler<'a> {
         }
 
         if let Fn(ref fvs, ref params, ref body) = expr {
-            let fvs = fvs.iter().map(|&id| id).collect::<Vec<Id>>();
+            let fvs = fvs.iter().map(|&id| id).collect::<Vec<anf::Id>>();
             emit_fn(self, &fvs, params, body)
         } else {
             todo!()

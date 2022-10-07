@@ -11,6 +11,8 @@ mod list;
 mod array;
 mod closure;
 mod bytecode;
+mod anf;
+mod cfg;
 mod compiler;
 mod vm;
 mod util;
