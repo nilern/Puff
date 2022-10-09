@@ -237,102 +237,37 @@ impl Mutator {
     // HACK: returns raw pointer because of lifetime issues in Symbol::new:
     pub fn symbols_mut(&mut self) -> *mut SymbolTable { &mut self.symbols as _ }
 
-    pub fn set_code(&mut self, code: Gc<Bytecode>) {
+    fn set_code(&mut self, code: Gc<Bytecode>) {
         self.code = Some(code);
         unsafe { self.consts = Some(code.as_ref().consts); }
         self.pc = 0;
     }
 
-    pub unsafe fn code(&self) -> Gc<Bytecode> { self.code.unwrap() }
+    unsafe fn code(&self) -> Gc<Bytecode> { self.code.unwrap() }
 
-    pub unsafe fn consts(&self) -> Gc<Array<ORef>> { self.consts.unwrap() }
+    unsafe fn consts(&self) -> Gc<Array<ORef>> { self.consts.unwrap() }
 
-    pub fn next_opcode(&mut self) -> Result<Opcode, ()> {
+    fn next_opcode(&mut self) -> Result<Opcode, ()> {
         let op = Opcode::try_from(unsafe { self.code().as_ref().instrs()[self.pc] });
         self.pc += 1;
         op
     }
 
-    pub fn peek_oparg(&self) -> usize { unsafe { self.code().as_ref().instrs()[self.pc] as usize } }
+    fn peek_oparg(&self) -> usize { unsafe { self.code().as_ref().instrs()[self.pc] as usize } }
 
-    pub fn next_oparg(&mut self) -> usize {
+    fn next_oparg(&mut self) -> usize {
         let arg = self.peek_oparg();
         self.pc += 1;
         arg
     }
 
-    pub fn prune(&mut self) {
-        let regs_len = self.regs().len();
-        let mut mask_len = 0;
-        let mut free_reg = 0;
-        unsafe {
-            for (reg, prune) in decode_prune_mask(&self.code().as_ref().instrs()[self.pc..]).enumerate() {
-                if !prune && reg < regs_len {
-                    self.regs.as_mut_slice()[free_reg] = self.regs.as_slice()[reg];
-                    free_reg += 1;
-                }
-
-                if reg % 7 == 0 {
-                    mask_len += 1;
-                }
-            }
-        }
-        self.regs.truncate(free_reg);
-
-        self.branch_relative(mask_len);
-    }
-
-    pub fn branch_relative(&mut self, distance: usize) { self.pc += distance; }
-
     pub fn regs(&self) -> &[ORef] { self.regs.as_slice() }
-
-    pub fn regs_enter(&mut self, len: usize) { self.regs.enter(len); }
 
     pub fn push(&mut self, v: ORef) { self.regs.push(v); }
 
     pub fn pop(&mut self) -> ORef { self.regs.pop().unwrap() }
 
-    pub fn popnnt(&mut self, n: usize) { self.regs.popnnt(n); }
-
     pub fn dump_regs(&self) { self.regs.dump(self); }
-
-    pub fn stack_len(&self) -> usize { self.stack.len() }
-
-    pub fn push_frame(&mut self, argc: usize) {
-        let max_frame_len = self.regs().len() - argc;
-        let mut frame_len = 0;
-        let mut mask_len = 0;
-        unsafe {
-            for (reg, prune) in decode_prune_mask(&self.code().as_ref().instrs()[self.pc..]).enumerate() {
-                if !prune && reg < max_frame_len {
-                    self.stack.push(self.regs.as_slice()[reg]);
-                    frame_len += 1;
-                }
-
-                if reg % 7 == 0 {
-                    mask_len += 1;
-                }
-            }
-        }
-
-        self.branch_relative(mask_len);
-
-        self.stack.push(Fixnum::try_from(frame_len as isize).unwrap().into());
-        self.stack.push(Fixnum::try_from(self.pc as isize).unwrap().into());
-    }
-
-    pub fn pop_frame(&mut self) -> (usize, usize) {
-        self.regs.truncate(0);
-
-        let ip = unsafe { isize::from(Fixnum::from_oref_unchecked(self.stack.pop().unwrap())) as usize };
-        let frame_len = unsafe { isize::from(Fixnum::from_oref_unchecked(self.stack.pop().unwrap())) as usize };
-
-        let start = self.stack.len() - frame_len;
-        self.regs.extend(&self.stack[start..]);
-        self.stack.truncate(start);
-
-        (frame_len, ip)
-    }
 
     pub unsafe fn alloc_nonindexed(&mut self, r#type: Gc<NonIndexedType>)
         -> Option<NonNull<u8>>
@@ -359,6 +294,185 @@ impl Mutator {
 
     pub fn root_t<T>(&mut self, obj: Gc<T>) -> HandleT<T> {
         unsafe { self.handles.root_t(obj) }
+    }
+
+    pub fn invoke(&mut self) -> ORef {
+        macro_rules! tailcall {
+            ($argc: ident) => {
+                let callee = self.regs()[self.regs().len() - $argc];
+                if let Some(callee) = callee.try_cast::<Closure>(self) {
+                    // Pass arguments:
+                    self.regs.enter($argc);
+
+                    // Jump:
+                    unsafe { self.set_code(callee.as_ref().code); }
+
+                    // TODO: Ensure register space, reclaim garbage regs prefix and extend regs if necessary
+                    // TODO: GC safepoint (only becomes necessary with multithreading)
+
+                    // Check arity:
+                    // TODO: Varargs
+                    if $argc != unsafe { self.code().as_ref().arity } {
+                        todo!()
+                    }
+                } else {
+                    todo!()
+                }
+            }
+        }
+
+        {
+            let argc = self.regs().len();
+            assert!(argc > 0);
+            tailcall!(argc);
+        }
+
+        loop {
+            if let Ok(op) = self.next_opcode() {
+                match op {
+                    Opcode::Const => {
+                        let i = self.next_oparg();
+
+                        self.regs.push(unsafe {self.consts().as_ref().indexed_field()[i]});
+                    },
+
+                    Opcode::Local => {
+                        let i = self.next_oparg();
+
+                        self.regs.push(self.regs()[i]);
+                    },
+
+                    Opcode::Clover => {
+                        let i = self.next_oparg();
+
+                        self.regs.push(unsafe { self.regs()[0].unchecked_cast::<Closure>().as_ref().clovers()[i] });
+                    },
+
+                    Opcode::PopNNT => {
+                        let n = self.next_oparg();
+
+                        self.regs.popnnt(n);
+                    },
+
+                    Opcode::Prune => {
+                        let regs_len = self.regs().len();
+                        let mut mask_len = 0;
+                        let mut free_reg = 0;
+                        unsafe {
+                            for (reg, prune) in decode_prune_mask(&self.code().as_ref().instrs()[self.pc..]).enumerate()
+                            {
+                                if !prune && reg < regs_len {
+                                    self.regs.as_mut_slice()[free_reg] = self.regs.as_slice()[reg];
+                                    free_reg += 1;
+                                }
+
+                                if reg % 7 == 0 {
+                                    mask_len += 1;
+                                }
+                            }
+                        }
+                        self.regs.truncate(free_reg);
+
+                        self.pc += mask_len;
+                    },
+
+                    Opcode::Brf =>
+                        if self.regs.pop().unwrap().is_truthy(self) {
+                            self.pc += 1;
+                        } else {
+                            let d = self.peek_oparg();
+
+                            self.pc += d;
+                        },
+
+                    Opcode::Br => {
+                        let d = self.peek_oparg();
+                        
+                        self.pc += d;
+                    },
+
+                    Opcode::Fn => {
+                        let len = self.next_oparg();
+
+                        let closure = Closure::new(self, len);
+                        self.regs.popn(len + 1);
+                        self.regs.push(closure.into());
+                    },
+
+                    Opcode::Call => {
+                        let argc = self.next_oparg();
+
+                        let max_frame_len = self.regs().len() - argc;
+                        let mut frame_len = 0;
+                        let mut mask_len = 0;
+                        unsafe {
+                            for (reg, prune) in decode_prune_mask(&self.code().as_ref().instrs()[self.pc..]).enumerate()
+                            {
+                                if !prune && reg < max_frame_len {
+                                    self.stack.push(self.regs.as_slice()[reg]);
+                                    frame_len += 1;
+                                }
+
+                                if reg % 7 == 0 {
+                                    mask_len += 1;
+                                }
+                            }
+                        }
+
+                        self.pc += mask_len;
+
+                        self.stack.push(Fixnum::try_from(frame_len as isize).unwrap().into());
+                        self.stack.push(Fixnum::try_from(self.pc as isize).unwrap().into());
+
+                        tailcall!(argc);
+                    },
+
+                    Opcode::TailCall => {
+                        let argc = self.peek_oparg();
+
+                        tailcall!(argc);
+                    },
+
+                    Opcode::Ret =>
+                        if self.stack.len() > 0 {
+                            // TODO: Ensure register space, reclaim garbage regs prefix and extend regs if necessary
+
+                            let v = self.regs.pop().unwrap();
+
+                            // Restore registers:
+
+                            self.regs.truncate(0);
+
+                            let rip =
+                                unsafe { isize::from(Fixnum::from_oref_unchecked(self.stack.pop().unwrap())) as usize };
+                            let frame_len =
+                                unsafe { isize::from(Fixnum::from_oref_unchecked(self.stack.pop().unwrap())) as usize };
+
+                            let start = self.stack.len() - frame_len;
+                            self.regs.extend(&self.stack[start..]);
+                            self.stack.truncate(start);
+
+                            // Push return value:
+                            self.regs.push(v);
+
+                            let f = self.regs()[self.regs().len() - frame_len - 1];
+                            if let Some(f) = f.try_cast::<Closure>(self) {
+                                // Jump back:
+                                unsafe { self.set_code(f.as_ref().code); }
+                                self.pc = rip;
+                            } else {
+                                todo!()
+                            }
+                        } else {
+                            let res = self.regs()[self.regs().len() - 1];
+                            self.regs.enter(0);
+                            return res;
+                        }
+                }
+            } else {
+                todo!()
+            }
+        }
     }
 }
 

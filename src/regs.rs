@@ -20,11 +20,7 @@ impl Regs {
 
     pub fn pop(&mut self) -> Option<ORef> { self.regs.pop() }
 
-    pub fn push(&mut self, v: ORef) { self.regs.push(v) }
-
-    pub fn enter(&mut self, new_len: usize) {
-        self.start = self.regs.len() - new_len;
-    }
+    pub fn popn(&mut self, n: usize) { self.regs.truncate(self.regs.len() - n); }
 
     pub fn popnnt(&mut self, n: usize) {
         let len = self.regs.len();
@@ -32,6 +28,12 @@ impl Regs {
         let new_len = len - n as usize;
         self.regs.truncate(new_len);
         self.regs[new_len - 1] = top;
+    }
+
+    pub fn push(&mut self, v: ORef) { self.regs.push(v) }
+
+    pub fn enter(&mut self, new_len: usize) {
+        self.start = self.regs.len() - new_len;
     }
 
     pub fn extend(&mut self, vs: &[ORef]) { self.regs.extend(vs); }

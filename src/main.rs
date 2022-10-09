@@ -16,7 +16,6 @@ mod anf;
 mod cfg;
 mod analyzer;
 mod compiler;
-mod vm;
 mod util;
 
 use rustyline::error::ReadlineError;
@@ -65,7 +64,7 @@ fn main() {
                             let f = Closure::new(&mut mt, 0);
                             mt.pop();
                             mt.push(f.into());
-                            let v = vm::run(&mut mt);
+                            let v = mt.invoke();
                             println!("{}", v.within(&mt));
                         },
                         Err(err) => {
