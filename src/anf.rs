@@ -1,13 +1,7 @@
 use std::collections::hash_set::HashSet;
 
 use crate::handle::Handle;
-
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Id(usize);
-
-impl From<usize> for Id {
-    fn from(i: usize) -> Self { Self(i) }
-}
+use crate::compiler::Id;
 
 pub type LiveVars = HashSet<Id>;
 

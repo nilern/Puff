@@ -7,6 +7,7 @@ use crate::oref::{WithinMt, DisplayWithin};
 use crate::handle::Handle;
 use crate::mutator::Mutator;
 use crate::anf;
+use crate::compiler::Id;
 
 pub type Label = usize;
 
@@ -183,13 +184,13 @@ impl From<&anf::Expr> for Fn {
 
         #[derive(Clone)]
         struct Env {
-            clovers: Rc<HashMap<anf::Id, usize>>,
-            reg_ids: Vec<Option<anf::Id>>,
-            id_regs: HashMap<anf::Id, usize>
+            clovers: Rc<HashMap<Id, usize>>,
+            reg_ids: Vec<Option<Id>>,
+            id_regs: HashMap<Id, usize>
         }
 
         impl Env {
-            fn new(clover_ids: &[anf::Id], param_ids: &[anf::Id]) -> Self {
+            fn new(clover_ids: &[Id], param_ids: &[Id]) -> Self {
                 let mut clovers = HashMap::new();
                 for (i, &id) in clover_ids.iter().enumerate() {
                     clovers.insert(id, i);
@@ -213,7 +214,7 @@ impl From<&anf::Expr> for Fn {
                 self.reg_ids.push(None);
             }
 
-            fn name_top(&mut self, id: anf::Id) {
+            fn name_top(&mut self, id: Id) {
                 let reg = self.reg_ids.len() - 1;
 
                 self.reg_ids[reg] = Some(id);
@@ -266,7 +267,7 @@ impl From<&anf::Expr> for Fn {
                 self.reg_ids.push(None);
             }
 
-            fn get(&self, id: anf::Id) -> Loc {
+            fn get(&self, id: Id) -> Loc {
                 self.id_regs.get(&id).map(|&reg| Loc::Reg(reg))
                     .or_else(|| self.clovers.get(&id).map(|&i| Loc::Clover(i)))
                     .unwrap()
@@ -367,7 +368,7 @@ impl From<&anf::Expr> for Fn {
             }
         }
 
-        fn emit_use(env: &mut Env, f: &mut Fn, current: Label, r#use: anf::Id) {
+        fn emit_use(env: &mut Env, f: &mut Fn, current: Label, r#use: Id) {
             match env.get(r#use) {
                 Loc::Reg(reg) => {
                     f.blocks[current].push(Instr::Local(reg));
@@ -434,7 +435,7 @@ impl From<&anf::Expr> for Fn {
                 },
 
                 anf::Expr::Fn(ref fvs, ref params, ref body) => {
-                    let fvs = fvs.iter().map(|&id| id).collect::<Vec<anf::Id>>();
+                    let fvs = fvs.iter().map(|&id| id).collect::<Vec<Id>>();
 
                     let code = emit_fn(&fvs, params, body);
                     f.blocks[current].push(Instr::Code(code));
@@ -488,7 +489,7 @@ impl From<&anf::Expr> for Fn {
             }
         }
 
-        fn emit_fn(clovers: &[anf::Id], params: &[anf::Id], body: &anf::Expr) -> Fn {
+        fn emit_fn(clovers: &[Id], params: &[Id], body: &anf::Expr) -> Fn {
             let mut f = Fn::new(params.len());
             let current = f.create_block();
             let _ = emit_expr(&mut Env::new(clovers, params), &mut f, current, Cont::Ret, body);
@@ -496,7 +497,7 @@ impl From<&anf::Expr> for Fn {
         }
 
         if let anf::Expr::Fn(ref fvs, ref params, ref body) = expr {
-            let fvs = fvs.iter().map(|&id| id).collect::<Vec<anf::Id>>();
+            let fvs = fvs.iter().map(|&id| id).collect::<Vec<Id>>();
             emit_fn(&fvs, params, body)
         } else {
             todo!()

@@ -7,19 +7,19 @@ use crate::heap_obj::Singleton;
 use crate::oref::{ORef, Gc};
 use crate::handle::HandleT;
 use crate::symbol::Symbol;
-use crate::compiler::Compiler;
+use crate::compiler::{Compiler, Id};
 
 pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::Expr {
     use anf::Expr::*;
     use anf::Triv::*;
 
     enum Env {
-        Binding(anf::Id, HandleT<Symbol>, Rc<Env>),
+        Binding(Id, HandleT<Symbol>, Rc<Env>),
         Empty
     }
 
     impl Env {
-        fn get(env: &Rc<Env>, name: Gc<Symbol>) -> Option<anf::Id> {
+        fn get(env: &Rc<Env>, name: Gc<Symbol>) -> Option<Id> {
             let mut env = env.clone();
             loop {
                 match &*env {
@@ -74,7 +74,7 @@ pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::Expr {
 
                         if unsafe { binding.as_ref().cdr } == EmptyList::instance(cmp.mt).into() {
                             if let Some(name) = pat.try_cast::<Symbol>(cmp.mt) {
-                                let id = anf::Id::fresh(cmp);
+                                let id = Id::fresh(cmp);
                                 anf_bs.push((id, analyze_expr(cmp, &env, val)));
                                 Rc::new(Env::Binding(id, cmp.mt.root_t(name), env.clone()))
                             } else {
@@ -162,12 +162,12 @@ pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::Expr {
     fn analyze_fn(cmp: &mut Compiler, env: &Rc<Env>, args: ORef) -> anf::Expr {
         // TODO: Reject duplicate parameter names:
         fn analyze_params(cmp: &mut Compiler, env: &Rc<Env>, mut params: ORef) -> (Rc<Env>, anf::Params) {
-            let mut anf_ps = vec![anf::Id::fresh(cmp)]; // Id for "self" closure
+            let mut anf_ps = vec![Id::fresh(cmp)]; // Id for "self" closure
             let mut env = env.clone();
 
             while let Some(ps_pair) = params.try_cast::<Pair>(cmp.mt) {
                 if let Some(param) = unsafe { ps_pair.as_ref().car }.try_cast::<Symbol>(cmp.mt) {
-                    let id = anf::Id::fresh(cmp);
+                    let id = Id::fresh(cmp);
                     anf_ps.push(id);
                     env = Rc::new(Env::Binding(id, cmp.mt.root_t(param), env.clone()));
                 } else {
@@ -211,13 +211,13 @@ pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::Expr {
         let mut arg_ids = Vec::new();
 
         let anf_callee = analyze_expr(cmp, env, unsafe { expr.as_ref().car });
-        let callee_id = anf::Id::fresh(cmp);
+        let callee_id = Id::fresh(cmp);
         bindings.push((callee_id, anf_callee));
 
         let mut args = unsafe { expr.as_ref().cdr };
         while let Some(args_pair) = args.try_cast::<Pair>(cmp.mt) {
             let anf_arg = analyze_expr(cmp, env, unsafe { args_pair.as_ref().car });
-            let arg_id = anf::Id::fresh(cmp);
+            let arg_id = Id::fresh(cmp);
             bindings.push((arg_id, anf_arg));
             arg_ids.push(arg_id);
 
@@ -231,7 +231,7 @@ pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::Expr {
         }
     }
 
-    let params = vec![anf::Id::fresh(cmp)];
+    let params = vec![Id::fresh(cmp)];
     let body = analyze_expr(cmp, &Rc::new(Env::Empty), expr);
     let mut expr = r#Fn(anf::LiveVars::new(), params, Box::new(body));
     liveness(&mut expr);

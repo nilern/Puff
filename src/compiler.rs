@@ -5,31 +5,24 @@ use crate::oref::{ORef, Gc};
 use crate::handle::HandleT;
 use crate::mutator::Mutator;
 use crate::symbol::Symbol;
-use crate::anf;
 use crate::cfg;
 use crate::analyzer::analyze;
 
-pub fn compile(mt: &mut Mutator, expr: ORef) -> Gc<Bytecode> {
-    let mut cmp = Compiler::new(mt);
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Id(usize);
 
-    let anf = analyze(&mut cmp, expr);
-    let cfg = cfg::Fn::from(&anf);
-    println!("{}", cfg.within(cmp.mt));
-    Gc::<Bytecode>::from_cfg(&mut cmp, &cfg)
+impl Id {
+    pub fn fresh(cmp: &mut Compiler) -> Self {
+        let i = cmp.name_counter;
+        cmp.name_counter = i + 1;
+        Self(i)
+    }
 }
 
 pub struct Compiler<'a> {
     pub mt: &'a mut Mutator,
     name_counter: usize,
-    names: HashMap<anf::Id, HandleT<Symbol>>
-}
-
-impl anf::Id {
-    pub fn fresh(cmp: &mut Compiler) -> Self {
-        let i = cmp.name_counter;
-        cmp.name_counter = i + 1;
-        Self::from(i)
-    }
+    names: HashMap<Id, HandleT<Symbol>>
 }
 
 impl<'a> Compiler<'a> {
@@ -40,4 +33,13 @@ impl<'a> Compiler<'a> {
             names: HashMap::new()
         }
     }
+}
+
+pub fn compile(mt: &mut Mutator, expr: ORef) -> Gc<Bytecode> {
+    let mut cmp = Compiler::new(mt);
+
+    let anf = analyze(&mut cmp, expr);
+    let cfg = cfg::Fn::from(&anf);
+    println!("{}", cfg.within(cmp.mt));
+    Gc::<Bytecode>::from_cfg(&mut cmp, &cfg)
 }
