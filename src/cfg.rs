@@ -372,7 +372,6 @@ impl From<&anf::Expr> for Fn {
 
                     current = emit_expr(env, f, current, cont, &**body);
 
-                    let nbs = bindings.len();
                     if popnnt {
                         if let Cont::Ret = cont {
                             /* ret/tailcall will take care of popping */
