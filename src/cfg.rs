@@ -1,6 +1,7 @@
 use std::fmt;
 use std::rc::Rc;
 use std::collections::hash_map::HashMap;
+use std::collections::hash_set::HashSet;
 
 use crate::oref::{WithinMt, DisplayWithin};
 use crate::handle::Handle;
@@ -91,6 +92,25 @@ impl Fn {
             Instr::Goto(succ) => Successors::new([*succ, 0], 1),
             _ => Successors::new([0, 0], 0)
         }
+    }
+
+    pub fn post_order(&self) -> Vec<Label> {
+        fn block_post_order(f: &Fn, label: Label, visited: &mut HashSet<Label>, post_order: &mut Vec<Label>) {
+            if !visited.contains(&label) {
+                visited.insert(label);
+
+                for succ in f.successors(label).rev() { // In reverse so that `brf` can fall through
+                    block_post_order(f, succ, visited, post_order);
+                }
+
+                post_order.push(label);
+            }
+        }
+
+        let mut post_order = Vec::new();
+        let mut visited = HashSet::new();
+        block_post_order(self, 0, &mut visited, &mut post_order);
+        post_order
     }
 
     pub fn fmt(&self, mt: &Mutator, fmt: &mut fmt::Formatter, indent: &str) -> fmt::Result {

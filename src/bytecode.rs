@@ -1,7 +1,6 @@
 use std::fmt;
 use std::mem::transmute;
 use std::collections::hash_map::HashMap;
-use std::collections::hash_set::HashSet;
 
 use crate::oref::{Reify, DisplayWithin, ORef, Gc};
 use crate::heap_obj::Indexed;
@@ -405,25 +404,6 @@ impl Gc<Bytecode> {
     pub fn from_cfg(cmp: &mut Compiler, f: &cfg::Fn) -> Gc<Bytecode> {
         use cfg::Instr::*;
 
-        fn cfg_po(f: &cfg::Fn) -> Vec<cfg::Label> {
-            fn block_po(f: &cfg::Fn, label: cfg::Label, visited: &mut HashSet<cfg::Label>, po: &mut Vec<cfg::Label>) {
-                if !visited.contains(&label) {
-                    visited.insert(label);
-
-                    for succ in f.successors(label).rev() { // In reverse so that `brf` can fall through
-                        block_po(f, succ, visited, po);
-                    }
-
-                    po.push(label);
-                }
-            }
-
-            let mut po = Vec::new();
-            let mut visited = HashSet::new();
-            block_po(f, 0, &mut visited, &mut po);
-            po
-        }
-
         fn emit_instr(cmp: &mut Compiler, builder: &mut Builder, instr: &cfg::Instr, rpo_next: Option<cfg::Label>) {
             match instr {
                 &Const(ref c) => builder.r#const(cmp.mt, **c),
@@ -459,7 +439,7 @@ impl Gc<Bytecode> {
         }
 
         fn emit_fn(cmp: &mut Compiler, f: &cfg::Fn) -> Gc<Bytecode> {
-            let po = cfg_po(f);
+            let po = f.post_order();
 
             let mut builder = Builder::new(f.arity);
 
