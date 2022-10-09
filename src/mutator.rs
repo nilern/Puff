@@ -72,6 +72,12 @@ impl Regs {
     fn extend(&mut self, vs: &[ORef]) { self.regs.extend(vs); }
 
     fn truncate(&mut self, n: usize) { self.regs.truncate(self.start + n); }
+
+    fn dump(&self, mt: &Mutator) {
+        print!("[");
+        for v in self.as_slice() { print!("{}, ", v.within(mt)); }
+        println!("]");
+    }
 }
 
 pub struct Mutator {
@@ -331,6 +337,8 @@ impl Mutator {
 
     pub fn popnnt(&mut self, n: usize) { self.regs.popnnt(n); }
 
+    pub fn dump_regs(&self) { self.regs.dump(self); }
+
     pub fn stack_len(&self) -> usize { self.stack.len() }
 
     pub fn push_frame(&mut self) {
@@ -357,6 +365,8 @@ impl Mutator {
     }
 
     pub fn pop_frame(&mut self) -> (usize, usize) {
+        self.regs.truncate(0);
+
         let ip = unsafe { isize::from(Fixnum::from_oref_unchecked(self.stack.pop().unwrap())) as usize };
         let frame_len = unsafe { isize::from(Fixnum::from_oref_unchecked(self.stack.pop().unwrap())) as usize };
 
