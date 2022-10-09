@@ -296,35 +296,33 @@ impl Mutator {
         unsafe { self.handles.root_t(obj) }
     }
 
-    pub fn invoke(&mut self) -> ORef {
-        macro_rules! tailcall {
-            ($argc: ident) => {
-                let callee = self.regs()[self.regs().len() - $argc];
-                if let Some(callee) = callee.try_cast::<Closure>(self) {
-                    // Pass arguments:
-                    self.regs.enter($argc);
+    fn tailcall(&mut self, argc: usize) {
+        let callee = self.regs()[self.regs().len() - argc];
+        if let Some(callee) = callee.try_cast::<Closure>(self) {
+            // Pass arguments:
+            self.regs.enter(argc);
 
-                    // Jump:
-                    unsafe { self.set_code(callee.as_ref().code); }
+            // Jump:
+            unsafe { self.set_code(callee.as_ref().code); }
 
-                    // TODO: Ensure register space, reclaim garbage regs prefix and extend regs if necessary
-                    // TODO: GC safepoint (only becomes necessary with multithreading)
+            // TODO: Ensure register space, reclaim garbage regs prefix and extend regs if necessary
+            // TODO: GC safepoint (only becomes necessary with multithreading)
 
-                    // Check arity:
-                    // TODO: Varargs
-                    if $argc != unsafe { self.code().as_ref().arity } {
-                        todo!()
-                    }
-                } else {
-                    todo!()
-                }
+            // Check arity:
+            // TODO: Varargs
+            if argc != unsafe { self.code().as_ref().arity } {
+                todo!()
             }
+        } else {
+            todo!()
         }
+    }
 
+    pub fn invoke(&mut self) -> ORef {
         {
             let argc = self.regs().len();
             assert!(argc > 0);
-            tailcall!(argc);
+            self.tailcall(argc);
         }
 
         loop {
@@ -424,13 +422,13 @@ impl Mutator {
                         self.stack.push(Fixnum::try_from(frame_len as isize).unwrap().into());
                         self.stack.push(Fixnum::try_from(self.pc as isize).unwrap().into());
 
-                        tailcall!(argc);
+                        self.tailcall(argc);
                     },
 
                     Opcode::TailCall => {
                         let argc = self.peek_oparg();
 
-                        tailcall!(argc);
+                        self.tailcall(argc);
                     },
 
                     Opcode::Ret =>
