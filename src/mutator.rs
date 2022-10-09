@@ -298,13 +298,13 @@ impl Mutator {
 
     pub fn stack_len(&self) -> usize { self.stack.len() }
 
-    pub fn push_frame(&mut self) {
-        let regs_len = self.regs().len();
+    pub fn push_frame(&mut self, argc: usize) {
+        let max_frame_len = self.regs().len() - argc;
         let mut frame_len = 0;
         let mut mask_len = 0;
         unsafe {
             for (reg, prune) in decode_prune_mask(&self.code().as_ref().instrs()[self.pc..]).enumerate() {
-                if !prune && reg < regs_len {
+                if !prune && reg < max_frame_len {
                     self.stack.push(self.regs.as_slice()[reg]);
                     frame_len += 1;
                 }

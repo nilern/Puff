@@ -236,11 +236,11 @@ impl DisplayWithin for Gc<()> {
             } else if let Some(_) = self.try_cast::<EmptyList>(mt) {
                 write!(fmt, "()")
             } else if let Some(_) = self.try_cast::<Closure>(mt) {
-                write!(fmt, "#<fn>")
+                write!(fmt, "#<fn @ {:p}>", self.0)
             } else if let Some(code) = self.try_cast::<Bytecode>(mt) {
                 write!(fmt, "{}", code.within(mt))
             } else {
-                write!(fmt, "#<object {:p}>", self.0)
+                write!(fmt, "#<object @ {:p}>", self.0)
             }
         }
     }

@@ -94,7 +94,7 @@ pub fn run(mt: &mut Mutator) -> ORef {
                 Opcode::Call => {
                     let argc = mt.next_oparg();
 
-                    mt.push_frame();
+                    mt.push_frame(argc);
                     tailcall!(argc);
                 },
 

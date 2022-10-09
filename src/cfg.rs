@@ -234,6 +234,22 @@ impl From<&anf::Expr> for Fn {
                 self.id_regs.insert(id, reg);
             }
 
+            fn pop(&mut self) {
+                if let Some(id) = self.reg_ids.pop().flatten() {
+                    self.id_regs.remove(&id);
+                }
+            }
+
+            fn popn(&mut self, n: usize) {
+                for oid in &self.reg_ids[(self.reg_ids.len() - n)..] {
+                    if let Some(id) = oid {
+                        self.id_regs.remove(id);
+                    }
+                }
+
+                self.reg_ids.truncate(self.reg_ids.len() - n);
+            }
+
             fn popnnt(&mut self, n: usize) {
                 let last_index = self.reg_ids.len() - 1;
                 for oid in &self.reg_ids[(last_index - n)..last_index] {
@@ -243,12 +259,6 @@ impl From<&anf::Expr> for Fn {
                 }
 
                 self.reg_ids.truncate(self.reg_ids.len() - n);
-            }
-
-            fn pop(&mut self) {
-                if let Some(id) = self.reg_ids.pop().flatten() {
-                    self.id_regs.remove(&id);
-                }
             }
 
             fn prune(&mut self, prunes: &[bool]) {
@@ -275,8 +285,9 @@ impl From<&anf::Expr> for Fn {
                 self.reg_ids.truncate(self.reg_ids.len() - nclovers);
             }
 
-            fn call(&mut self, prunes: &[bool]) {
+            fn call(&mut self, argc: usize, prunes: &[bool]) {
                 self.prune(prunes);
+                self.popn(argc + 1);
                 self.reg_ids.push(None);
             }
 
@@ -286,14 +297,13 @@ impl From<&anf::Expr> for Fn {
                     .unwrap()
             }
 
-            // OPTIMIZE: No need to encode (and eventually decode) callee and args pruning:
-            fn prune_mask(&self, live_outs: &anf::LiveVars) -> Vec<bool> {
-                let mut mask = vec![true; self.reg_ids.len()];
+            fn prune_mask(&self, argc: usize, live_outs: &anf::LiveVars) -> Vec<bool> {
+                let mut mask = vec![true; self.reg_ids.len() - argc - 1];
 
                 for id in live_outs {
-                    if let Some(&reg) = self.id_regs.get(id) {
-                        mask[reg] = false;
-                    }
+                    self.id_regs.get(id)
+                        .and_then(|&reg| mask.get_mut(reg))
+                        .map(|dest| *dest = false);
                 }
 
                 mask
@@ -470,8 +480,8 @@ impl From<&anf::Expr> for Fn {
                     if let Cont::Ret = cont {
                         f.block_mut(current).push(Instr::TailCall(args.len()));
                     } else {
-                        let prunes = env.prune_mask(live_outs);
-                        env.call(&prunes);
+                        let prunes = env.prune_mask(args.len(), live_outs);
+                        env.call(args.len(), &prunes);
                         f.block_mut(current).push(Instr::Call(args.len(), prunes));
 
                         goto(f, current, cont);
