@@ -13,6 +13,7 @@ mod closure;
 mod bytecode;
 mod anf;
 mod cfg;
+mod analyzer;
 mod compiler;
 mod vm;
 mod util;
