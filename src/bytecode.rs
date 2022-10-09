@@ -402,9 +402,9 @@ impl Builder {
 
 impl Gc<Bytecode> {
     pub fn from_cfg(cmp: &mut Compiler, f: &cfg::Fn) -> Gc<Bytecode> {
-        use cfg::Instr::*;
-
         fn emit_instr(cmp: &mut Compiler, builder: &mut Builder, instr: &cfg::Instr, rpo_next: Option<cfg::Label>) {
+            use cfg::Instr::*;
+
             match instr {
                 &Const(ref c) => builder.r#const(cmp.mt, **c),
                 &Local(reg) => builder.local(reg),
@@ -417,7 +417,7 @@ impl Gc<Bytecode> {
                 &Goto(dest) => if dest != rpo_next.unwrap() { builder.br(dest) },
 
                 &Code(ref code) => {
-                    let code = emit_fn(cmp, code).into();
+                    let code = Gc::<Bytecode>::from_cfg(cmp, code).into();
                     builder.r#const(cmp.mt, code);
                 },
                 &Closure(len) => builder.r#fn(len),
@@ -438,19 +438,15 @@ impl Gc<Bytecode> {
             }
         }
 
-        fn emit_fn(cmp: &mut Compiler, f: &cfg::Fn) -> Gc<Bytecode> {
-            let po = f.post_order();
+        let po = f.post_order();
 
-            let mut builder = Builder::new(f.arity);
+        let mut builder = Builder::new(f.arity);
 
-            let mut rpo = po.iter().rev().peekable();
-            while let Some(&label) = rpo.next() {
-                emit_block(cmp, &mut builder, f, label, rpo.peek().map(|&&label| label));
-            }
-
-            builder.build(cmp.mt)
+        let mut rpo = po.iter().rev().peekable();
+        while let Some(&label) = rpo.next() {
+            emit_block(cmp, &mut builder, f, label, rpo.peek().map(|&&label| label));
         }
 
-        emit_fn(cmp, f)
+        builder.build(cmp.mt)
     }
 }
