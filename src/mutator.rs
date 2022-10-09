@@ -10,7 +10,7 @@ use crate::heap_obj::{NonIndexed, Indexed, Header, min_size_of_indexed,
     align_of_indexed};
 use crate::handle::{Handle, HandleT, HandlePool};
 use crate::list::{EmptyList, Pair};
-use crate::bytecode::Bytecode;
+use crate::bytecode::{Opcode, Bytecode, decode_prune_mask};
 use crate::array::Array;
 use crate::closure::Closure;
 
@@ -84,6 +84,7 @@ pub struct Mutator {
 
     code: Option<Gc<Bytecode>>,
     consts: Option<Gc<Array<ORef>>>,
+    pc: usize,
     regs: Regs,
     stack: Vec<ORef>
 }
@@ -257,6 +258,7 @@ impl Mutator {
 
                 code: None,
                 consts: None,
+                pc: 0,
                 regs: Regs::new(),
                 stack: Vec::new()
             })
@@ -275,11 +277,49 @@ impl Mutator {
     pub fn set_code(&mut self, code: Gc<Bytecode>) {
         self.code = Some(code);
         unsafe { self.consts = Some(code.as_ref().consts); }
+        self.pc = 0;
     }
 
     pub unsafe fn code(&self) -> Gc<Bytecode> { self.code.unwrap() }
 
     pub unsafe fn consts(&self) -> Gc<Array<ORef>> { self.consts.unwrap() }
+
+    pub fn next_opcode(&mut self) -> Result<Opcode, ()> {
+        let op = Opcode::try_from(unsafe { self.code().as_ref().instrs()[self.pc] });
+        self.pc += 1;
+        op
+    }
+
+    pub fn peek_oparg(&self) -> usize { unsafe { self.code().as_ref().instrs()[self.pc] as usize } }
+
+    pub fn next_oparg(&mut self) -> usize {
+        let arg = self.peek_oparg();
+        self.pc += 1;
+        arg
+    }
+
+    pub fn prune(&mut self) {
+        let regs_len = self.regs().len();
+        let mut mask_len = 0;
+        let mut free_reg = 0;
+        unsafe {
+            for (reg, prune) in decode_prune_mask(&self.code().as_ref().instrs()[self.pc..]).enumerate() {
+                if !prune && reg < regs_len {
+                    self.regs_mut()[free_reg] = self.regs()[reg];
+                    free_reg += 1;
+                }
+
+                if reg % 7 == 0 {
+                    mask_len += 1;
+                }
+            }
+        }
+        self.truncate_regs(free_reg);
+
+        self.branch_relative(mask_len);
+    }
+
+    pub fn branch_relative(&mut self, distance: usize) { self.pc += distance; }
 
     pub fn regs(&self) -> &[ORef] { self.regs.as_slice() }
 
@@ -297,13 +337,27 @@ impl Mutator {
 
     pub fn stack_len(&self) -> usize { self.stack.len() }
 
-    pub fn save(&mut self, reg: usize) {
-        self.stack.push(self.regs.as_slice()[reg]);
-    }
+    pub fn push_frame(&mut self) {
+        let regs_len = self.regs().len();
+        let mut frame_len = 0;
+        let mut mask_len = 0;
+        unsafe {
+            for (reg, prune) in decode_prune_mask(&self.code().as_ref().instrs()[self.pc..]).enumerate() {
+                if !prune && reg < regs_len {
+                    self.stack.push(self.regs.as_slice()[reg]);
+                    frame_len += 1;
+                }
 
-    pub fn finish_frame(&mut self, len: usize, ip: usize) {
-        self.stack.push(Fixnum::try_from(len as isize).unwrap().into());
-        self.stack.push(Fixnum::try_from(ip as isize).unwrap().into());
+                if reg % 7 == 0 {
+                    mask_len += 1;
+                }
+            }
+        }
+
+        self.branch_relative(mask_len);
+
+        self.stack.push(Fixnum::try_from(frame_len as isize).unwrap().into());
+        self.stack.push(Fixnum::try_from(self.pc as isize).unwrap().into());
     }
 
     pub fn pop_frame(&mut self) -> (usize, usize) {

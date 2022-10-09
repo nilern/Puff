@@ -1,12 +1,10 @@
 use crate::mutator::Mutator;
-use crate::bytecode::{Opcode, decode_prune_mask};
+use crate::bytecode::Opcode;
 use crate::oref::ORef;
 use crate::heap_obj::Indexed;
 use crate::closure::Closure;
 
 pub fn run(mt: &mut Mutator) -> ORef {
-    let mut ip = 0;
-
     macro_rules! tailcall {
         ($argc: ident) => {
             let callee = mt.regs()[mt.regs().len() - $argc];
@@ -16,7 +14,6 @@ pub fn run(mt: &mut Mutator) -> ORef {
 
                 // Jump:
                 unsafe { mt.set_code(callee.as_ref().code); }
-                ip = 0;
 
                 // TODO: Ensure register space, reclaim garbage regs prefix and extend regs if necessary
                 // TODO: GC safepoint (only becomes necessary with multithreading)
@@ -39,14 +36,10 @@ pub fn run(mt: &mut Mutator) -> ORef {
     }
 
     loop {
-        let op = unsafe { mt.code().as_ref().instrs()[ip] };
-        if let Ok(op) = Opcode::try_from(op) {
-            ip += 1;
-
+        if let Ok(op) = mt.next_opcode() {
             match op {
                 Opcode::Const => {
-                    let i = unsafe { mt.code().as_ref().instrs()[ip] } as usize;
-                    ip += 1;
+                    let i = mt.next_oparg();
 
                     unsafe {
                         let c = mt.consts().as_ref().indexed_field()[i];
@@ -55,66 +48,43 @@ pub fn run(mt: &mut Mutator) -> ORef {
                 },
 
                 Opcode::Local => {
-                    let i = unsafe { mt.code().as_ref().instrs()[ip] } as usize;
-                    ip += 1;
+                    let i = mt.next_oparg();
 
                     mt.push(mt.regs()[i]);
                 },
 
                 Opcode::Clover => {
-                    let i = unsafe { mt.code().as_ref().instrs()[ip] } as usize;
-                    ip += 1;
+                    let i = mt.next_oparg();
 
                     mt.push(unsafe { mt.regs()[0].unchecked_cast::<Closure>().as_ref().clovers()[i] });
                 },
 
                 Opcode::PopNNT => {
-                    let n = unsafe { mt.code().as_ref().instrs()[ip] };
-                    ip += 1;
+                    let n = mt.next_oparg();
 
                     mt.popnnt(n as usize);
                 },
 
-                Opcode::Prune => {
-                    let regs_len = mt.regs().len();
-                    let mut mask_len = 0;
-                    let mut free_reg = 0;
-                    unsafe {
-                        for (reg, prune) in decode_prune_mask(&mt.code().as_ref().instrs()[ip..]).enumerate() {
-                            if !prune && reg < regs_len {
-                                mt.regs_mut()[free_reg] = mt.regs()[reg];
-                                free_reg += 1;
-                            }
-
-                            if reg % 7 == 0 {
-                                mask_len += 1;
-                            }
-                        }
-                    }
-                    mt.truncate_regs(free_reg);
-
-                    ip += mask_len;
-                },
+                Opcode::Prune => mt.prune(),
 
                 Opcode::Brf => {
-                    let d = unsafe { mt.code().as_ref().instrs()[ip] } as usize;
+                    let d = mt.peek_oparg();
                     
                     if mt.pop().is_truthy(mt) {
-                        ip += 1;
+                        mt.branch_relative(1);
                     } else {
-                        ip += d;
+                        mt.branch_relative(d);
                     }
                 },
 
                 Opcode::Br => {
-                    let d = unsafe { mt.code().as_ref().instrs()[ip] } as usize;
+                    let d = mt.peek_oparg();
                     
-                    ip += d;
+                    mt.branch_relative(d);
                 },
 
                 Opcode::Fn => {
-                    let len = unsafe { mt.code().as_ref().instrs()[ip] } as usize;
-                    ip += 1;
+                    let len = mt.next_oparg();
 
                     let closure = Closure::new(mt, len);
                     mt.push(closure.into());
@@ -122,32 +92,14 @@ pub fn run(mt: &mut Mutator) -> ORef {
                 },
 
                 Opcode::Call => {
-                    let argc = unsafe { mt.code().as_ref().instrs()[ip] } as usize;
-                    ip += 1;
+                    let argc = mt.next_oparg();
 
-                    // Push stack frame:
-                    let regs_len = mt.regs().len();
-                    let mut frame_len = 0;
-                    let mut mask_len = 0;
-                    unsafe {
-                        for (reg, prune) in decode_prune_mask(&mt.code().as_ref().instrs()[ip..]).enumerate() {
-                            if !prune && reg < regs_len {
-                                mt.save(reg);
-                                frame_len += 1;
-                            }
-
-                            if reg % 7 == 0 {
-                                mask_len += 1;
-                            }
-                        }
-                    }
-                    mt.finish_frame(frame_len, ip + mask_len);
-
+                    mt.push_frame();
                     tailcall!(argc);
                 },
 
                 Opcode::TailCall => {
-                    let argc = unsafe { mt.code().as_ref().instrs()[ip] } as usize;
+                    let argc = mt.peek_oparg();
 
                     tailcall!(argc);
                 },
@@ -168,7 +120,7 @@ pub fn run(mt: &mut Mutator) -> ORef {
                         if let Some(f) = f.try_cast::<Closure>(mt) {
                             // Jump back:
                             unsafe { mt.set_code(f.as_ref().code); }
-                            ip = rip;
+                            mt.branch_relative(rip);
                         } else {
                             todo!()
                         }
