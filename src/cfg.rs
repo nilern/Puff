@@ -9,7 +9,16 @@ use crate::mutator::Mutator;
 use crate::anf;
 use crate::compiler::Id;
 
-pub type Label = usize;
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Label(usize);
+
+impl Label {
+    const ENTRY: Self = Label(0);
+}
+
+impl fmt::Display for Label {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result { self.0.fmt(fmt) }
+}
 
 pub enum Instr {
     Const(Handle),
@@ -76,22 +85,26 @@ impl DisplayWithin for &Fn {
 impl Fn {
     pub fn new(arity: usize) -> Self { Fn { arity, blocks: Vec::new() } }
 
+    pub fn block(&self, i: Label) -> &Block { &self.blocks[i.0] }
+
+    fn block_mut(&mut self, i: Label) -> &mut Block { &mut self.blocks[i.0] }
+
     pub fn create_block(&mut self) -> Label {
-        let label = self.blocks.len();
+        let label = Label(self.blocks.len());
         self.blocks.push(Vec::new());
         label
     }
 
     pub fn insert_prune(&mut self, label: Label, prunes: Vec<bool>) {
-        let block = &mut self.blocks[label];
+        let block = self.block_mut(label);
         block.insert(block.len() - 1, Instr::Prune(prunes));
     }
 
     pub fn successors(&self, label: Label) -> Successors {
-        match self.blocks[label].last().unwrap() {
-            Instr::If(conseq, alt) => Successors::new([*conseq, *alt], 2),
-            Instr::Goto(succ) => Successors::new([*succ, 0], 1),
-            _ => Successors::new([0, 0], 0)
+        match self.block(label).last().unwrap() {
+            &Instr::If(conseq, alt) => Successors::new([conseq, alt], 2),
+            &Instr::Goto(succ) => Successors::new([succ, Label::ENTRY], 1),
+            _ => Successors::new([Label::ENTRY, Label::ENTRY], 0)
         }
     }
 
@@ -110,7 +123,7 @@ impl Fn {
 
         let mut post_order = Vec::new();
         let mut visited = HashSet::new();
-        block_post_order(self, 0, &mut visited, &mut post_order);
+        block_post_order(self, Label::ENTRY, &mut visited, &mut post_order);
         post_order
     }
 
@@ -362,21 +375,21 @@ impl From<&anf::Expr> for Fn {
             match cont {
                 Cont::Next => (),
 
-                Cont::Label(dest) => f.blocks[current].push(Instr::Goto(dest)),
+                Cont::Label(dest) => f.block_mut(current).push(Instr::Goto(dest)),
 
-                Cont::Ret => f.blocks[current].push(Instr::Ret)
+                Cont::Ret => f.block_mut(current).push(Instr::Ret)
             }
         }
 
         fn emit_use(env: &mut Env, f: &mut Fn, current: Label, r#use: Id) {
             match env.get(r#use) {
                 Loc::Reg(reg) => {
-                    f.blocks[current].push(Instr::Local(reg));
+                    f.block_mut(current).push(Instr::Local(reg));
                     env.push();
                 },
 
                 Loc::Clover(i) => {
-                    f.blocks[current].push(Instr::Clover(i));
+                    f.block_mut(current).push(Instr::Clover(i));
                     env.push();
                 }
             }
@@ -399,7 +412,7 @@ impl From<&anf::Expr> for Fn {
                         } else {
                             let nbs = bindings.len();
                             if nbs > 0 {
-                                f.blocks[current].push(Instr::PopNNT(nbs));
+                                f.block_mut(current).push(Instr::PopNNT(nbs));
                                 env.popnnt(nbs);
                             }
                         }
@@ -414,7 +427,7 @@ impl From<&anf::Expr> for Fn {
                     let join = if let Cont::Next = cont { Cont::Label(f.create_block()) } else { cont };
 
                     current = emit_expr(env, f, current, Cont::Next, cond);
-                    f.blocks[current].push(Instr::If(conseq_label, alt_label));
+                    f.block_mut(current).push(Instr::If(conseq_label, alt_label));
                     env.pop();
 
                     let mut alt_env = env.clone();
@@ -438,7 +451,7 @@ impl From<&anf::Expr> for Fn {
                     let fvs = fvs.iter().map(|&id| id).collect::<Vec<Id>>();
 
                     let code = emit_fn(&fvs, params, body);
-                    f.blocks[current].push(Instr::Code(code));
+                    f.block_mut(current).push(Instr::Code(code));
                     env.push();
 
                     for &fv in fvs.iter() {
@@ -446,7 +459,7 @@ impl From<&anf::Expr> for Fn {
                         env.push();
                     }
 
-                    f.blocks[current].push(Instr::Closure(fvs.len()));
+                    f.block_mut(current).push(Instr::Closure(fvs.len()));
                     env.closure(fvs.len());
 
                     goto(f, current, cont);
@@ -458,11 +471,11 @@ impl From<&anf::Expr> for Fn {
                     // Due to `anf::Expr` construction in `analyze`, code for callee and args already emitted.
 
                     if let Cont::Ret = cont {
-                        f.blocks[current].push(Instr::TailCall(args.len()));
+                        f.block_mut(current).push(Instr::TailCall(args.len()));
                     } else {
                         let prunes = env.prune_mask(live_outs);
                         env.call(&prunes);
-                        f.blocks[current].push(Instr::Call(args.len(), prunes));
+                        f.block_mut(current).push(Instr::Call(args.len(), prunes));
 
                         goto(f, current, cont);
                     }
@@ -479,7 +492,7 @@ impl From<&anf::Expr> for Fn {
                 },
 
                 anf::Expr::Triv(anf::Triv::Const(ref c)) => {
-                    f.blocks[current].push(Instr::Const(c.clone()));
+                    f.block_mut(current).push(Instr::Const(c.clone()));
                     env.push();
 
                     goto(f, current, cont);

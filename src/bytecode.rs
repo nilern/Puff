@@ -296,8 +296,8 @@ pub struct Builder {
     arity: usize,
     consts: Vec<Handle>,
     instrs: Vec<u8>,
-    label_indices: HashMap<usize, usize>,
-    br_dests: HashMap<usize, usize>
+    label_indices: HashMap<cfg::Label, usize>,
+    br_dests: HashMap<usize, cfg::Label>
 }
 
 impl Builder {
@@ -345,17 +345,17 @@ impl Builder {
         encode_prune_mask(&mut self.instrs, prunes);
     }
 
-    pub fn label(&mut self, label: usize) {
+    pub fn label(&mut self, label: cfg::Label) {
         self.label_indices.insert(label, self.instrs.len());
     }
 
-    pub fn brf(&mut self, label: usize) {
+    pub fn brf(&mut self, label: cfg::Label) {
         self.instrs.push(Opcode::Brf as u8);
         self.br_dests.insert(self.instrs.len(), label);
         self.instrs.push(0);
     }
 
-    pub fn br(&mut self, label: usize) {
+    pub fn br(&mut self, label: cfg::Label) {
         self.instrs.push(Opcode::Br as u8);
         self.br_dests.insert(self.instrs.len(), label);
         self.instrs.push(0);
@@ -394,8 +394,10 @@ impl Builder {
     pub fn build(mut self, mt: &mut Mutator) -> Gc<Bytecode> {
         self.backpatch();
 
-        let consts = Array::<ORef>::from_handles(mt, &self.consts);
-        let consts = mt.root_t(consts);
+        let consts = {
+            let consts = Array::<ORef>::from_handles(mt, &self.consts);
+            mt.root_t(consts)
+        };
         Bytecode::new(mt, self.arity, consts, &self.instrs)
     }
 }
@@ -433,7 +435,7 @@ impl Gc<Bytecode> {
         ) {
             builder.label(label);
 
-            for instr in f.blocks[label].iter() {
+            for instr in f.block(label).iter() {
                 emit_instr(cmp, builder, instr, rpo_next);
             }
         }
