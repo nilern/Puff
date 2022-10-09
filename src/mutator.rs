@@ -69,6 +69,8 @@ impl Regs {
         self.regs[new_len - 1] = top;
     }
 
+    fn extend(&mut self, vs: &[ORef]) { self.regs.extend(vs); }
+
     fn truncate(&mut self, n: usize) { self.regs.truncate(self.start + n); }
 }
 
@@ -309,9 +311,7 @@ impl Mutator {
         let frame_len = unsafe { isize::from(Fixnum::from_oref_unchecked(self.stack.pop().unwrap())) as usize };
 
         let start = self.stack.len() - frame_len;
-        for &v in &self.stack[start..] {
-            self.regs.push(v);
-        }
+        self.regs.extend(&self.stack[start..]);
         self.stack.truncate(start);
 
         (frame_len, ip)
