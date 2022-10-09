@@ -305,7 +305,7 @@ impl Mutator {
         unsafe {
             for (reg, prune) in decode_prune_mask(&self.code().as_ref().instrs()[self.pc..]).enumerate() {
                 if !prune && reg < regs_len {
-                    self.regs_mut()[free_reg] = self.regs()[reg];
+                    self.regs.as_mut_slice()[free_reg] = self.regs.as_slice()[reg];
                     free_reg += 1;
                 }
 
@@ -314,7 +314,7 @@ impl Mutator {
                 }
             }
         }
-        self.truncate_regs(free_reg);
+        self.regs.truncate(free_reg);
 
         self.branch_relative(mask_len);
     }
@@ -322,10 +322,6 @@ impl Mutator {
     pub fn branch_relative(&mut self, distance: usize) { self.pc += distance; }
 
     pub fn regs(&self) -> &[ORef] { self.regs.as_slice() }
-
-    pub fn regs_mut(&mut self) -> &mut [ORef] { self.regs.as_mut_slice() }
-
-    pub fn truncate_regs(&mut self, len: usize) { self.regs.truncate(len) }
 
     pub fn regs_enter(&mut self, len: usize) { self.regs.enter(len); }
 
