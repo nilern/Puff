@@ -13,6 +13,7 @@ use crate::list::{EmptyList, Pair};
 use crate::bytecode::{Opcode, Bytecode, decode_prune_mask};
 use crate::array::Array;
 use crate::closure::Closure;
+use crate::regs::Regs;
 
 const USIZE_TYPE_SIZE: usize = min_size_of_indexed::<Type>();
 
@@ -34,50 +35,6 @@ pub struct Types {
 
 pub struct Singletons {
     pub empty_list: Gc<EmptyList>
-}
-
-struct Regs {
-    regs: Vec<ORef>,
-    start: usize
-}
-
-impl Regs {
-    fn new() -> Self {
-        Self {
-            regs: Vec::new(),
-            start: 0
-        }
-    }
-
-    fn as_slice(&self) -> &[ORef] { &self.regs[self.start..] }
-
-    fn as_mut_slice(&mut self) -> &mut [ORef] { &mut self.regs[self.start..] }
-
-    fn pop(&mut self) -> Option<ORef> { self.regs.pop() }
-
-    fn push(&mut self, v: ORef) { self.regs.push(v) }
-
-    fn enter(&mut self, new_len: usize) {
-        self.start = self.regs.len() - new_len;
-    }
-
-    fn popnnt(&mut self, n: usize) {
-        let len = self.regs.len();
-        let top = self.regs[len - 1];
-        let new_len = len - n as usize;
-        self.regs.truncate(new_len);
-        self.regs[new_len - 1] = top;
-    }
-
-    fn extend(&mut self, vs: &[ORef]) { self.regs.extend(vs); }
-
-    fn truncate(&mut self, n: usize) { self.regs.truncate(self.start + n); }
-
-    fn dump(&self, mt: &Mutator) {
-        print!("[");
-        for v in self.as_slice() { print!("{}, ", v.within(mt)); }
-        println!("]");
-    }
 }
 
 pub struct Mutator {
