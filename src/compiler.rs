@@ -8,7 +8,7 @@ use crate::symbol::Symbol;
 use crate::cfg;
 use crate::analyzer::analyze;
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Id(usize);
 
 impl Id {

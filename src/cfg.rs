@@ -303,8 +303,9 @@ impl From<&anf::Expr> for Fn {
                 let mut lmask = Vec::new();
                 let mut rmask = Vec::new();
 
-                let mut loids = l.reg_ids.iter();
-                let mut roids = r.reg_ids.iter();
+                // Must not prune top, it is the `if` result:
+                let mut loids = l.reg_ids[..(l.reg_ids.len() - 1)].iter().rev();
+                let mut roids = r.reg_ids[..(r.reg_ids.len() - 1)].iter().rev();
                 loop {
                     match loids.next() {
                         Some(Some(lid)) if live_outs.contains(lid) =>
@@ -353,12 +354,8 @@ impl From<&anf::Expr> for Fn {
                     }
                 }
 
-                for _ in loids { lmask.push(false); }
-                for _ in roids { rmask.push(false); }
-
-                // Must not prune top, it is the `if` result:
-                if let Some(top) = lmask.last_mut() { *top = false; }
-                if let Some(top) = rmask.last_mut() { *top = false; }
+                lmask.reverse();
+                rmask.reverse();
 
                 (lmask, rmask)
             }
