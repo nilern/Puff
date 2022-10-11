@@ -38,15 +38,15 @@ impl Regs {
         }
     }
 
-    fn capacity(&self) -> usize { (self.end as usize - self.start as usize) / size_of::<ORef>() }
-
     fn len(&self) -> usize { (self.top as usize - self.base as usize) / size_of::<ORef>() }
 
     pub fn ensure(&mut self, required: usize) {
-        if (self.end as usize - self.base as usize) < required * size_of::<ORef>() {
+        let required_bytes = required * size_of::<ORef>();
+        
+        if (self.end as usize - self.base as usize) < required_bytes {
             let len = self.len();
 
-            if self.capacity() >= required {
+            if (self.end as usize - self.start as usize) >= required_bytes {
                 unsafe {
                     self.base.copy_to(self.start, len);
 
@@ -55,7 +55,7 @@ impl Regs {
                 }
             } else {
                 unsafe {
-                    let start = alloc(Layout::from_size_align_unchecked(required * size_of::<ORef>(), Self::ALIGN))
+                    let start = alloc(Layout::from_size_align_unchecked(required_bytes, Self::ALIGN))
                         as *mut ORef;
                     self.base.copy_to_nonoverlapping(start, len);
 
