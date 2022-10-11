@@ -42,7 +42,7 @@ impl Regs {
 
     fn len(&self) -> usize { (self.top as usize - self.base as usize) / size_of::<ORef>() }
 
-    fn reserve(&mut self, additional: usize) {
+    pub fn reserve(&mut self, additional: usize) {
         if (self.end as usize - self.top as usize) < additional * size_of::<ORef>() {
             let len = self.len();
             let required = len + additional;
@@ -98,12 +98,15 @@ impl Regs {
         }
     }
 
+    pub unsafe fn push_unchecked(&mut self, v: ORef) {
+        debug_assert!(self.top < self.end);
+        self.top.write(v);
+        self.top = self.top.add(1);
+    }
+
     pub fn push(&mut self, v: ORef) {
         self.reserve(1);
-        unsafe {
-            self.top.write(v);
-            self.top = self.top.add(1);
-        }
+        unsafe { self.push_unchecked(v); }
     }
 
     pub fn extend(&mut self, vs: &[ORef]) {

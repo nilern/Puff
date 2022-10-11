@@ -180,7 +180,8 @@ impl Mutator {
             });
             bytecode.as_type().as_mut().indexed_field_mut().copy_from_slice(&[
                 Field { r#type: usize_type.as_type(), offset: 0 },
-                Field { r#type: array_of_any.as_type(), offset: size_of::<usize>() },
+                Field { r#type: usize_type.as_type(), offset: size_of::<usize>() },
+                Field { r#type: array_of_any.as_type(), offset: 2 * size_of::<usize>() },
                 Field {
                     r#type: u8_type.as_type(),
                     offset: min_size_of_indexed::<Bytecode>()
@@ -299,13 +300,17 @@ impl Mutator {
     fn tailcall(&mut self, argc: usize) {
         let callee = self.regs()[self.regs().len() - argc];
         if let Some(callee) = callee.try_cast::<Closure>(self) {
+            let code = unsafe { callee.as_ref().code };
+
             // Pass arguments:
             self.regs.enter(argc);
 
             // Jump:
-            unsafe { self.set_code(callee.as_ref().code); }
+            unsafe { self.set_code(code); }
 
-            // TODO: Ensure register space, reclaim garbage regs prefix and extend regs if necessary
+            // Ensure register space, reclaim garbage regs prefix and extend regs if necessary:
+            self.regs.reserve(unsafe { code.as_ref().max_locals });
+
             // TODO: GC safepoint (only becomes necessary with multithreading)
 
             // Check arity:
@@ -331,19 +336,21 @@ impl Mutator {
                     Opcode::Const => {
                         let i = self.next_oparg();
 
-                        self.regs.push(unsafe {self.consts().as_ref().indexed_field()[i]});
+                        unsafe { self.regs.push_unchecked(self.consts().as_ref().indexed_field()[i]); }
                     },
 
                     Opcode::Local => {
                         let i = self.next_oparg();
 
-                        self.regs.push(self.regs()[i]);
+                        unsafe { self.regs.push_unchecked(self.regs()[i]); }
                     },
 
                     Opcode::Clover => {
                         let i = self.next_oparg();
 
-                        self.regs.push(unsafe { self.regs()[0].unchecked_cast::<Closure>().as_ref().clovers()[i] });
+                        unsafe {
+                            self.regs.push_unchecked(self.regs()[0].unchecked_cast::<Closure>().as_ref().clovers()[i]);
+                        }
                     },
 
                     Opcode::PopNNT => {
@@ -394,7 +401,7 @@ impl Mutator {
 
                         let closure = Closure::new(self, len);
                         self.regs.popn(len + 1);
-                        self.regs.push(closure.into());
+                        unsafe { self.regs.push_unchecked(closure.into()); }
                     },
 
                     Opcode::Call => {
@@ -433,8 +440,6 @@ impl Mutator {
 
                     Opcode::Ret =>
                         if self.stack.len() > 0 {
-                            // TODO: Ensure register space, reclaim garbage regs prefix and extend regs if necessary
-
                             let v = self.regs.pop().unwrap();
 
                             // Restore registers:
@@ -455,9 +460,14 @@ impl Mutator {
 
                             let f = self.regs()[self.regs().len() - frame_len - 1];
                             if let Some(f) = f.try_cast::<Closure>(self) {
+                                let code = unsafe { f.as_ref().code };
+
                                 // Jump back:
-                                unsafe { self.set_code(f.as_ref().code); }
+                                self.set_code(code);
                                 self.pc = rip;
+
+                                // Ensure register space, reclaim garbage regs prefix and extend regs if necessary:
+                                self.regs.reserve(unsafe { code.as_ref().max_locals });
                             } else {
                                 todo!()
                             }

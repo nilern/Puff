@@ -113,6 +113,7 @@ impl<'a> Iterator for Prunes<'a> {
 #[repr(C)]
 pub struct Bytecode {
     pub arity: usize,
+    pub max_locals: usize,
     pub consts: Gc<Array<ORef>>
 }
 
@@ -135,9 +136,9 @@ impl DisplayWithin for Gc<Bytecode> {
 }
 
 impl Bytecode {
-    pub const TYPE_LEN: usize = 3;
+    pub const TYPE_LEN: usize = 4;
 
-    pub fn new(mt: &mut Mutator, arity: usize, consts: HandleT<Array<ORef>>, instrs: &[u8])
+    pub fn new(mt: &mut Mutator, arity: usize, max_locals: usize, consts: HandleT<Array<ORef>>, instrs: &[u8])
         -> Gc<Self>
     {
         unsafe {
@@ -147,6 +148,7 @@ impl Bytecode {
 
                 nptr.as_ptr().write(Bytecode {
                     arity,
+                    max_locals,
                     consts: *consts
                 });
                 nptr.as_mut().indexed_field_mut().copy_from_slice(instrs);
@@ -294,6 +296,7 @@ impl Bytecode {
 
 pub struct Builder {
     arity: usize,
+    max_locals: usize,
     consts: Vec<Handle>,
     instrs: Vec<u8>,
     label_indices: HashMap<cfg::Label, usize>,
@@ -301,9 +304,10 @@ pub struct Builder {
 }
 
 impl Builder {
-    pub fn new(arity: usize) -> Self {
+    pub fn new(arity: usize, max_locals: usize) -> Self {
         Self {
             arity,
+            max_locals,
             consts: Vec::new(),
             instrs: Vec::new(),
             label_indices: HashMap::new(),
@@ -398,7 +402,7 @@ impl Builder {
             let consts = Array::<ORef>::from_handles(mt, &self.consts);
             mt.root_t(consts)
         };
-        Bytecode::new(mt, self.arity, consts, &self.instrs)
+        Bytecode::new(mt, self.arity, self.max_locals, consts, &self.instrs)
     }
 }
 
@@ -442,7 +446,7 @@ impl Gc<Bytecode> {
 
         let po = f.post_order();
 
-        let mut builder = Builder::new(f.arity);
+        let mut builder = Builder::new(f.arity, f.max_locals);
 
         let mut rpo = po.iter().rev().peekable();
         while let Some(&label) = rpo.next() {

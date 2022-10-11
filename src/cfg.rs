@@ -75,6 +75,7 @@ pub type Block = Vec<Instr>;
 
 pub struct Fn {
     pub arity: usize,
+    pub max_locals: usize,
     pub blocks: Vec<Block>
 }
 
@@ -83,7 +84,7 @@ impl DisplayWithin for &Fn {
 }
 
 impl Fn {
-    pub fn new(arity: usize) -> Self { Fn { arity, blocks: Vec::new() } }
+    pub fn new(arity: usize, max_locals: usize) -> Self { Fn { arity, max_locals, blocks: Vec::new() } }
 
     pub fn block(&self, i: Label) -> &Block { &self.blocks[i.0] }
 
@@ -199,7 +200,8 @@ impl From<&anf::Expr> for Fn {
         struct Env {
             clovers: Rc<HashMap<Id, usize>>,
             reg_ids: Vec<Option<Id>>,
-            id_regs: HashMap<Id, usize>
+            id_regs: HashMap<Id, usize>,
+            max_regs: usize
         }
 
         impl Env {
@@ -219,12 +221,14 @@ impl From<&anf::Expr> for Fn {
                 Self {
                     clovers: Rc::new(clovers),
                     reg_ids,
-                    id_regs
+                    id_regs,
+                    max_regs: param_ids.len()
                 }
             }
 
             fn push(&mut self) {
                 self.reg_ids.push(None);
+                self.max_regs = self.max_regs.max(self.reg_ids.len());
             }
 
             fn name_top(&mut self, id: Id) {
@@ -510,9 +514,11 @@ impl From<&anf::Expr> for Fn {
         }
 
         fn emit_fn(clovers: &[Id], params: &[Id], body: &anf::Expr) -> Fn {
-            let mut f = Fn::new(params.len());
+            let mut env = Env::new(clovers, params);
+            let mut f = Fn::new(params.len(), 0);
             let current = f.create_block();
-            let _ = emit_expr(&mut Env::new(clovers, params), &mut f, current, Cont::Ret, body);
+            let _ = emit_expr(&mut env, &mut f, current, Cont::Ret, body);
+            f.max_locals = env.max_regs - params.len();
             f
         }
 
