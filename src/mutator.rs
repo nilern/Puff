@@ -222,7 +222,7 @@ impl Mutator {
                 code: None,
                 consts: None,
                 pc: 0,
-                regs: Regs::new(),
+                regs: Regs::with_capacity((1 << 20 /* 1 MiB */) / size_of::<ORef>()),
                 stack: Vec::new()
             })
         }
