@@ -262,7 +262,7 @@ impl Mutator {
         arg
     }
 
-    pub fn regs(&self) -> &[ORef] { self.regs.as_slice() }
+    pub fn regs(&self) -> &Regs { &self.regs }
 
     pub fn push(&mut self, v: ORef) { self.regs.push(v); }
 
@@ -298,7 +298,7 @@ impl Mutator {
     }
 
     fn tailcall(&mut self, argc: usize) {
-        let callee = self.regs()[self.regs().len() - argc];
+        let callee = self.regs[self.regs.len() - argc];
         if let Some(callee) = callee.try_cast::<Closure>(self) {
             let code = unsafe { callee.as_ref().code };
 
@@ -325,7 +325,7 @@ impl Mutator {
 
     pub fn invoke(&mut self) -> ORef {
         {
-            let argc = self.regs().len();
+            let argc = self.regs.len();
             assert!(argc > 0);
             self.tailcall(argc);
         }
@@ -342,14 +342,14 @@ impl Mutator {
                     Opcode::Local => {
                         let i = self.next_oparg();
 
-                        unsafe { self.regs.push_unchecked(self.regs()[i]); }
+                        unsafe { self.regs.push_unchecked(self.regs[i]); }
                     },
 
                     Opcode::Clover => {
                         let i = self.next_oparg();
 
                         unsafe {
-                            self.regs.push_unchecked(self.regs()[0].unchecked_cast::<Closure>().as_ref().clovers()[i]);
+                            self.regs.push_unchecked(self.regs[0].unchecked_cast::<Closure>().as_ref().clovers()[i]);
                         }
                     },
 
@@ -360,14 +360,14 @@ impl Mutator {
                     },
 
                     Opcode::Prune => {
-                        let regs_len = self.regs().len();
+                        let regs_len = self.regs.len();
                         let mut mask_len = 0;
                         let mut free_reg = 0;
                         unsafe {
                             for (reg, prune) in decode_prune_mask(&self.code().as_ref().instrs()[self.pc..]).enumerate()
                             {
                                 if !prune && reg < regs_len {
-                                    self.regs.as_mut_slice()[free_reg] = self.regs.as_slice()[reg];
+                                    self.regs[free_reg] = self.regs[reg];
                                     free_reg += 1;
                                 }
 
@@ -407,14 +407,14 @@ impl Mutator {
                     Opcode::Call => {
                         let argc = self.next_oparg();
 
-                        let max_frame_len = self.regs().len() - argc;
+                        let max_frame_len = self.regs.len() - argc;
                         let mut frame_len = 0;
                         let mut mask_len = 0;
                         unsafe {
                             for (reg, prune) in decode_prune_mask(&self.code().as_ref().instrs()[self.pc..]).enumerate()
                             {
                                 if !prune && reg < max_frame_len {
-                                    self.stack.push(self.regs.as_slice()[reg]);
+                                    self.stack.push(self.regs[reg]);
                                     frame_len += 1;
                                 }
 
@@ -458,7 +458,7 @@ impl Mutator {
                             // Push return value:
                             self.regs.push(v);
 
-                            let f = self.regs()[self.regs().len() - frame_len - 1];
+                            let f = self.regs[self.regs.len() - frame_len - 1];
                             if let Some(f) = f.try_cast::<Closure>(self) {
                                 let code = unsafe { f.as_ref().code };
 
@@ -472,7 +472,7 @@ impl Mutator {
                                 todo!()
                             }
                         } else {
-                            let res = self.regs()[self.regs().len() - 1];
+                            let res = self.regs[self.regs.len() - 1];
                             self.regs.enter(0);
                             return res;
                         }

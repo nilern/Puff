@@ -36,7 +36,7 @@ impl Closure {
                 let code_reg = regs.len().checked_sub(len + 1).unwrap();
                 nptr.as_ptr().write(Closure {code: regs[code_reg].unchecked_cast()});
                 let mut v = nptr.as_mut().indexed_field_ptr_mut();
-                for clover in &regs[(code_reg + 1)..] {
+                for clover in &regs.as_slice()[(code_reg + 1)..] {
                     v.write(*clover);
                     v = v.add(1);
                 }

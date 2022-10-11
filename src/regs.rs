@@ -1,6 +1,7 @@
-use std::mem::{size_of, align_of};
+use std::mem::{size_of, align_of, transmute};
 use std::alloc::{Layout, alloc, dealloc};
 use std::slice;
+use std::ops::{Index, IndexMut};
 
 use crate::mutator::Mutator;
 use crate::oref::ORef;
@@ -23,6 +24,20 @@ impl Drop for Regs {
     }
 }
 
+impl Index<usize> for Regs {
+    type Output = ORef;
+
+    fn index<'a>(&'a self, index: usize) -> &'a Self::Output {
+        unsafe { transmute::<*mut ORef, &'a ORef>(self.base.add(index)) }
+    }
+}
+
+impl IndexMut<usize> for Regs {
+    fn index_mut<'a>(&'a mut self, index: usize) -> &'a mut Self::Output {
+        unsafe { transmute::<*mut ORef, &'a mut ORef>(self.base.add(index)) }
+    }
+}
+
 impl Regs {
     const ALIGN: usize = align_of::<ORef>();
 
@@ -38,11 +53,11 @@ impl Regs {
         }
     }
 
-    fn len(&self) -> usize { (self.top as usize - self.base as usize) / size_of::<ORef>() }
+    pub fn len(&self) -> usize { (self.top as usize - self.base as usize) / size_of::<ORef>() }
 
     pub fn ensure(&mut self, required: usize) {
         let required_bytes = required * size_of::<ORef>();
-        
+
         if (self.end as usize - self.base as usize) < required_bytes {
             let len = self.len();
 
@@ -71,8 +86,6 @@ impl Regs {
     fn reserve(&mut self, additional: usize) { self.ensure(self.len() + additional); }
 
     pub fn as_slice(&self) -> &[ORef] { unsafe { slice::from_raw_parts(self.base, self.len()) } }
-
-    pub fn as_mut_slice(&mut self) -> &mut [ORef] { unsafe { slice::from_raw_parts_mut(self.base, self.len()) } }
 
     pub fn pop(&mut self) -> Option<ORef> {
         if self.base < self.top {
