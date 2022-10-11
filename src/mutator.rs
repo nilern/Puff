@@ -306,10 +306,10 @@ impl Mutator {
             self.regs.enter(argc);
 
             // Jump:
-            unsafe { self.set_code(code); }
+            self.set_code(code);
 
             // Ensure register space, reclaim garbage regs prefix and extend regs if necessary:
-            self.regs.reserve(unsafe { code.as_ref().max_locals });
+            self.regs.ensure(unsafe { code.as_ref().max_regs });
 
             // TODO: GC safepoint (only becomes necessary with multithreading)
 
@@ -467,7 +467,7 @@ impl Mutator {
                                 self.pc = rip;
 
                                 // Ensure register space, reclaim garbage regs prefix and extend regs if necessary:
-                                self.regs.reserve(unsafe { code.as_ref().max_locals });
+                                self.regs.ensure(unsafe { code.as_ref().max_regs });
                             } else {
                                 todo!()
                             }

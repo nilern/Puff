@@ -75,7 +75,7 @@ pub type Block = Vec<Instr>;
 
 pub struct Fn {
     pub arity: usize,
-    pub max_locals: usize,
+    pub max_regs: usize,
     pub blocks: Vec<Block>
 }
 
@@ -84,7 +84,7 @@ impl DisplayWithin for &Fn {
 }
 
 impl Fn {
-    pub fn new(arity: usize, max_locals: usize) -> Self { Fn { arity, max_locals, blocks: Vec::new() } }
+    pub fn new(arity: usize, max_regs: usize) -> Self { Fn { arity, max_regs, blocks: Vec::new() } }
 
     pub fn block(&self, i: Label) -> &Block { &self.blocks[i.0] }
 
@@ -518,7 +518,7 @@ impl From<&anf::Expr> for Fn {
             let mut f = Fn::new(params.len(), 0);
             let current = f.create_block();
             let _ = emit_expr(&mut env, &mut f, current, Cont::Ret, body);
-            f.max_locals = env.max_regs - params.len();
+            f.max_regs = env.max_regs;
             f
         }
 

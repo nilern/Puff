@@ -42,10 +42,9 @@ impl Regs {
 
     fn len(&self) -> usize { (self.top as usize - self.base as usize) / size_of::<ORef>() }
 
-    pub fn reserve(&mut self, additional: usize) {
-        if (self.end as usize - self.top as usize) < additional * size_of::<ORef>() {
+    pub fn ensure(&mut self, required: usize) {
+        if (self.end as usize - self.base as usize) < required * size_of::<ORef>() {
             let len = self.len();
-            let required = len + additional;
 
             if self.capacity() >= required {
                 unsafe {
@@ -68,6 +67,8 @@ impl Regs {
             }
         }
     }
+
+    fn reserve(&mut self, additional: usize) { self.ensure(self.len() + additional); }
 
     pub fn as_slice(&self) -> &[ORef] { unsafe { slice::from_raw_parts(self.base, self.len()) } }
 
