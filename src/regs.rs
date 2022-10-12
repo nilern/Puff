@@ -123,16 +123,42 @@ impl Regs {
         unsafe { self.push_unchecked(v); }
     }
 
-    pub fn extend(&mut self, vs: &[ORef]) {
-        self.reserve(vs.len());
-        unsafe {
-            self.top.copy_from_nonoverlapping(vs.as_ptr(), vs.len());
-            self.top = self.top.add(vs.len());
-        }
-    }
-
     pub fn enter(&mut self, new_len: usize) {
         unsafe { self.base = self.top.sub(new_len); }
+    }
+
+    pub fn re_enter(&mut self, saveds: &[ORef]) {
+        let required = saveds.len() + 1;
+
+        unsafe {
+            let base = self.top.sub(required);
+            if base >= self.start {
+                base.copy_from_nonoverlapping(saveds.as_ptr(), saveds.len());
+
+                self.base = base;
+            } else {
+                let required_bytes = required * size_of::<ORef>();
+
+                if (self.end as usize - self.start as usize) < required_bytes {
+                    self.start.copy_from_nonoverlapping(saveds.as_ptr(), saveds.len());
+                    self.start.add(saveds.len()).write(*self.top);
+
+                    self.base = self.start;
+                    self.top = self.start.add(required);
+                } else {
+                    let start = alloc(Layout::from_size_align_unchecked(required_bytes, Self::ALIGN))
+                        as *mut ORef;
+
+                    start.copy_from_nonoverlapping(saveds.as_ptr(), saveds.len());
+                    start.add(saveds.len()).write(*self.top);
+
+                    self.start = start;
+                    self.end = start.add(required);
+                    self.base = start;
+                    self.top = start.add(required);
+                }
+            }
+        }
     }
 
     pub fn truncate(&mut self, n: usize) {

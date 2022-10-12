@@ -440,11 +440,7 @@ impl Mutator {
 
                     Opcode::Ret =>
                         if self.stack.len() > 0 {
-                            let v = self.regs.pop().unwrap();
-
                             // Restore registers:
-
-                            self.regs.truncate(0);
 
                             let rip =
                                 unsafe { isize::from(Fixnum::from_oref_unchecked(self.stack.pop().unwrap())) as usize };
@@ -452,11 +448,8 @@ impl Mutator {
                                 unsafe { isize::from(Fixnum::from_oref_unchecked(self.stack.pop().unwrap())) as usize };
 
                             let start = self.stack.len() - frame_len;
-                            self.regs.extend(&self.stack[start..]);
+                            self.regs.re_enter(&self.stack[start..]);
                             self.stack.truncate(start);
-
-                            // Push return value:
-                            self.regs.push(v);
 
                             let f = self.regs[self.regs.len() - frame_len - 1];
                             if let Some(f) = f.try_cast::<Closure>(self) {
