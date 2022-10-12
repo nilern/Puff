@@ -451,8 +451,8 @@ impl From<&anf::Expr> for Fn {
                     } else {
                         let (conseq_mask, alt_mask) = Env::join_prune_masks(env, &alt_env, live_outs);
                         env.prune(&conseq_mask);
-                        f.insert_prune(conseq_label, conseq_mask);
-                        f.insert_prune(alt_label, alt_mask);
+                        if conseq_mask.iter().any(|&prune| prune) { f.insert_prune(conseq_label, conseq_mask); }
+                        if alt_mask.iter().any(|&prune| prune) { f.insert_prune(alt_label, alt_mask); }
                     }
 
                     if let Cont::Label(join_label) = join { join_label } else { current }
