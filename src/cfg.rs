@@ -28,8 +28,7 @@ pub enum Instr {
     Prune(Vec<bool>),
     If(Label, Label),
     Goto(Label),
-    Code(Fn),
-    Closure(usize),
+    Fn(Fn, usize),
     Call(usize, Vec<bool>),
     TailCall(usize),
     Ret
@@ -54,11 +53,10 @@ impl Instr {
             &If(conseq, alt) => writeln!(fmt, "{}if {} {}", indent, conseq, alt),
             &Goto(dest) => writeln!(fmt, "{}goto {}", indent, dest),
 
-            &Code(ref code) => {
-                writeln!(fmt, "{}code", indent)?;
+            &Fn(ref code, len) => {
+                writeln!(fmt, "{}fn {}", indent, len)?;
                 code.fmt(mt, fmt, &(indent.to_string() + "  "))
             },
-            &Closure(len) => writeln!(fmt, "{}closure {}", indent, len),
 
             &Call(argc, ref prunes) => {
                 write!(fmt, "{}call {} #b", indent, argc)?;
@@ -461,16 +459,13 @@ impl From<&anf::Expr> for Fn {
                 anf::Expr::Fn(ref fvs, ref params, ref body) => {
                     let fvs = fvs.iter().map(|&id| id).collect::<Vec<Id>>();
 
-                    let code = emit_fn(&fvs, params, body);
-                    f.block_mut(current).push(Instr::Code(code));
-                    env.push();
-
                     for &fv in fvs.iter() {
                         emit_use(env, f, current, fv);
                         env.push();
                     }
 
-                    f.block_mut(current).push(Instr::Closure(fvs.len()));
+                    let code = emit_fn(&fvs, params, body);
+                    f.block_mut(current).push(Instr::Fn(code, fvs.len()));
                     env.closure(fvs.len());
 
                     goto(f, current, cont);

@@ -33,10 +33,10 @@ impl Closure {
                 let mut nptr = nptr.cast::<Self>();
 
                 let regs = mt.regs();
-                let code_reg = regs.len().checked_sub(len + 1).unwrap();
-                nptr.as_ptr().write(Closure {code: regs[code_reg].unchecked_cast()});
+                let first_clover_reg = regs.len().checked_sub(len + 1).unwrap();
+                nptr.as_ptr().write(Closure {code: regs[regs.len() - 1].unchecked_cast()});
                 let mut v = nptr.as_mut().indexed_field_ptr_mut();
-                for clover in &regs.as_slice()[(code_reg + 1)..] {
+                for clover in &regs.as_slice()[first_clover_reg..(first_clover_reg + len)] {
                     v.write(*clover);
                     v = v.add(1);
                 }

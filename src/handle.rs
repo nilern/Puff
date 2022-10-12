@@ -63,6 +63,10 @@ impl TryFrom<Handle> for HandleT<()> {
         }
     }
 }
+
+impl<T> From<HandleT<T>> for Handle {
+    fn from(typed: HandleT<T>) -> Self { typed.handle }
+}
  
 pub struct HandlePool {
     free: Option<NonNull<FreeHandleImpl>>,

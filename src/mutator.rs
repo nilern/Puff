@@ -397,8 +397,10 @@ impl Mutator {
                     },
 
                     Opcode::Fn => {
+                        let ci = self.next_oparg();
                         let len = self.next_oparg();
 
+                        unsafe { self.regs.push_unchecked(self.consts().as_ref().indexed_field()[ci]); }
                         let closure = Closure::new(self, len);
                         self.regs.popn(len + 1);
                         unsafe { self.regs.push_unchecked(closure.into()); }

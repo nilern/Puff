@@ -183,13 +183,7 @@ impl Bytecode {
                                 let c = self
                                     .consts.as_ref()
                                     .indexed_field()[*ci as usize];
-                                if let Some(code) = c.try_cast::<Bytecode>(mt) {
-                                    writeln!(fmt, "{}{}: const {}", indent, i, ci)?;
-                                    code.as_ref().disassemble(mt, fmt, &(indent.to_string() + "  "))?;
-                                } else {
-                                    writeln!(fmt, "{}{}: const {} ; {}", indent, i, ci,
-                                        c.within(mt))?;
-                                }
+                                writeln!(fmt, "{}{}: const {} ; {}", indent, i, ci, c.within(mt))?;
                             } else {
                                 todo!()
                             },
@@ -248,8 +242,19 @@ impl Bytecode {
                             },
 
                         Opcode::r#Fn =>
-                            if let Some((_, len)) = instrs.next() {
-                                writeln!(fmt, "{}{}: fn {}", indent, i, len)?;
+                            if let Some((_, ci)) = instrs.next() {
+                                if let Some((_, len)) = instrs.next() {
+                                    let code = self.consts.as_ref().indexed_field()[*ci as usize];
+
+                                    if let Some(code) = code.try_cast::<Bytecode>(mt) {
+                                        writeln!(fmt, "{}{}: fn {}", indent, i, len)?;
+                                        code.as_ref().disassemble(mt, fmt, &(indent.to_string() + "  "))?;
+                                    } else {
+                                        todo!()
+                                    }
+                                } else {
+                                    todo!()
+                                }
                             } else {
                                 todo!()
                             },
@@ -316,15 +321,12 @@ impl Builder {
     }
 
     // TODO: Deduplicate constants
-    pub fn r#const(&mut self, mt: &mut Mutator, v: ORef) {
+    pub fn r#const(&mut self, v: Handle) {
         self.instrs.push(Opcode::Const as u8);
 
-        if let Ok(i) = u8::try_from(self.consts.len()) {
-            self.consts.push(mt.root(v));
-            self.instrs.push(i);
-        } else {
-            todo!()
-        }
+        let i = u8::try_from(self.consts.len()).unwrap();
+        self.consts.push(v);
+        self.instrs.push(i);
     }
 
     pub fn local(&mut self, reg: usize) {
@@ -363,8 +365,13 @@ impl Builder {
         self.instrs.push(0);
     }
 
-    pub fn r#fn(&mut self, len: usize) {
+    pub fn r#fn(&mut self, code: HandleT<Bytecode>, len: usize) {
         self.instrs.push(Opcode::r#Fn as u8);
+
+        let i = u8::try_from(self.consts.len()).unwrap();
+        self.consts.push(code.into());
+        self.instrs.push(i);
+
         self.instrs.push(u8::try_from(len).unwrap());
     }
 
@@ -410,7 +417,7 @@ impl Gc<Bytecode> {
             use cfg::Instr::*;
 
             match instr {
-                &Const(ref c) => builder.r#const(cmp.mt, **c),
+                &Const(ref c) => builder.r#const(c.clone()),
                 &Local(reg) => builder.local(reg),
                 &Clover(i) => builder.clover(i),
 
@@ -420,11 +427,10 @@ impl Gc<Bytecode> {
                 &If(_, alt) => builder.brf(alt),
                 &Goto(dest) => if dest != rpo_next.unwrap() { builder.br(dest) },
 
-                &Code(ref code) => {
-                    let code = Gc::<Bytecode>::from_cfg(cmp, code).into();
-                    builder.r#const(cmp.mt, code);
+                &Fn(ref code, len) => {
+                    let code = Gc::<Bytecode>::from_cfg(cmp, code);
+                    builder.r#fn(cmp.mt.root_t(code), len);
                 },
-                &Closure(len) => builder.r#fn(len),
 
                 &Call(argc, ref prunes) => builder.call(argc, prunes),
                 &TailCall(argc) => builder.tailcall(argc),
