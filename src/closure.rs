@@ -28,23 +28,18 @@ impl Closure {
 
     pub fn new(mt: &mut Mutator, len: usize) -> Gc<Self> {
         unsafe {
-            if let Some(nptr) = mt.alloc_indexed(Self::reify(mt), len)
-            {
-                let mut nptr = nptr.cast::<Self>();
+            let mut nptr = mt.alloc_indexed(Self::reify(mt), len).cast::<Self>();
 
-                let regs = mt.regs();
-                let first_clover_reg = regs.len().checked_sub(len + 1).unwrap();
-                nptr.as_ptr().write(Closure {code: regs[regs.len() - 1].unchecked_cast()});
-                let mut v = nptr.as_mut().indexed_field_ptr_mut();
-                for clover in &regs.as_slice()[first_clover_reg..(first_clover_reg + len)] {
-                    v.write(*clover);
-                    v = v.add(1);
-                }
-
-                Gc::new_unchecked(nptr)
-            } else {
-                todo!() // Need to GC, then retry
+            let regs = mt.regs();
+            let first_clover_reg = regs.len().checked_sub(len + 1).unwrap();
+            nptr.as_ptr().write(Closure {code: regs[regs.len() - 1].unchecked_cast()});
+            let mut v = nptr.as_mut().indexed_field_ptr_mut();
+            for clover in &regs.as_slice()[first_clover_reg..(first_clover_reg + len)] {
+                v.write(*clover);
+                v = v.add(1);
             }
+
+            Gc::new_unchecked(nptr)
         }
     }
 }

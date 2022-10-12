@@ -270,23 +270,20 @@ impl Mutator {
 
     pub fn dump_regs(&self) { self.regs.dump(self); }
 
-    pub unsafe fn alloc_nonindexed(&mut self, r#type: Gc<NonIndexedType>)
-        -> Option<NonNull<u8>>
-    {
-        self.heap.alloc_nonindexed(r#type)
+    pub unsafe fn alloc_nonindexed(&mut self, r#type: Gc<NonIndexedType>) -> NonNull<u8> {
+        self.heap.alloc_nonindexed(r#type).unwrap_or_else(||
+            todo!() // Need to GC, then retry
+        )
     }
 
-    pub unsafe fn alloc_indexed(&mut self, r#type: Gc<IndexedType>, len: usize)
-        -> Option<NonNull<u8>>
-    {
-        self.heap.alloc_indexed(r#type, len)
+    pub unsafe fn alloc_indexed(&mut self, r#type: Gc<IndexedType>, len: usize) -> NonNull<u8> {
+        self.heap.alloc_indexed(r#type, len).unwrap_or_else(||
+            todo!() // Need to GC, then retry
+        )
     }
 
-    pub unsafe fn alloc_static<T: NonIndexed>(&mut self)
-        -> Option<NonNull<T>>
-    {
-        self.heap.alloc_nonindexed(T::reify_nonindexed(self))
-            .map(NonNull::cast::<T>)
+    pub unsafe fn alloc_static<T: NonIndexed>(&mut self) -> NonNull<T> {
+        self.alloc_nonindexed(T::reify_nonindexed(self)).cast::<T>()
     }
 
     pub fn root(&mut self, oref: ORef) -> Handle {

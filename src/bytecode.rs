@@ -143,20 +143,16 @@ impl Bytecode {
     {
         unsafe {
             let r#type = Self::reify(mt).unchecked_cast::<IndexedType>();
-            if let Some (nptr) = mt.alloc_indexed(r#type, instrs.len()) {
-                let mut nptr = nptr.cast::<Self>();
+            let mut nptr = mt.alloc_indexed(r#type, instrs.len()).cast::<Self>();
 
-                nptr.as_ptr().write(Bytecode {
-                    arity,
-                    max_regs,
-                    consts: *consts
-                });
-                nptr.as_mut().indexed_field_mut().copy_from_slice(instrs);
+            nptr.as_ptr().write(Bytecode {
+                arity,
+                max_regs,
+                consts: *consts
+            });
+            nptr.as_mut().indexed_field_mut().copy_from_slice(instrs);
 
-                Gc::new_unchecked(nptr)
-            } else {
-                todo!() // Need to GC, then retry
-            }
+            Gc::new_unchecked(nptr)
         }
     }
 

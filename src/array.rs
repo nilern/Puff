@@ -29,20 +29,16 @@ impl<T> Array<T> {
 impl Array<ORef> {
     pub fn from_handles(mt: &mut Mutator, handles: &[Handle]) -> Gc<Self> {
         unsafe {
-            if let Some(nptr) = mt.alloc_indexed(Self::reify(mt), handles.len()) {
-                let mut nptr = nptr.cast::<Self>();
+            let mut nptr = mt.alloc_indexed(Self::reify(mt), handles.len()).cast::<Self>();
 
-                nptr.as_ptr().write(Array {phantom: Default::default()});
-                let mut v = nptr.as_mut().indexed_field_ptr_mut();
-                for handle in handles {
-                    v.write(**handle);
-                    v = v.add(1);
-                }
-
-                Gc::new_unchecked(nptr)
-            } else {
-                todo!() // Need to GC, then retry
+            nptr.as_ptr().write(Array {phantom: Default::default()});
+            let mut v = nptr.as_mut().indexed_field_ptr_mut();
+            for handle in handles {
+                v.write(**handle);
+                v = v.add(1);
             }
+
+            Gc::new_unchecked(nptr)
         }
     }
 }

@@ -135,25 +135,19 @@ impl Symbol {
                             } else {
                                 let len = cs.len();
 
-                                if let Some(nptr) =
-                                    mt.alloc_indexed(mt.types().symbol, len)
-                                {
-                                    let nptr = nptr.cast::<Self>();
-                                    let ptr = nptr.as_ptr();
+                                let nptr = mt.alloc_indexed(mt.types().symbol, len).cast::<Self>();
+                                let ptr = nptr.as_ptr();
 
-                                    ptr.write(Symbol { hash });
-                                    (*ptr).indexed_field_mut()
-                                        .copy_from_slice(cs.as_bytes());
+                                ptr.write(Symbol { hash });
+                                (*ptr).indexed_field_mut()
+                                    .copy_from_slice(cs.as_bytes());
 
-                                    let sym = Gc::new_unchecked(nptr);
+                                let sym = Gc::new_unchecked(nptr);
 
-                                    (*symbols).len += 1;
-                                    symbols_slice[i] = Some(sym);
+                                (*symbols).len += 1;
+                                symbols_slice[i] = Some(sym);
 
-                                    return sym
-                                } else {
-                                    todo!() // Need to GC, then retry
-                                }
+                                return sym;
                             }
                     }
 

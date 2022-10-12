@@ -40,16 +40,14 @@ impl Pair {
 
     pub fn new(mt: &mut Mutator, car: Handle, cdr: Handle) -> Gc<Self> {
         unsafe {
-            if let Some(nptr) = mt.alloc_static::<Self>() {
-                nptr.as_ptr().write(Pair {
-                    car: *car,
-                    cdr: *cdr
-                });
+            let nptr = mt.alloc_static::<Self>();
 
-                Gc::new_unchecked(nptr)
-            } else {
-                todo!() // Need to GC, then retry
-            }
+            nptr.as_ptr().write(Pair {
+                car: *car,
+                cdr: *cdr
+            });
+
+            Gc::new_unchecked(nptr)
         }
     }
 }
