@@ -284,7 +284,7 @@ impl From<&anf::Expr> for Fn {
             }
 
             fn closure(&mut self, nclovers: usize) {
-                self.reg_ids.truncate(self.reg_ids.len() - nclovers);
+                self.reg_ids.truncate(self.reg_ids.len() - nclovers + 1);
             }
 
             fn call(&mut self, argc: usize, prunes: &[bool]) {
