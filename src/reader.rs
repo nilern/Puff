@@ -102,7 +102,7 @@ impl<'i> Reader<'i> {
         let start = first_pc.pos;
 
         while let Some(pc) = self.input.peek() {
-            if pc.v.is_alphanumeric() {
+            if pc.v.is_alphanumeric() || pc.v == '-' || pc.v == '!' || pc.v == '?' || pc.v == '_' {
                 self.input.next();
             } else {
                 break;
@@ -181,7 +181,7 @@ impl<'i> Reader<'i> {
                         .map(|res|
                             res.map(|n| mt.root(ORef::from(n))))
                 },
-                c if c.is_alphabetic() => {
+                c if c.is_alphabetic() || c == '-' || c == '!' || c == '?' || c == '_' => {
                     self.input.next();
                     Ok(self.read_symbol(mt, pc).map(ORef::from))
                         .map(|res|

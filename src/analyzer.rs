@@ -1,5 +1,6 @@
 use std::rc::Rc;
 use std::collections::hash_set::HashSet;
+use std::boxed;
 
 use crate::list::{Pair, EmptyList};
 use crate::anf;
@@ -49,6 +50,8 @@ pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::Expr {
                             return analyze_if(cmp, env, unsafe { ls.as_ref().cdr });
                         } else if unsafe { callee.as_ref().name() == "fn" } {
                             return analyze_fn(cmp, env, unsafe { ls.as_ref().cdr });
+                        } else if unsafe { callee.as_ref().name() == "set!" } {
+                            return analyze_set(cmp, env, unsafe { ls.as_ref().cdr });
                         }
                     }
                 }
@@ -118,7 +121,7 @@ pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::Expr {
                 if args == EmptyList::instance(cmp.mt).into() {
                     let (env, bindings) = analyze_bindings(cmp, env, bindings);
                     let body = analyze_expr(cmp, &env, body);
-                    Let(bindings, Box::new(body), true)
+                    Let(bindings, boxed::Box::new(body), true)
                 } else {
                     todo!()
                 }
@@ -144,7 +147,7 @@ pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::Expr {
 
                     let branches = unsafe { branches.as_ref().cdr };
                     if branches == EmptyList::instance(cmp.mt).into() {
-                        If(Box::new(cond), Box::new(conseq), Box::new(alt), anf::LiveVars::new())
+                        If(boxed::Box::new(cond), boxed::Box::new(conseq), boxed::Box::new(alt), anf::LiveVars::new())
                     } else {
                         todo!()
                     }
@@ -194,7 +197,7 @@ pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::Expr {
                     let (env, params) = analyze_params(cmp, env, params);
                     let body = analyze_expr(cmp, &env, body);
 
-                    r#Fn(anf::LiveVars::new(), params, Box::new(body))
+                    r#Fn(anf::LiveVars::new(), params, boxed::Box::new(body))
                 } else {
                     todo!()
                 }
@@ -204,6 +207,26 @@ pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::Expr {
         } else {
             todo!()
         }
+    }
+
+    fn analyze_set(cmp: &mut Compiler, env: &Rc<Env>, args: ORef) -> anf::Expr {
+        if let Some(args) = args.try_cast::<Pair>(cmp.mt) {
+            let dest = unsafe { args.as_ref().car };
+
+            if let Some(args) = unsafe { args.as_ref().cdr }.try_cast::<Pair>(cmp.mt) {
+                let val_sexpr = unsafe { args.as_ref().car };
+
+                if unsafe { args.as_ref().cdr } == EmptyList::instance(cmp.mt).into() {
+                    if let Some(name) = dest.try_cast::<Symbol>(cmp.mt) {
+                        let val_expr = analyze_expr(cmp, env, val_sexpr);
+
+                        return Set(Env::get(env, name).unwrap(), boxed::Box::new(val_expr));
+                    }
+                }
+            }
+        }
+
+        todo!() // Error: argc
     }
 
     fn analyze_call(cmp: &mut Compiler, env: &Rc<Env>, expr: Gc<Pair>) -> anf::Expr {
@@ -225,7 +248,7 @@ pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::Expr {
         }
 
         if args == EmptyList::instance(cmp.mt).into() {
-            Let(bindings, Box::new(Call(callee_id, arg_ids, HashSet::new())), false)
+            Let(bindings, boxed::Box::new(Call(callee_id, arg_ids, HashSet::new())), false)
         } else {
             todo!()
         }
@@ -233,9 +256,116 @@ pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::Expr {
 
     let params = vec![Id::fresh(cmp)];
     let body = analyze_expr(cmp, &Rc::new(Env::Empty), expr);
-    let mut expr = r#Fn(anf::LiveVars::new(), params, Box::new(body));
+    let mut expr = r#Fn(anf::LiveVars::new(), params, boxed::Box::new(body));
+    expr = convert_mutables(cmp, &mutables(&expr), &expr);
     liveness(&mut expr);
     expr    
+}
+
+fn mutables(expr: &anf::Expr) -> HashSet<Id> {
+    use anf::Expr::*;
+
+    fn expr_mutables(mutables: &mut HashSet<Id>, expr: &anf::Expr) {
+        match expr {
+            &Let(ref bindings, ref body, _) => {
+                for (_, val_expr) in bindings { expr_mutables(mutables, val_expr); }
+                expr_mutables(mutables, body);
+            },
+
+            &If(ref cond, ref conseq, ref alt, _) => {
+                expr_mutables(mutables, cond);
+                expr_mutables(mutables, conseq);
+                expr_mutables(mutables, alt);
+            },
+
+            &Set(id, ref val_expr) => {
+                mutables.insert(id);
+                expr_mutables(mutables, val_expr);
+            },
+
+            &Box(..) | &BoxSet(..) | & BoxGet(..) => unreachable!(),
+
+            &Fn(_, _, ref body) => expr_mutables(mutables, body),
+
+            &Call(_, _, _) => (),
+
+            &Triv(_) => ()
+        }
+    }
+
+    let mut mutables = HashSet::new();
+    expr_mutables(&mut mutables, expr);
+    mutables
+}
+
+fn convert_mutables(cmp: &mut Compiler, mutables: &HashSet<Id>, expr: &anf::Expr) -> anf::Expr {
+    use anf::Expr::*;
+    use anf::Triv::*;
+
+    match expr {
+        &Let(ref bindings, ref body, popnnt) => {
+            let bindings = bindings.iter()
+                .map(|(id, val_expr)| {
+                    let val_expr = convert_mutables(cmp, mutables, val_expr);
+
+                    if mutables.contains(id) {
+                        (*id, Box(boxed::Box::new(val_expr)))
+                    } else {
+                        (*id, val_expr)
+                    }
+                })
+                .collect();
+
+            let body = convert_mutables(cmp, mutables, body);
+
+            Let(bindings, boxed::Box::new(body), popnnt)
+        },
+
+        &If(ref cond, ref conseq, ref alt, ref live_outs) =>
+            If(boxed::Box::new(convert_mutables(cmp, mutables, cond)),
+                boxed::Box::new(convert_mutables(cmp, mutables, conseq)),
+                boxed::Box::new(convert_mutables(cmp, mutables, alt)),
+                live_outs.clone()),
+
+        &Set(id, ref val_expr) => BoxSet(id, boxed::Box::new(convert_mutables(cmp, mutables, val_expr))),
+
+        &Box(..) | &BoxSet(..) | &BoxGet(..) => unreachable!(),
+
+        &Fn(ref fvs, ref params, ref body) => {
+            let mut bindings = Vec::new();
+
+            let params = params.iter()
+                .map(|id|
+                    if mutables.contains(id) {
+                        let new_id = Id::freshen(cmp, *id);
+                        bindings.push((*id, Box(boxed::Box::new(Triv(Use(new_id))))));
+                        new_id
+                    } else {
+                        *id
+                    }
+                )
+                .collect();
+
+            let body = convert_mutables(cmp, mutables, body);
+
+            Fn(fvs.clone(), params, boxed::Box::new(
+                if bindings.len() == 0 {
+                    body
+                } else {
+                    Let(bindings, boxed::Box::new(body), true)
+                }))
+        },
+
+        &Call(callee, ref args, ref live_outs) =>
+            // Callee and args ids are not from source code and so cannot be mutable:
+            Call(callee, args.clone(), live_outs.clone()),
+
+        &Triv(Use(id)) if mutables.contains(&id) => BoxGet(id),
+
+        &Triv(Use(id)) => Triv(Use(id)),
+
+        &Triv(Const(ref c)) => Triv(Const(c.clone()))
+    }
 }
 
 fn liveness(expr: &mut anf::Expr) {
@@ -263,6 +393,17 @@ fn liveness(expr: &mut anf::Expr) {
                 conseq_ins.extend(alt_ins);
                 live_outs = live_ins(cond, conseq_ins);
             },
+
+            &mut Set(..) => unreachable!(),
+
+            &mut Box(ref mut val_expr) => live_outs = live_ins(val_expr, live_outs),
+
+            &mut BoxSet(id, ref mut val_expr) => {
+                live_outs = live_ins(val_expr, live_outs);
+                live_outs.insert(id);
+            },
+
+            &mut BoxGet(id) => { live_outs.insert(id); }
 
             &mut r#Fn(ref mut fvs, ref params, ref mut body) => {
                 let mut free_vars = {

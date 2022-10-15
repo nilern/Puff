@@ -378,6 +378,8 @@ impl Mutator {
                         self.pc += mask_len;
                     },
 
+                    Opcode::Box | Opcode::BoxSet | Opcode::BoxGet => todo!(),
+
                     Opcode::Brf =>
                         if self.regs.pop().unwrap().is_truthy(self) {
                             self.pc += 1;

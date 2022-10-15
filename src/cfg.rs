@@ -26,6 +26,9 @@ pub enum Instr {
     Clover(usize),
     PopNNT(usize),
     Prune(Vec<bool>),
+    Box,
+    BoxSet,
+    BoxGet,
     If(Label, Label),
     Goto(Label),
     Fn(Fn, usize),
@@ -49,6 +52,10 @@ impl Instr {
                 for &prune in prunes { write!(fmt, "{}", prune as u8)?; }
                 writeln!(fmt, "")
             }
+
+            &Box => writeln!(fmt, "{}box", indent),
+            &BoxSet => writeln!(fmt, "{}box-set!", indent),
+            &BoxGet => writeln!(fmt, "{}box-get", indent),
 
             &If(conseq, alt) => writeln!(fmt, "{}if {} {}", indent, conseq, alt),
             &Goto(dest) => writeln!(fmt, "{}goto {}", indent, dest),
@@ -455,6 +462,42 @@ impl From<&anf::Expr> for Fn {
                     }
 
                     if let Cont::Label(join_label) = join { join_label } else { current }
+                },
+
+                anf::Expr::Set(..) => unreachable!(),
+
+                anf::Expr::Box(ref val_expr) => {
+                    current = emit_expr(env, f, current, Cont::Next, val_expr);
+                    f.block_mut(current).push(Instr::Box);
+                    env.pop();
+                    env.push();
+
+                    goto(f, current, cont);
+
+                    current
+                },
+
+                anf::Expr::BoxSet(id, ref val_expr) => {
+                    emit_use(env, f, current, id);
+                    current = emit_expr(env, f, current, Cont::Next, val_expr);
+                    f.block_mut(current).push(Instr::BoxSet);
+                    env.popn(2);
+                    env.push();
+
+                    goto(f, current, cont);
+
+                    current
+                },
+
+                anf::Expr::BoxGet(id) => {
+                    emit_use(env, f, current, id);
+                    f.block_mut(current).push(Instr::BoxGet);
+                    env.pop();
+                    env.push();
+
+                    goto(f, current, cont);
+
+                    current
                 },
 
                 anf::Expr::Fn(ref fvs, ref params, ref body) => {

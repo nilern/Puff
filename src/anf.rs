@@ -12,9 +12,17 @@ pub enum Triv {
 
 pub enum Expr {
     Let(Vec<Binding>, Box<Expr>, /* popnnt?: */ bool),
+
     If(Box<Expr>, Box<Expr>, Box<Expr>, LiveVars),
+
+    Set(Id, Box<Expr>),
+    Box(Box<Expr>),
+    BoxSet(Id, Box<Expr>),
+    BoxGet(Id),
+
     r#Fn(LiveVars, Params, Box<Expr>),
     Call(Id, Vec<Id>, LiveVars),
+
     Triv(Triv)
 }
 

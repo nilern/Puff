@@ -17,6 +17,8 @@ impl Id {
         cmp.name_counter = i + 1;
         Self(i)
     }
+
+    pub fn freshen(cmp: &mut Compiler, _id: Self) -> Self { Self::fresh(cmp) }
 }
 
 pub struct Compiler<'a> {
@@ -39,7 +41,9 @@ pub fn compile(mt: &mut Mutator, expr: ORef) -> Gc<Bytecode> {
     let mut cmp = Compiler::new(mt);
 
     let anf = analyze(&mut cmp, expr);
+
     let cfg = cfg::Fn::from(&anf);
     println!("{}", cfg.within(cmp.mt));
+    
     Gc::<Bytecode>::from_cfg(&mut cmp, &cfg)
 }

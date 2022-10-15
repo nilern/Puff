@@ -18,6 +18,9 @@ pub enum Opcode {
     Clover,
     PopNNT,
     Prune,
+    Box,
+    BoxSet,
+    BoxGet,
     Brf,
     Br,
     r#Fn,
@@ -223,6 +226,10 @@ impl Bytecode {
                             }
                         },
 
+                        Opcode::Box => writeln!(fmt, "{}{}: box", indent, i)?,
+                        Opcode::BoxSet => writeln!(fmt, "{}{}: box-set!", indent, i)?,
+                        Opcode::BoxGet => writeln!(fmt, "{}{}: box-get", indent, i)?,
+
                         Opcode::Brf =>
                             if let Some((_, d)) = instrs.next() {
                                 writeln!(fmt, "{}{}: brf {}", indent, i, d)?;
@@ -295,7 +302,7 @@ impl Bytecode {
     }
 }
 
-pub struct Builder {
+struct Builder {
     arity: usize,
     max_regs: usize,
     consts: Vec<Handle>,
@@ -305,7 +312,7 @@ pub struct Builder {
 }
 
 impl Builder {
-    pub fn new(arity: usize, max_regs: usize) -> Self {
+    fn new(arity: usize, max_regs: usize) -> Self {
         Self {
             arity,
             max_regs,
@@ -317,7 +324,7 @@ impl Builder {
     }
 
     // TODO: Deduplicate constants
-    pub fn r#const(&mut self, v: Handle) {
+    fn r#const(&mut self, v: Handle) {
         self.instrs.push(Opcode::Const as u8);
 
         let i = u8::try_from(self.consts.len()).unwrap();
@@ -325,43 +332,49 @@ impl Builder {
         self.instrs.push(i);
     }
 
-    pub fn local(&mut self, reg: usize) {
+    fn local(&mut self, reg: usize) {
         self.instrs.push(Opcode::Local as u8);
         self.instrs.push(u8::try_from(reg).unwrap());
     }
 
-    pub fn clover(&mut self, i: usize) {
+    fn clover(&mut self, i: usize) {
         self.instrs.push(Opcode::Clover as u8);
         self.instrs.push(u8::try_from(i).unwrap());
     }
 
-    pub fn popnnt(&mut self, n: usize) {
+    fn popnnt(&mut self, n: usize) {
         self.instrs.push(Opcode::PopNNT as u8);
         self.instrs.push(u8::try_from(n).unwrap());
     }
 
-    pub fn prune(&mut self, prunes: &[bool]) {
+    fn prune(&mut self, prunes: &[bool]) {
         self.instrs.push(Opcode::Prune as u8);
         encode_prune_mask(&mut self.instrs, prunes);
     }
 
-    pub fn label(&mut self, label: cfg::Label) {
+    fn r#box(&mut self) { self.instrs.push(Opcode::Box as u8); }
+
+    fn box_set(&mut self) { self.instrs.push(Opcode::BoxSet as u8); }
+
+    fn box_get(&mut self) { self.instrs.push(Opcode::BoxGet as u8); }
+
+    fn label(&mut self, label: cfg::Label) {
         self.label_indices.insert(label, self.instrs.len());
     }
 
-    pub fn brf(&mut self, label: cfg::Label) {
+    fn brf(&mut self, label: cfg::Label) {
         self.instrs.push(Opcode::Brf as u8);
         self.br_dests.insert(self.instrs.len(), label);
         self.instrs.push(0);
     }
 
-    pub fn br(&mut self, label: cfg::Label) {
+    fn br(&mut self, label: cfg::Label) {
         self.instrs.push(Opcode::Br as u8);
         self.br_dests.insert(self.instrs.len(), label);
         self.instrs.push(0);
     }
 
-    pub fn r#fn(&mut self, code: HandleT<Bytecode>, len: usize) {
+    fn r#fn(&mut self, code: HandleT<Bytecode>, len: usize) {
         self.instrs.push(Opcode::r#Fn as u8);
 
         let i = u8::try_from(self.consts.len()).unwrap();
@@ -371,20 +384,18 @@ impl Builder {
         self.instrs.push(u8::try_from(len).unwrap());
     }
 
-    pub fn call(&mut self, argc: usize, prune_mask: &[bool]) {
+    fn call(&mut self, argc: usize, prune_mask: &[bool]) {
         self.instrs.push(Opcode::Call as u8);
         self.instrs.push(u8::try_from(argc.checked_add(1).unwrap()).unwrap());
         encode_prune_mask(&mut self.instrs, prune_mask);
     }
 
-    pub fn tailcall(&mut self, argc: usize) {
+    fn tailcall(&mut self, argc: usize) {
         self.instrs.push(Opcode::TailCall as u8);
         self.instrs.push(u8::try_from(argc.checked_add(1).unwrap()).unwrap());
     }
 
-    pub fn ret(&mut self) {
-        self.instrs.push(Opcode::Ret as u8);
-    }
+    fn ret(&mut self) { self.instrs.push(Opcode::Ret as u8); }
 
     fn backpatch(&mut self) {
         for (&i, dest) in self.br_dests.iter() {
@@ -396,7 +407,7 @@ impl Builder {
         }
     }
 
-    pub fn build(mut self, mt: &mut Mutator) -> Gc<Bytecode> {
+    fn build(mut self, mt: &mut Mutator) -> Gc<Bytecode> {
         self.backpatch();
 
         let consts = {
@@ -419,6 +430,10 @@ impl Gc<Bytecode> {
 
                 &PopNNT(n) => builder.popnnt(n),
                 &Prune(ref prunes) => builder.prune(prunes),
+
+                &Box => builder.r#box(),
+                &BoxSet => builder.r#box_set(),
+                &BoxGet => builder.r#box_get(),
 
                 &If(_, alt) => builder.brf(alt),
                 &Goto(dest) => if dest != rpo_next.unwrap() { builder.br(dest) },
