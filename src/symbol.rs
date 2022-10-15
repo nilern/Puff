@@ -161,6 +161,8 @@ impl Symbol {
     pub fn name<'a>(&'a self) -> &'a str {
         unsafe { str::from_utf8_unchecked(self.indexed_field()) }
     }
+
+    pub fn hash(&self) -> Fixnum { self.hash }
 }
 
 #[cfg(test)]

@@ -12,6 +12,7 @@ mod list;
 mod array;
 mod closure;
 mod r#box;
+mod namespace;
 mod bytecode;
 mod anf;
 mod cfg;

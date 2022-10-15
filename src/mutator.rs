@@ -15,6 +15,7 @@ use crate::array::Array;
 use crate::closure::Closure;
 use crate::regs::Regs;
 use crate::r#box::Box;
+use crate::namespace::Var;
 
 const USIZE_TYPE_SIZE: usize = min_size_of_indexed::<Type>();
 
@@ -32,7 +33,8 @@ pub struct Types {
     pub array_of_any: Gc<IndexedType>,
     pub bytecode: Gc<IndexedType>,
     pub closure: Gc<IndexedType>,
-    pub r#box: Gc<NonIndexedType>
+    pub r#box: Gc<NonIndexedType>,
+    pub var: Gc<NonIndexedType>
 }
 
 pub struct Singletons {
@@ -211,6 +213,12 @@ impl Mutator {
             *r#box.as_mut() = NonIndexedType::from_static::<Box>();
             r#box.as_type().as_mut().indexed_field_mut().copy_from_slice(&[Field { r#type: any, offset: 0 }]);
 
+            let mut var = Gc::new_unchecked(Type::bootstrap_new(
+                &mut heap, r#type, Var::TYPE_LEN
+            )?);
+            *var.as_mut() = NonIndexedType::from_static::<Var>();
+            var.as_type().as_mut().indexed_field_mut().copy_from_slice(&[Field { r#type: any, offset: 0 }]);
+
             // Create singleton instances:
             // -----------------------------------------------------------------
 
@@ -224,7 +232,7 @@ impl Mutator {
                 heap,
                 handles: HandlePool::new(),
 
-                types: Types { r#type, symbol, pair, empty_list,  bytecode, array_of_any, closure, r#box },
+                types: Types { r#type, symbol, pair, empty_list,  bytecode, array_of_any, closure, r#box, var },
                 singletons: Singletons { empty_list: empty_list_inst },
                 symbols: SymbolTable::new(),
 
