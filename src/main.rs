@@ -11,6 +11,7 @@ mod heap_obj;
 mod list;
 mod array;
 mod closure;
+mod r#box;
 mod bytecode;
 mod anf;
 mod cfg;

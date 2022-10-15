@@ -14,6 +14,7 @@ use crate::bytecode::{Opcode, Bytecode, decode_prune_mask};
 use crate::array::Array;
 use crate::closure::Closure;
 use crate::regs::Regs;
+use crate::r#box::Box;
 
 const USIZE_TYPE_SIZE: usize = min_size_of_indexed::<Type>();
 
@@ -30,7 +31,8 @@ pub struct Types {
     pub empty_list: Gc<NonIndexedType>,
     pub array_of_any: Gc<IndexedType>,
     pub bytecode: Gc<IndexedType>,
-    pub closure: Gc<IndexedType>
+    pub closure: Gc<IndexedType>,
+    pub r#box: Gc<NonIndexedType>
 }
 
 pub struct Singletons {
@@ -203,6 +205,12 @@ impl Mutator {
                 }
             ]);
 
+            let mut r#box = Gc::new_unchecked(Type::bootstrap_new(
+                &mut heap, r#type, Box::TYPE_LEN
+            )?);
+            *r#box.as_mut() = NonIndexedType::from_static::<Box>();
+            r#box.as_type().as_mut().indexed_field_mut().copy_from_slice(&[Field { r#type: any, offset: 0 }]);
+
             // Create singleton instances:
             // -----------------------------------------------------------------
 
@@ -216,7 +224,7 @@ impl Mutator {
                 heap,
                 handles: HandlePool::new(),
 
-                types: Types { r#type, symbol, pair, empty_list,  bytecode, array_of_any, closure },
+                types: Types { r#type, symbol, pair, empty_list,  bytecode, array_of_any, closure, r#box },
                 singletons: Singletons { empty_list: empty_list_inst },
                 symbols: SymbolTable::new(),
 
@@ -378,7 +386,32 @@ impl Mutator {
                         self.pc += mask_len;
                     },
 
-                    Opcode::Box | Opcode::BoxSet | Opcode::BoxGet => todo!(),
+                    Opcode::Box => {
+                        let v = self.regs.pop().unwrap();
+
+                        let r#box = unsafe {
+                            let nptr = self.alloc_static::<Box>();
+                            nptr.as_ptr().write(Box {v});
+                            Gc::new_unchecked(nptr)
+                        };
+
+                        self.regs.push(r#box.into());
+                    },
+
+                    Opcode::BoxSet => {
+                        let v = self.regs.pop().unwrap();
+                        let r#box = self.regs.pop().unwrap();
+
+                        unsafe { r#box.unchecked_cast::<Box>().as_mut().v = v; }
+
+                        self.regs.push(r#box); // FIXME: Abstraction leak wrt. `set!`-conversion
+                    }
+
+                    Opcode::BoxGet => {
+                        let r#box = self.regs.pop().unwrap();
+
+                        self.regs.push(unsafe { r#box.unchecked_cast::<Box>().as_ref().v });
+                    }
 
                     Opcode::Brf =>
                         if self.regs.pop().unwrap().is_truthy(self) {
