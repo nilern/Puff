@@ -23,6 +23,7 @@ impl fmt::Display for Label {
 
 pub enum Instr {
     Define(HandleT<Symbol>),
+    GlobalSet(HandleT<Symbol>),
     Global(HandleT<Symbol>),
 
     Const(Handle),
@@ -51,6 +52,7 @@ impl Instr {
 
         match self {
             &Define(ref definiend) => unsafe { writeln!(fmt, "{}define {}", indent, definiend.as_ref().name()) },
+            &GlobalSet(ref name) => unsafe { writeln!(fmt, "{}global-set! {}", indent, name.as_ref().name()) },
             &Global(ref name) => unsafe { writeln!(fmt, "{}global {}", indent, name.as_ref().name()) },
 
             &Const(ref c) => writeln!(fmt, "{}const {}", indent, c.within(mt)),
@@ -429,6 +431,16 @@ impl From<&anf::Expr> for Fn {
                 anf::Expr::Define(ref definiend, ref val_expr) => {
                     current = emit_expr(env, f, current, Cont::Next, val_expr);
                     f.block_mut(current).push(Instr::Define(definiend.clone()));
+                    env.pop();
+                    env.push();
+
+                    goto(f, current, cont);
+
+                    current
+                },
+                anf::Expr::GlobalSet(ref definiend, ref val_expr) => {
+                    current = emit_expr(env, f, current, Cont::Next, val_expr);
+                    f.block_mut(current).push(Instr::GlobalSet(definiend.clone()));
                     env.pop();
                     env.push();
 

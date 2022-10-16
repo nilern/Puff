@@ -15,8 +15,9 @@ use crate::symbol::Symbol;
 #[derive(Debug)]
 pub enum Opcode {
     Define,
+    GlobalSet,
     Global,
-    // OPTIMIZE: Define & Global variants that go through Var instead of Symbol; patched in by VM (like JVM?)
+    // OPTIMIZE: Define, GlobalSet & Global variants that go through Var instead of Symbol; patched in by VM (like JVM?)
 
     Const,
     Local,
@@ -196,6 +197,16 @@ impl Bytecode {
                                 todo!()
                             },
 
+                        Opcode::GlobalSet =>
+                            if let Some((_, ci)) = instrs.next() {
+                                let c = self
+                                    .consts.as_ref()
+                                    .indexed_field()[*ci as usize];
+                                writeln!(fmt, "{}{}: global-set! {} ; {}", indent, i, ci, c.within(mt))?;
+                            } else {
+                                todo!()
+                            },
+
                         Opcode::Global =>
                             if let Some((_, ci)) = instrs.next() {
                                 let c = self
@@ -362,6 +373,15 @@ impl Builder {
     }
 
     // TODO: Deduplicate constants
+    fn global_set(&mut self, name: HandleT<Symbol>) {
+        self.instrs.push(Opcode::GlobalSet as u8);
+
+        let i = u8::try_from(self.consts.len()).unwrap();
+        self.consts.push(name.into());
+        self.instrs.push(i);
+    }
+
+    // TODO: Deduplicate constants
     fn global(&mut self, name: HandleT<Symbol>) {
         self.instrs.push(Opcode::Global as u8);
 
@@ -472,6 +492,7 @@ impl Gc<Bytecode> {
 
             match instr {
                 &Define(ref name) => builder.define(name.clone()),
+                &GlobalSet(ref name) => builder.global_set(name.clone()),
                 &Global(ref name) => builder.global(name.clone()),
 
                 &Const(ref c) => builder.r#const(c.clone()),

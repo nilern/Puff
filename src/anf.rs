@@ -13,6 +13,7 @@ pub enum Triv {
 
 pub enum Expr {
     Define(HandleT<Symbol>, Box<Expr>),
+    GlobalSet(HandleT<Symbol>, Box<Expr>),
 
     Let(Vec<Binding>, Box<Expr>, /* popnnt?: */ bool),
 

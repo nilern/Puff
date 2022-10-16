@@ -222,9 +222,13 @@ pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::Expr {
 
                 if unsafe { args.as_ref().cdr } == EmptyList::instance(cmp.mt).into() {
                     if let Some(name) = dest.try_cast::<Symbol>(cmp.mt) {
-                        let val_expr = analyze_expr(cmp, env, val_sexpr);
+                        let val_expr = boxed::Box::new(analyze_expr(cmp, env, val_sexpr));
 
-                        return Set(Env::get(env, name).unwrap(), boxed::Box::new(val_expr));
+                        if let Some(id) = Env::get(env, name) {
+                            return Set(id, val_expr);
+                        } else {
+                            return GlobalSet(cmp.mt.root_t(name), val_expr);
+                        }
                     }
                 }
             }
@@ -311,6 +315,7 @@ fn mutables(expr: &anf::Expr) -> HashSet<Id> {
     fn expr_mutables(mutables: &mut HashSet<Id>, expr: &anf::Expr) {
         match expr {
             &Define(_, ref val_expr) => expr_mutables(mutables, val_expr),
+            &GlobalSet(_, ref val_expr) => expr_mutables(mutables, val_expr),
 
             &Let(ref bindings, ref body, _) => {
                 for (_, val_expr) in bindings { expr_mutables(mutables, val_expr); }
@@ -351,6 +356,9 @@ fn convert_mutables(cmp: &mut Compiler, mutables: &HashSet<Id>, expr: &anf::Expr
     match expr {
         &Define(ref definiend, ref val_expr) =>
             Define(definiend.clone(), boxed::Box::new(convert_mutables(cmp, mutables, val_expr))),
+
+        &GlobalSet(ref name, ref val_expr) =>
+            GlobalSet(name.clone(), boxed::Box::new(convert_mutables(cmp, mutables, val_expr))),
 
         &Let(ref bindings, ref body, popnnt) => {
             let bindings = bindings.iter()
@@ -426,6 +434,7 @@ fn liveness(expr: &mut anf::Expr) {
     fn live_ins(expr: &mut Expr, mut live_outs: anf::LiveVars) -> anf::LiveVars {
         match expr {
             &mut Define(_, ref mut val_expr) => live_outs = live_ins(val_expr, live_outs),
+            &mut GlobalSet(_, ref mut val_expr) => live_outs = live_ins(val_expr, live_outs),
 
             &mut Let(ref mut bindings, ref mut body, _) => {
                 live_outs = live_ins(body, live_outs);

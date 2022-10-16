@@ -346,7 +346,7 @@ impl Mutator {
         loop {
             if let Ok(op) = self.next_opcode() {
                 match op {
-                    Opcode::Define | Opcode::Global => todo!(),
+                    Opcode::Define | Opcode::GlobalSet | Opcode::Global => todo!(),
 
                     Opcode::Const => {
                         let i = self.next_oparg();
