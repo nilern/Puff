@@ -9,6 +9,7 @@ use crate::handle::Handle;
 use crate::heap_obj::NonIndexed;
 use crate::r#type::NonIndexedType;
 
+#[repr(C)]
 pub struct Var {
     value: ORef
 }
@@ -26,7 +27,7 @@ impl Var {
 
     pub unsafe fn new_uninitialized(mt: &mut Mutator) -> Gc<Self> { Gc::new_unchecked(mt.alloc_static::<Self>()) }
 
-    fn new(mt: &mut Mutator, value: Handle) -> Gc<Self> {
+    pub fn new(mt: &mut Mutator, value: Handle) -> Gc<Self> {
         unsafe {
             let nptr = mt.alloc_static::<Self>();
             nptr.as_ptr().write(Self { value: *value });

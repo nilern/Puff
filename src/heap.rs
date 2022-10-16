@@ -89,9 +89,7 @@ impl Heap {
         }
     }
 
-    pub unsafe fn alloc_nonindexed(&mut self, r#type: Gc<NonIndexedType>)
-        -> Option<NonNull<u8>>
-    {
+    pub unsafe fn alloc_nonindexed(&mut self, r#type: Gc<NonIndexedType>) -> Option<NonNull<u8>> {
         let layout = r#type.as_ref().layout();
 
         self.alloc_raw(layout, false).map(|obj| {
@@ -104,9 +102,7 @@ impl Heap {
         })
     }
 
-    pub unsafe fn alloc_indexed(&mut self, r#type: Gc<IndexedType>, len: usize)
-        -> Option<NonNull<u8>>
-    {
+    pub unsafe fn alloc_indexed(&mut self, r#type: Gc<IndexedType>, len: usize) -> Option<NonNull<u8>> {
         let layout = r#type.as_ref().layout(len);
 
         self.alloc_raw(layout, true).map(|obj| {

@@ -3,6 +3,7 @@ use crate::heap_obj::NonIndexed;
 use crate::r#type::NonIndexedType;
 use crate::mutator::Mutator;
 
+#[repr(C)]
 pub struct Box {
     pub v: ORef
 }

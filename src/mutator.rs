@@ -16,6 +16,9 @@ use crate::closure::Closure;
 use crate::regs::Regs;
 use crate::r#box::Box;
 use crate::namespace::{Namespace, Var};
+use crate::native_fn::{self, NativeFn};
+use crate::builtins;
+use crate::bool::Bool;
 
 const USIZE_TYPE_SIZE: usize = min_size_of_indexed::<Type>();
 
@@ -27,17 +30,21 @@ const USIZE_TYPE_LAYOUT: Layout = unsafe {
 
 pub struct Types {
     pub r#type: Gc<IndexedType>,
+    pub bool: Gc<BitsType>,
     pub symbol: Gc<IndexedType>,
     pub pair: Gc<NonIndexedType>,
     pub empty_list: Gc<NonIndexedType>,
     pub array_of_any: Gc<IndexedType>,
     pub bytecode: Gc<IndexedType>,
     pub closure: Gc<IndexedType>,
+    pub native_fn: Gc<NonIndexedType>,
     pub r#box: Gc<NonIndexedType>,
     pub var: Gc<NonIndexedType>
 }
 
 pub struct Singletons {
+    pub r#true: Gc<Bool>,
+    pub r#false: Gc<Bool>,
     pub empty_list: Gc<EmptyList>
 }
 
@@ -127,6 +134,9 @@ impl Mutator {
                 align: align_of::<ORef>()
             };
 
+            let mut bool = Gc::new_unchecked(Type::bootstrap_new(&mut heap, r#type, 0)?);
+            *bool.as_mut() = BitsType::from_static::<bool>();
+
             let mut u8_type = Gc::new_unchecked(Type::bootstrap_new(
                 &mut heap, r#type, 0
             )?);
@@ -208,6 +218,18 @@ impl Mutator {
                 }
             ]);
 
+            let mut fn_ptr = Gc::new_unchecked(Type::bootstrap_new(&mut heap, r#type, 0)?);
+            *fn_ptr.as_mut() = BitsType::from_static::<native_fn::Code>();
+
+            let mut native_fn = Gc::new_unchecked(Type::bootstrap_new(
+                &mut heap, r#type, NativeFn::TYPE_LEN
+            )?);
+            *native_fn.as_mut() = NonIndexedType::from_static::<NativeFn>();
+            native_fn.as_type().as_mut().indexed_field_mut().copy_from_slice(&[
+                Field { r#type: bytecode.as_type(), offset: 0 },
+                Field { r#type: fn_ptr.as_type(), offset: size_of::<usize>().max(align_of::<native_fn::Code>()) }
+            ]);
+
             let mut r#box = Gc::new_unchecked(Type::bootstrap_new(
                 &mut heap, r#type, Box::TYPE_LEN
             )?);
@@ -223,18 +245,27 @@ impl Mutator {
             // Create singleton instances:
             // -----------------------------------------------------------------
 
+            let r#true = heap.alloc_nonindexed(bool.unchecked_cast())?.cast::<Bool>();
+            r#true.as_ptr().write(Bool(true));
+            let r#true = Gc::new_unchecked(r#true);
+
+            let r#false = heap.alloc_nonindexed(bool.unchecked_cast())?.cast::<Bool>();
+            r#false.as_ptr().write(Bool(false));
+            let r#false = Gc::new_unchecked(r#false);
+
             let empty_list_inst = Gc::new_unchecked(heap.alloc_nonindexed(
                 empty_list
             )?.cast::<EmptyList>());
 
             // -----------------------------------------------------------------
 
-            Some(Self {
+            let mut mt = Self {
                 heap,
                 handles: HandlePool::new(),
 
-                types: Types { r#type, symbol, pair, empty_list,  bytecode, array_of_any, closure, r#box, var },
-                singletons: Singletons { empty_list: empty_list_inst },
+                types: Types { r#type, bool, symbol, pair, empty_list,  bytecode, array_of_any, closure, native_fn,
+                    r#box, var },
+                singletons: Singletons { r#true, r#false, empty_list: empty_list_inst },
                 symbols: SymbolTable::new(),
                 ns: Namespace::new(),
 
@@ -243,7 +274,22 @@ impl Mutator {
                 pc: 0,
                 regs: Regs::with_capacity((1 << 20 /* 1 MiB */) / size_of::<ORef>()),
                 stack: Vec::new()
-            })
+            };
+
+            // Create builtins:
+            // -----------------------------------------------------------------
+
+            for (name, f) in [("eq?", builtins::EQ), ("fx-", builtins::FX_SUB), ("fx*", builtins::FX_MUL)] {
+                let name = Symbol::new(&mut mt, name);
+                let f = NativeFn::new(&mut mt, f);
+                let f = mt.root_t(f);
+                let var = Var::new(&mut mt, f.into());
+                mt.ns.add(name, var);
+            }
+
+            // -----------------------------------------------------------------
+
+            Some(mt)
         }
     }
 
@@ -284,7 +330,7 @@ impl Mutator {
 
     pub fn push(&mut self, v: ORef) { self.regs.push(v); }
 
-    pub fn pop(&mut self) -> ORef { self.regs.pop().unwrap() }
+    pub fn pop(&mut self) -> Option<ORef> { self.regs.pop() }
 
     pub fn dump_regs(&self) { self.regs.dump(self); }
 
@@ -312,7 +358,7 @@ impl Mutator {
         unsafe { self.handles.root_t(obj) }
     }
 
-    fn tailcall(&mut self, argc: usize) {
+    fn tailcall(&mut self, argc: usize) -> Option<ORef> {
         let callee = self.regs[self.regs.len() - argc];
         if let Some(callee) = callee.try_cast::<Closure>(self) {
             let code = unsafe { callee.as_ref().code };
@@ -333,8 +379,60 @@ impl Mutator {
             if argc != unsafe { self.code().as_ref().arity } {
                 todo!()
             }
+
+            None
+        } else if let Some(callee) = callee.try_cast::<NativeFn>(self) {
+            // Pass arguments:
+            self.regs.enter(argc);
+
+            // Check arity:
+            // TODO: Varargs
+            if argc != unsafe { callee.as_ref().arity } {
+                todo!()
+            }
+
+            // Call:
+            unsafe { (callee.as_ref().code)(self); }
+
+            // Return:
+            self.ret()
         } else {
             todo!()
+        }
+    }
+
+    fn ret(&mut self) -> Option<ORef> {
+        if self.stack.len() > 0 {
+            // Restore registers:
+
+            let rip =
+                unsafe { isize::from(Fixnum::from_oref_unchecked(self.stack.pop().unwrap())) as usize };
+            let frame_len =
+                unsafe { isize::from(Fixnum::from_oref_unchecked(self.stack.pop().unwrap())) as usize };
+
+            let start = self.stack.len() - frame_len;
+            self.regs.re_enter(&self.stack[start..]);
+            self.stack.truncate(start);
+
+            let f = self.regs[self.regs.len() - frame_len - 1];
+            if let Some(f) = f.try_cast::<Closure>(self) {
+                let code = unsafe { f.as_ref().code };
+
+                // Jump back:
+                self.set_code(code);
+                self.pc = rip;
+
+                // Ensure register space, reclaim garbage regs prefix and extend regs if necessary:
+                self.regs.ensure(unsafe { code.as_ref().max_regs });
+            } else {
+                todo!()
+            }
+
+            None
+        } else {
+            let res = self.regs[self.regs.len() - 1];
+            self.regs.enter(0);
+            Some(res)
         }
     }
 
@@ -526,38 +624,13 @@ impl Mutator {
                     Opcode::TailCall => {
                         let argc = self.peek_oparg();
 
-                        self.tailcall(argc);
+                        if let Some(res) = self.tailcall(argc) {
+                            return res;
+                        }
                     },
 
                     Opcode::Ret =>
-                        if self.stack.len() > 0 {
-                            // Restore registers:
-
-                            let rip =
-                                unsafe { isize::from(Fixnum::from_oref_unchecked(self.stack.pop().unwrap())) as usize };
-                            let frame_len =
-                                unsafe { isize::from(Fixnum::from_oref_unchecked(self.stack.pop().unwrap())) as usize };
-
-                            let start = self.stack.len() - frame_len;
-                            self.regs.re_enter(&self.stack[start..]);
-                            self.stack.truncate(start);
-
-                            let f = self.regs[self.regs.len() - frame_len - 1];
-                            if let Some(f) = f.try_cast::<Closure>(self) {
-                                let code = unsafe { f.as_ref().code };
-
-                                // Jump back:
-                                self.set_code(code);
-                                self.pc = rip;
-
-                                // Ensure register space, reclaim garbage regs prefix and extend regs if necessary:
-                                self.regs.ensure(unsafe { code.as_ref().max_regs });
-                            } else {
-                                todo!()
-                            }
-                        } else {
-                            let res = self.regs[self.regs.len() - 1];
-                            self.regs.enter(0);
+                        if let Some(res) = self.ret() {
                             return res;
                         }
                 }

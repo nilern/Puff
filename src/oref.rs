@@ -9,6 +9,7 @@ use crate::symbol::Symbol;
 use crate::list::{Pair, EmptyList};
 use crate::closure::Closure;
 use crate::bytecode::Bytecode;
+use crate::bool::Bool;
 
 trait Tagged {
     const TAG: usize;
@@ -64,7 +65,7 @@ impl ORef {
         }
     }
 
-    pub fn is_truthy(self, _: &Mutator) -> bool { true } // TODO: false
+    pub fn is_truthy(self, mt: &Mutator) -> bool { self != Bool::instance(mt, false).into() }
 }
 
 impl DisplayWithin for ORef {
@@ -99,10 +100,32 @@ impl Fixnum {
     const MAX: isize = (1 << (ORef::PAYLOAD_BITS - 1)) - 1;
 
     pub unsafe fn from_oref_unchecked(oref: ORef) -> Self { Self(oref.0) }
+
+    pub fn checked_sub(self, other: Self) -> Option<Self> {
+        self.0.checked_sub(other.0)
+            .map(|n| Self(n | Self::TAG))
+    }
+
+    pub fn checked_mul(self, other: Self) -> Option<Self> {
+        (self.0 & !ORef::TAG_BITS).checked_mul(other.0 & !ORef::TAG_BITS)
+            .map(|n| Self((n >> ORef::SHIFT) | Self::TAG))
+    }
 }
 
 impl From<Fixnum> for ORef {
     fn from(n: Fixnum) -> Self { ORef(n.0) }
+}
+
+impl TryFrom<ORef> for Fixnum {
+    type Error = ();
+
+    fn try_from(oref: ORef) -> Result<Self, Self::Error> {
+        if oref.tag() == Self::TAG {
+            Ok(Self(oref.0))
+        } else {
+            Err(())
+        }
+    }
 }
 
 impl TryFrom<isize> for Fixnum {
@@ -235,6 +258,12 @@ impl DisplayWithin for Gc<()> {
                 write!(fmt, ")")
             } else if let Some(_) = self.try_cast::<EmptyList>(mt) {
                 write!(fmt, "()")
+            } else if let Some(this) = self.try_cast::<Bool>(mt) {
+                if bool::from(this.as_ref().0) {
+                    write!(fmt, "#t")
+                } else {
+                    write!(fmt, "#f")
+                }
             } else if let Some(_) = self.try_cast::<Closure>(mt) {
                 write!(fmt, "#<fn @ {:p}>", self.0)
             } else if let Some(code) = self.try_cast::<Bytecode>(mt) {

@@ -65,6 +65,15 @@ pub struct Reader<'i> {
     input: Input<'i>
 }
 
+fn is_special_initial(c: char) -> bool {
+    c == '!' || c == '$' || c == '%' || c == '&' || c == '*' || c == '/' || c == ':'
+    || c == '<' || c == '=' || c == '>' || c == '?' || c == '^' || c == '_' || c == '~'
+}
+
+fn is_initial(c: char) -> bool { c.is_alphabetic() || is_special_initial(c) }
+
+fn is_special_subsequent(c: char) -> bool { c == '+' || c == '-' || c == '.' || c == '@' }
+
 impl<'i> Reader<'i> {
     pub fn new(chars: &'i str) -> Self { Reader {input: Input::new(chars) } }
 
@@ -102,7 +111,7 @@ impl<'i> Reader<'i> {
         let start = first_pc.pos;
 
         while let Some(pc) = self.input.peek() {
-            if pc.v.is_alphanumeric() || pc.v == '-' || pc.v == '!' || pc.v == '?' || pc.v == '_' {
+            if is_initial(pc.v) || is_special_subsequent(pc.v) {
                 self.input.next();
             } else {
                 break;
@@ -181,7 +190,7 @@ impl<'i> Reader<'i> {
                         .map(|res|
                             res.map(|n| mt.root(ORef::from(n))))
                 },
-                c if c.is_alphabetic() || c == '-' || c == '!' || c == '?' || c == '_' => {
+                c if is_initial(c) => {
                     self.input.next();
                     Ok(self.read_symbol(mt, pc).map(ORef::from))
                         .map(|res|
