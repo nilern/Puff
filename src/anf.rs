@@ -1,7 +1,8 @@
 use std::collections::hash_set::HashSet;
 
-use crate::handle::Handle;
+use crate::handle::{Handle, HandleT};
 use crate::compiler::Id;
+use crate::symbol::Symbol;
 
 pub type LiveVars = HashSet<Id>;
 
@@ -11,6 +12,8 @@ pub enum Triv {
 }
 
 pub enum Expr {
+    Define(HandleT<Symbol>, Box<Expr>),
+
     Let(Vec<Binding>, Box<Expr>, /* popnnt?: */ bool),
 
     If(Box<Expr>, Box<Expr>, Box<Expr>, LiveVars),
@@ -23,6 +26,7 @@ pub enum Expr {
     r#Fn(LiveVars, Params, Box<Expr>),
     Call(Id, Vec<Id>, LiveVars),
 
+    Global(HandleT<Symbol>),
     Triv(Triv)
 }
 

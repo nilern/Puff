@@ -39,7 +39,11 @@ pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::Expr {
     fn analyze_expr(cmp: &mut Compiler, env: &Rc<Env>, expr: ORef) -> anf::Expr {
         if let Ok(expr) = Gc::<()>::try_from(expr.clone()) {
             if let Some(name) = expr.try_cast::<Symbol>(cmp.mt) {
-                return Triv(Use(Env::get(env, name).unwrap()));
+                if let Some(id) = Env::get(env, name) {
+                    return Triv(Use(id));
+                } else {
+                    return Global(cmp.mt.root_t(name));
+                }
             } else if let Some(ls) = expr.try_cast::<Pair>(cmp.mt) {
                 let callee = unsafe { ls.as_ref().car };
                 if let Ok(callee) = Gc::<()>::try_from(callee) {
@@ -254,11 +258,50 @@ pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::Expr {
         }
     }
 
-    let params = vec![Id::fresh(cmp)];
-    let body = analyze_expr(cmp, &Rc::new(Env::Empty), expr);
-    let mut expr = r#Fn(anf::LiveVars::new(), params, boxed::Box::new(body));
+    fn analyze_toplevel_form(cmp: &mut Compiler, form: ORef) -> anf::Expr {
+        if let Some(ls) = form.try_cast::<Pair>(cmp.mt) {
+            if let Some(callee) = unsafe { ls.as_ref().car }.try_cast::<Symbol>(cmp.mt) {
+                if unsafe { callee.as_ref().name() == "define" } {
+                    return analyze_definition(cmp, unsafe { ls.as_ref().cdr });
+                }
+            }
+        }
+
+        analyze_expr(cmp, &Rc::new(Env::Empty), form)
+    }
+
+    fn analyze_definition(cmp: &mut Compiler, args: ORef) -> anf::Expr {
+        if let Some(args) = args.try_cast::<Pair>(cmp.mt) {
+            if let Some(definiend) = unsafe { args.as_ref().car }.try_cast::<Symbol>(cmp.mt) {
+                if let Some(args) = unsafe { args.as_ref().cdr }.try_cast::<Pair>(cmp.mt) {
+                    let val_sexpr = unsafe { args.as_ref().car };
+
+                    if unsafe { args.as_ref().cdr } == EmptyList::instance(cmp.mt).into() {
+                        let val_expr = analyze_expr(cmp, &Rc::new(Env::Empty), val_sexpr);
+
+                        Define(cmp.mt.root_t(definiend), boxed::Box::new(val_expr))
+                    } else {
+                        todo!()
+                    }
+                } else {
+                    todo!()
+                }
+            } else {
+                todo!()
+            }
+        } else {
+            todo!()
+        }
+    }
+
+    let body = analyze_toplevel_form(cmp, expr);
+
+    let mut expr = r#Fn(anf::LiveVars::new(), vec![Id::fresh(cmp)], boxed::Box::new(body));
+
     expr = convert_mutables(cmp, &mutables(&expr), &expr);
+
     liveness(&mut expr);
+
     expr    
 }
 
@@ -267,6 +310,8 @@ fn mutables(expr: &anf::Expr) -> HashSet<Id> {
 
     fn expr_mutables(mutables: &mut HashSet<Id>, expr: &anf::Expr) {
         match expr {
+            &Define(_, ref val_expr) => expr_mutables(mutables, val_expr),
+
             &Let(ref bindings, ref body, _) => {
                 for (_, val_expr) in bindings { expr_mutables(mutables, val_expr); }
                 expr_mutables(mutables, body);
@@ -289,6 +334,7 @@ fn mutables(expr: &anf::Expr) -> HashSet<Id> {
 
             &Call(_, _, _) => (),
 
+            &Global(_) => (),
             &Triv(_) => ()
         }
     }
@@ -303,6 +349,9 @@ fn convert_mutables(cmp: &mut Compiler, mutables: &HashSet<Id>, expr: &anf::Expr
     use anf::Triv::*;
 
     match expr {
+        &Define(ref definiend, ref val_expr) =>
+            Define(definiend.clone(), boxed::Box::new(convert_mutables(cmp, mutables, val_expr))),
+
         &Let(ref bindings, ref body, popnnt) => {
             let bindings = bindings.iter()
                 .map(|(id, val_expr)| {
@@ -360,6 +409,8 @@ fn convert_mutables(cmp: &mut Compiler, mutables: &HashSet<Id>, expr: &anf::Expr
             // Callee and args ids are not from source code and so cannot be mutable:
             Call(callee, args.clone(), live_outs.clone()),
 
+        &Global(ref name) => Global(name.clone()),
+
         &Triv(Use(id)) if mutables.contains(&id) => BoxGet(id),
 
         &Triv(Use(id)) => Triv(Use(id)),
@@ -374,6 +425,8 @@ fn liveness(expr: &mut anf::Expr) {
 
     fn live_ins(expr: &mut Expr, mut live_outs: anf::LiveVars) -> anf::LiveVars {
         match expr {
+            &mut Define(_, ref mut val_expr) => live_outs = live_ins(val_expr, live_outs),
+
             &mut Let(ref mut bindings, ref mut body, _) => {
                 live_outs = live_ins(body, live_outs);
 
@@ -430,6 +483,8 @@ fn liveness(expr: &mut anf::Expr) {
 
                 live_outs.insert(callee);
             },
+
+            &mut Global(_) => (),
 
             &mut Triv(Use(id)) => { live_outs.insert(id); },
 

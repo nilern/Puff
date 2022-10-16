@@ -10,19 +10,28 @@ use crate::handle::{Handle, HandleT};
 use crate::r#type::IndexedType;
 use crate::compiler::Compiler;
 use crate::cfg;
+use crate::symbol::Symbol;
 
 #[derive(Debug)]
 pub enum Opcode {
+    Define,
+    Global,
+    // OPTIMIZE: Define & Global variants that go through Var instead of Symbol; patched in by VM (like JVM?)
+
     Const,
     Local,
     Clover,
+
     PopNNT,
     Prune,
+
     Box,
     BoxSet,
     BoxGet,
+
     Brf,
     Br,
+
     r#Fn,
     Call,
     TailCall,
@@ -177,6 +186,26 @@ impl Bytecode {
             while let Some((i, &byte)) = instrs.next() {
                 if let Ok(op) = Opcode::try_from(byte) {
                     match op {
+                        Opcode::Define =>
+                            if let Some((_, ci)) = instrs.next() {
+                                let c = self
+                                    .consts.as_ref()
+                                    .indexed_field()[*ci as usize];
+                                writeln!(fmt, "{}{}: define {} ; {}", indent, i, ci, c.within(mt))?;
+                            } else {
+                                todo!()
+                            },
+
+                        Opcode::Global =>
+                            if let Some((_, ci)) = instrs.next() {
+                                let c = self
+                                    .consts.as_ref()
+                                    .indexed_field()[*ci as usize];
+                                writeln!(fmt, "{}{}: global {} ; {}", indent, i, ci, c.within(mt))?;
+                            } else {
+                                todo!()
+                            },
+
                         Opcode::Const =>
                             if let Some((_, ci)) = instrs.next() {
                                 let c = self
@@ -324,6 +353,24 @@ impl Builder {
     }
 
     // TODO: Deduplicate constants
+    fn define(&mut self, name: HandleT<Symbol>) {
+        self.instrs.push(Opcode::Define as u8);
+
+        let i = u8::try_from(self.consts.len()).unwrap();
+        self.consts.push(name.into());
+        self.instrs.push(i);
+    }
+
+    // TODO: Deduplicate constants
+    fn global(&mut self, name: HandleT<Symbol>) {
+        self.instrs.push(Opcode::Global as u8);
+
+        let i = u8::try_from(self.consts.len()).unwrap();
+        self.consts.push(name.into());
+        self.instrs.push(i);
+    }
+
+    // TODO: Deduplicate constants
     fn r#const(&mut self, v: Handle) {
         self.instrs.push(Opcode::Const as u8);
 
@@ -424,6 +471,9 @@ impl Gc<Bytecode> {
             use cfg::Instr::*;
 
             match instr {
+                &Define(ref name) => builder.define(name.clone()),
+                &Global(ref name) => builder.global(name.clone()),
+
                 &Const(ref c) => builder.r#const(c.clone()),
                 &Local(reg) => builder.local(reg),
                 &Clover(i) => builder.clover(i),

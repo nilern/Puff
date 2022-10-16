@@ -52,6 +52,10 @@ impl<T> Deref for HandleT<T> {
     }
 }
 
+impl<T> Clone for HandleT<T> {
+    fn clone(&self) -> Self { Self { handle: self.handle.clone(), phantom: self.phantom } }
+}
+
 impl TryFrom<Handle> for HandleT<()> {
     type Error = ();
 

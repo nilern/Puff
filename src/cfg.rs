@@ -4,10 +4,11 @@ use std::collections::hash_map::HashMap;
 use std::collections::hash_set::HashSet;
 
 use crate::oref::{WithinMt, DisplayWithin};
-use crate::handle::Handle;
+use crate::handle::{Handle, HandleT};
 use crate::mutator::Mutator;
 use crate::anf;
 use crate::compiler::Id;
+use crate::symbol::Symbol;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Label(usize);
@@ -21,16 +22,23 @@ impl fmt::Display for Label {
 }
 
 pub enum Instr {
+    Define(HandleT<Symbol>),
+    Global(HandleT<Symbol>),
+
     Const(Handle),
     Local(usize),
     Clover(usize),
+
     PopNNT(usize),
     Prune(Vec<bool>),
+
     Box,
     BoxSet,
     BoxGet,
+
     If(Label, Label),
     Goto(Label),
+
     Fn(Fn, usize),
     Call(usize, Vec<bool>),
     TailCall(usize),
@@ -42,6 +50,9 @@ impl Instr {
         use Instr::*;
 
         match self {
+            &Define(ref definiend) => unsafe { writeln!(fmt, "{}define {}", indent, definiend.as_ref().name()) },
+            &Global(ref name) => unsafe { writeln!(fmt, "{}global {}", indent, name.as_ref().name()) },
+
             &Const(ref c) => writeln!(fmt, "{}const {}", indent, c.within(mt)),
             &Local(reg) => writeln!(fmt, "{}local {}", indent, reg),
             &Clover(i) => writeln!(fmt, "{}clover {}", indent, i),
@@ -415,6 +426,17 @@ impl From<&anf::Expr> for Fn {
         #[must_use]
         fn emit_expr(env: &mut Env, f: &mut Fn, mut current: Label, cont: Cont, expr: &anf::Expr) -> Label {
             match *expr {
+                anf::Expr::Define(ref definiend, ref val_expr) => {
+                    current = emit_expr(env, f, current, Cont::Next, val_expr);
+                    f.block_mut(current).push(Instr::Define(definiend.clone()));
+                    env.pop();
+                    env.push();
+
+                    goto(f, current, cont);
+
+                    current
+                },
+
                 anf::Expr::Let(ref bindings, ref body, popnnt) => {
                     for &(id, ref val) in bindings {
                         current = emit_expr(env, f, current, Cont::Next, val);
@@ -529,6 +551,15 @@ impl From<&anf::Expr> for Fn {
 
                         goto(f, current, cont);
                     }
+
+                    current
+                },
+
+                anf::Expr::Global(ref name) => {
+                    f.block_mut(current).push(Instr::Global(name.clone()));
+                    env.push();
+
+                    goto(f, current, cont);
 
                     current
                 },
