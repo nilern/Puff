@@ -15,7 +15,7 @@ use crate::array::Array;
 use crate::closure::Closure;
 use crate::regs::Regs;
 use crate::r#box::Box;
-use crate::namespace::Var;
+use crate::namespace::{Namespace, Var};
 
 const USIZE_TYPE_SIZE: usize = min_size_of_indexed::<Type>();
 
@@ -48,6 +48,7 @@ pub struct Mutator {
     types: Types,
     singletons: Singletons,
     symbols: SymbolTable,
+    ns: Namespace,
 
     code: Option<Gc<Bytecode>>,
     consts: Option<Gc<Array<ORef>>>,
@@ -235,6 +236,7 @@ impl Mutator {
                 types: Types { r#type, symbol, pair, empty_list,  bytecode, array_of_any, closure, r#box, var },
                 singletons: Singletons { empty_list: empty_list_inst },
                 symbols: SymbolTable::new(),
+                ns: Namespace::new(),
 
                 code: None,
                 consts: None,
@@ -346,7 +348,52 @@ impl Mutator {
         loop {
             if let Ok(op) = self.next_opcode() {
                 match op {
-                    Opcode::Define | Opcode::GlobalSet | Opcode::Global => todo!(),
+                    Opcode::Define => {
+                        let i = self.next_oparg();
+
+                        let name = unsafe { self.consts().as_ref().indexed_field()[i].unchecked_cast::<Symbol>() };
+                        if let Some(mut var) = self.ns.get(name) {
+                            let v = self.regs.pop().unwrap();
+                            unsafe {
+                                var.as_mut().redefine(v);
+                                self.regs.push_unchecked(v); // HACK?
+                            }
+                        } else {
+                            unsafe {
+                                let mut var = Var::new_uninitialized(self); // Avoids allocating a HandleT<Var>
+                                self.ns.add(name, var);
+                                let v = self.regs.pop().unwrap();
+                                var.as_mut().init(v);
+                                self.regs.push_unchecked(v); // HACK?
+                            }
+                        }
+                    }
+
+                    Opcode::GlobalSet => {
+                        let i = self.next_oparg();
+
+                        let name = unsafe { self.consts().as_ref().indexed_field()[i].unchecked_cast::<Symbol>() };
+                        if let Some(mut var) = self.ns.get(name) {
+                            let v = self.regs.pop().unwrap();
+                            unsafe {
+                                var.as_mut().set(v);
+                                self.regs.push_unchecked(v); // HACK?
+                            }
+                        } else {
+                            todo!()
+                        }
+                    }
+
+                    Opcode::Global => {
+                        let i = self.next_oparg();
+
+                        let name = unsafe { self.consts().as_ref().indexed_field()[i].unchecked_cast::<Symbol>() };
+                        if let Some(var) = self.ns.get(name) {
+                            unsafe { self.regs.push_unchecked(var.as_ref().value()); }
+                        } else {
+                            todo!()
+                        }
+                    }
 
                     Opcode::Const => {
                         let i = self.next_oparg();

@@ -24,6 +24,8 @@ impl Reify for Var {
 impl Var {
     pub const TYPE_LEN: usize = 1;
 
+    pub unsafe fn new_uninitialized(mt: &mut Mutator) -> Gc<Self> { Gc::new_unchecked(mt.alloc_static::<Self>()) }
+
     fn new(mt: &mut Mutator, value: Handle) -> Gc<Self> {
         unsafe {
             let nptr = mt.alloc_static::<Self>();
@@ -32,7 +34,13 @@ impl Var {
         }
     }
 
-    fn value(&self) -> ORef { self.value }
+    pub fn value(&self) -> ORef { self.value }
+
+    pub fn init(&mut self, v: ORef) { self.value = v; }
+
+    pub fn redefine(&mut self, v: ORef) { self.value = v; }
+
+    pub fn set(&mut self, v: ORef) { self.value = v; }
 }
 
 type Key = Option<Gc<Symbol>>;
@@ -57,7 +65,7 @@ impl Drop for Namespace {
 }
 
 impl Namespace {
-    fn new() -> Self {
+    pub fn new() -> Self {
         let capacity = 2;
 
         let keys = unsafe {
@@ -76,7 +84,7 @@ impl Namespace {
         Self { len: 0, capacity, keys, values }
     }
 
-    fn get(&self, name: Gc<Symbol>) -> Option<Gc<Var>> {
+    pub fn get(&self, name: Gc<Symbol>) -> Option<Gc<Var>> {
         let hash = unsafe { name.as_ref().hash() };
 
         let max_index = self.capacity - 1;
@@ -94,7 +102,7 @@ impl Namespace {
         }
     }
 
-    fn add(&mut self, name: Gc<Symbol>, v: Gc<Var>) {
+    pub fn add(&mut self, name: Gc<Symbol>, v: Gc<Var>) {
         let hash = unsafe { name.as_ref().hash() };
 
         loop {
