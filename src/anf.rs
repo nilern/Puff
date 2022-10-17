@@ -15,6 +15,7 @@ pub enum Expr {
     Define(HandleT<Symbol>, Box<Expr>),
     GlobalSet(HandleT<Symbol>, Box<Expr>),
 
+    Begin(Vec<Expr>),
     Let(Vec<Binding>, Box<Expr>, /* popnnt?: */ bool),
 
     If(Box<Expr>, Box<Expr>, Box<Expr>, LiveVars),

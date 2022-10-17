@@ -449,6 +449,26 @@ impl From<&anf::Expr> for Fn {
                     current
                 },
 
+                anf::Expr::Begin(ref stmts) => {
+                    for stmt in &stmts[0..(stmts.len() - 1)] {
+                        current = emit_expr(env, f, current, Cont::Next, stmt);
+                    }
+
+                    current = emit_expr(env, f, current, cont, stmts.last().unwrap());
+
+                    if let Cont::Ret = cont {
+                        /* ret/tailcall will take care of popping */
+                    } else {
+                        let pop_count = stmts.len() - 1;
+                        if pop_count > 0 {
+                            f.block_mut(current).push(Instr::PopNNT(pop_count));
+                            env.popnnt(pop_count);
+                        }
+                    }
+
+                    current
+                }
+
                 anf::Expr::Let(ref bindings, ref body, popnnt) => {
                     for &(id, ref val) in bindings {
                         current = emit_expr(env, f, current, Cont::Next, val);

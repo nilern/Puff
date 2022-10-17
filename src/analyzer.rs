@@ -54,6 +54,8 @@ pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::Expr {
                             return analyze_if(cmp, env, unsafe { ls.as_ref().cdr });
                         } else if unsafe { callee.as_ref().name() == "lambda" } {
                             return analyze_fn(cmp, env, unsafe { ls.as_ref().cdr });
+                        } else if unsafe { callee.as_ref().name() == "begin" } {
+                            return analyze_begin(cmp, env, unsafe { ls.as_ref().cdr });
                         } else if unsafe { callee.as_ref().name() == "set!" } {
                             return analyze_set(cmp, env, unsafe { ls.as_ref().cdr });
                         }
@@ -213,6 +215,26 @@ pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::Expr {
         }
     }
 
+    fn analyze_begin(cmp: &mut Compiler, env: &Rc<Env>, mut args: ORef) -> anf::Expr {
+        let mut stmts = Vec::new();
+
+        while let Some(args_pair) = args.try_cast::<Pair>(cmp.mt) {
+            stmts.push(analyze_expr(cmp, env, unsafe { args_pair.as_ref().car }));
+
+            args = unsafe { args_pair.as_ref().cdr };
+        }
+
+        if args == EmptyList::instance(cmp.mt).into() {
+            match stmts.len() {
+                0 => todo!(),
+                1 => stmts.pop().unwrap(),
+                _ => Begin(stmts)
+            }
+        } else {
+            todo!()
+        }
+    }
+
     fn analyze_set(cmp: &mut Compiler, env: &Rc<Env>, args: ORef) -> anf::Expr {
         if let Some(args) = args.try_cast::<Pair>(cmp.mt) {
             let dest = unsafe { args.as_ref().car };
@@ -267,6 +289,8 @@ pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::Expr {
             if let Some(callee) = unsafe { ls.as_ref().car }.try_cast::<Symbol>(cmp.mt) {
                 if unsafe { callee.as_ref().name() == "define" } {
                     return analyze_definition(cmp, unsafe { ls.as_ref().cdr });
+                } else if unsafe { callee.as_ref().name() == "begin" } {
+                    return analyze_toplevel_begin(cmp, unsafe { ls.as_ref().cdr });
                 }
             }
         }
@@ -298,6 +322,26 @@ pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::Expr {
         }
     }
 
+    fn analyze_toplevel_begin(cmp: &mut Compiler, mut args: ORef) -> anf::Expr {
+        let mut stmts = Vec::new();
+
+        while let Some(args_pair) = args.try_cast::<Pair>(cmp.mt) {
+            stmts.push(analyze_toplevel_form(cmp, unsafe { args_pair.as_ref().car }));
+
+            args = unsafe { args_pair.as_ref().cdr };
+        }
+
+        if args == EmptyList::instance(cmp.mt).into() {
+            match stmts.len() {
+                0 => todo!(),
+                1 => stmts.pop().unwrap(),
+                _ => Begin(stmts)
+            }
+        } else {
+            todo!()
+        }
+    }
+
     let body = analyze_toplevel_form(cmp, expr);
 
     let mut expr = r#Fn(anf::LiveVars::new(), vec![Id::fresh(cmp)], boxed::Box::new(body));
@@ -316,6 +360,8 @@ fn mutables(expr: &anf::Expr) -> HashSet<Id> {
         match expr {
             &Define(_, ref val_expr) => expr_mutables(mutables, val_expr),
             &GlobalSet(_, ref val_expr) => expr_mutables(mutables, val_expr),
+
+            &Begin(ref stmts) => for stmt in stmts { expr_mutables(mutables, stmt) },
 
             &Let(ref bindings, ref body, _) => {
                 for (_, val_expr) in bindings { expr_mutables(mutables, val_expr); }
@@ -359,6 +405,9 @@ fn convert_mutables(cmp: &mut Compiler, mutables: &HashSet<Id>, expr: &anf::Expr
 
         &GlobalSet(ref name, ref val_expr) =>
             GlobalSet(name.clone(), boxed::Box::new(convert_mutables(cmp, mutables, val_expr))),
+
+
+        &Begin(ref stmts) => Begin(stmts.iter().map(|stmt| convert_mutables(cmp, mutables, stmt)).collect()),
 
         &Let(ref bindings, ref body, popnnt) => {
             let bindings = bindings.iter()
@@ -435,6 +484,11 @@ fn liveness(expr: &mut anf::Expr) {
         match expr {
             &mut Define(_, ref mut val_expr) => live_outs = live_ins(val_expr, live_outs),
             &mut GlobalSet(_, ref mut val_expr) => live_outs = live_ins(val_expr, live_outs),
+
+            &mut Begin(ref mut stmts) =>
+                for stmt in stmts.iter_mut().rev() {
+                    live_outs = live_ins(stmt, live_outs);
+                },
 
             &mut Let(ref mut bindings, ref mut body, _) => {
                 live_outs = live_ins(body, live_outs);
