@@ -56,6 +56,8 @@ pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::Expr {
                             return analyze_fn(cmp, env, unsafe { ls.as_ref().cdr });
                         } else if unsafe { callee.as_ref().name() == "begin" } {
                             return analyze_begin(cmp, env, unsafe { ls.as_ref().cdr });
+                        } else if unsafe { callee.as_ref().name() == "quote" } {
+                            return analyze_quote(cmp, env, unsafe { ls.as_ref().cdr });
                         } else if unsafe { callee.as_ref().name() == "set!" } {
                             return analyze_set(cmp, env, unsafe { ls.as_ref().cdr });
                         }
@@ -229,6 +231,18 @@ pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::Expr {
                 0 => todo!(),
                 1 => stmts.pop().unwrap(),
                 _ => Begin(stmts)
+            }
+        } else {
+            todo!()
+        }
+    }
+
+    fn analyze_quote(cmp: &mut Compiler, env: &Rc<Env>, args: ORef) -> anf::Expr {
+        if let Some(args) = args.try_cast::<Pair>(cmp.mt) {
+            if unsafe { args.as_ref().cdr } == EmptyList::instance(cmp.mt).into() {
+                Triv(Const(unsafe { cmp.mt.root(args.as_ref().car) }))
+            } else {
+                todo!()
             }
         } else {
             todo!()

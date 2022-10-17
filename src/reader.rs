@@ -77,6 +77,28 @@ fn is_special_subsequent(c: char) -> bool { c == '+' || c == '-' || c == '.' || 
 impl<'i> Reader<'i> {
     pub fn new(chars: &'i str) -> Self { Reader {input: Input::new(chars) } }
 
+    fn read_quoted(&mut self, mt: &mut Mutator, quote: Positioned<char>) -> ReadResult<Handle> {
+        let start = quote.pos;
+
+        if let Some(res) = self.next(mt) {
+            let ls = EmptyList::instance(mt).into();
+            let ls = mt.root(ls);
+            let ls = Pair::new(mt, res?.v, ls).into();
+            let ls = mt.root(ls);
+            let quote = Symbol::new(mt, "quote").into();
+            let quote = mt.root(quote);
+            let ls = Pair::new(mt, quote, ls).into();
+            let ls = mt.root(ls);
+
+            Ok(Spanning {
+                v: ls,
+                span: Span {start, end: self.input.pos}
+            })
+        } else {
+            Err(()) // FIXME
+        }
+    }
+
     fn read_fixnum(&mut self, radix: u32, first_pc: Positioned<char>)
         -> ReadResult<Fixnum>
     {
@@ -184,18 +206,26 @@ impl<'i> Reader<'i> {
                     self.input.next();
                     self.read_list(mt, pc)
                 },
+
+                '\'' => {
+                    self.input.next();
+                    self.read_quoted(mt, pc)
+                },
+
                 c if c.is_digit(radix) => {
                     self.input.next();
                     self.read_fixnum(radix, pc).map(|sv| sv.map(ORef::from))
                         .map(|res|
                             res.map(|n| mt.root(ORef::from(n))))
                 },
+
                 c if is_initial(c) => {
                     self.input.next();
                     Ok(self.read_symbol(mt, pc).map(ORef::from))
                         .map(|res|
                             res.map(|n| mt.root(ORef::from(n))))
                 },
+
                 _ => Err(())
             }
         })
