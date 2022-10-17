@@ -48,11 +48,11 @@ pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::Expr {
                 let callee = unsafe { ls.as_ref().car };
                 if let Ok(callee) = Gc::<()>::try_from(callee) {
                     if let Some(callee) = callee.try_cast::<Symbol>(cmp.mt) {
-                        if unsafe { callee.as_ref().name() == "let" } {
+                        if unsafe { callee.as_ref().name() == "let*" } {
                             return analyze_let(cmp, env, unsafe { ls.as_ref().cdr });
                         } else if unsafe { callee.as_ref().name() == "if" } {
                             return analyze_if(cmp, env, unsafe { ls.as_ref().cdr });
-                        } else if unsafe { callee.as_ref().name() == "fn" } {
+                        } else if unsafe { callee.as_ref().name() == "lambda" } {
                             return analyze_fn(cmp, env, unsafe { ls.as_ref().cdr });
                         } else if unsafe { callee.as_ref().name() == "set!" } {
                             return analyze_set(cmp, env, unsafe { ls.as_ref().cdr });
