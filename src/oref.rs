@@ -10,6 +10,7 @@ use crate::list::{Pair, EmptyList};
 use crate::closure::Closure;
 use crate::bytecode::Bytecode;
 use crate::bool::Bool;
+use crate::r#box::Box;
 
 trait Tagged {
     const TAG: usize;
@@ -266,6 +267,8 @@ impl DisplayWithin for Gc<()> {
                 }
             } else if let Some(_) = self.try_cast::<Closure>(mt) {
                 write!(fmt, "#<fn @ {:p}>", self.0)
+            } else if let Some(_) = self.try_cast::<Box>(mt) {
+                write!(fmt, "#<box>")
             } else if let Some(code) = self.try_cast::<Bytecode>(mt) {
                 write!(fmt, "{}", code.within(mt))
             } else {

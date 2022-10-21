@@ -553,7 +553,11 @@ impl Mutator {
                         self.regs.push(r#box.into());
                     },
 
-                    Opcode::UninitializedBox => todo!(),
+                    Opcode::UninitializedBox => {
+                        let r#box = unsafe { Gc::new_unchecked(self.alloc_static::<Box>()) };
+
+                        self.regs.push(r#box.into());
+                    },
 
                     Opcode::BoxSet => {
                         let v = self.regs.pop().unwrap();
@@ -564,7 +568,19 @@ impl Mutator {
                         self.regs.push(r#box); // FIXME: Abstraction leak wrt. `set!`-conversion
                     },
 
-                    Opcode::CheckedBoxSet => todo!(),
+                    Opcode::CheckedBoxSet => {
+                        let guard = unsafe { self.regs.pop().unwrap().unchecked_cast::<Box>() };
+                        let v = self.regs.pop().unwrap();
+                        let r#box = self.regs.pop().unwrap();
+
+                        if unsafe { guard.as_ref().v.is_truthy(self) } {
+                            unsafe { r#box.unchecked_cast::<Box>().as_mut().v = v; }
+
+                            self.regs.push(r#box); // FIXME: Abstraction leak wrt. `set!`-conversion
+                        } else {
+                            todo!()
+                        }
+                    },
 
                     Opcode::BoxGet => {
                         let r#box = self.regs.pop().unwrap();
@@ -572,9 +588,24 @@ impl Mutator {
                         self.regs.push(unsafe { r#box.unchecked_cast::<Box>().as_ref().v });
                     },
 
-                    Opcode::CheckedBoxGet => todo!(),
+                    Opcode::CheckedBoxGet => {
+                        let guard = unsafe { self.regs.pop().unwrap().unchecked_cast::<Box>() };
+                        let r#box = self.regs.pop().unwrap();
 
-                    Opcode::CheckUse => todo!(),
+                        if unsafe { guard.as_ref().v.is_truthy(self) } {
+                            self.regs.push(unsafe { r#box.unchecked_cast::<Box>().as_ref().v });
+                        } else {
+                            todo!()
+                        }
+                    },
+
+                    Opcode::CheckUse => {
+                        let guard = unsafe { self.regs.pop().unwrap().unchecked_cast::<Box>() };
+
+                        if !unsafe { guard.as_ref().v.is_truthy(self) } {
+                            todo!()
+                        }
+                    },
 
                     Opcode::Brf =>
                         if self.regs.pop().unwrap().is_truthy(self) {

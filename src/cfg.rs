@@ -565,7 +565,7 @@ impl From<&anf::Expr> for Fn {
                     emit_use(env, f, current, r#box);
                     current = emit_expr(env, f, current, Cont::Next, val_expr);
                     f.block_mut(current).push(Instr::CheckedBoxSet);
-                    env.popn(2);
+                    env.popn(3);
                     env.push();
 
                     goto(f, current, cont);
@@ -588,7 +588,7 @@ impl From<&anf::Expr> for Fn {
                     emit_use(env, f, current, guard);
                     emit_use(env, f, current, r#box);
                     f.block_mut(current).push(Instr::CheckedBoxGet);
-                    env.pop();
+                    env.popn(2);
                     env.push();
 
                     goto(f, current, cont);
