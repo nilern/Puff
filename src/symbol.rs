@@ -173,6 +173,7 @@ mod tests {
     #[test]
     fn symbol_new() {
         let mut mt = Mutator::new(1 << 20 /* 1 MiB */).unwrap();
+        let bootstrap_symbols_len = mt.symbols().len;
 
         let sym1 = Symbol::new(&mut mt, "foo");
         unsafe {
@@ -191,7 +192,6 @@ mod tests {
         let sym3 = Symbol::new(&mut mt, "foo");
         assert_eq!(sym3, sym3);
 
-        assert_eq!(mt.symbols().len, 2);
-        assert_eq!(mt.symbols().capacity, 4);
+        assert_eq!(mt.symbols().len, bootstrap_symbols_len + 2);
     }
 }

@@ -27,8 +27,12 @@ pub enum Opcode {
     Prune,
 
     Box,
+    UninitializedBox,
     BoxSet,
+    CheckedBoxSet,
     BoxGet,
+    CheckedBoxGet,
+    CheckUse,
 
     Brf,
     Br,
@@ -267,8 +271,12 @@ impl Bytecode {
                         },
 
                         Opcode::Box => writeln!(fmt, "{}{}: box", indent, i)?,
+                        Opcode::UninitializedBox => writeln!(fmt, "{}{}: uninitialized-box", indent, i)?,
                         Opcode::BoxSet => writeln!(fmt, "{}{}: box-set!", indent, i)?,
+                        Opcode::CheckedBoxSet => writeln!(fmt, "{}{}: checked-box-set!", indent, i)?,
                         Opcode::BoxGet => writeln!(fmt, "{}{}: box-get", indent, i)?,
+                        Opcode::CheckedBoxGet => writeln!(fmt, "{}{}: checked-box-get", indent, i)?,
+                        Opcode::CheckUse => writeln!(fmt, "{}{}: check-use", indent, i)?,
 
                         Opcode::Brf =>
                             if let Some((_, d)) = instrs.next() {
@@ -421,9 +429,17 @@ impl Builder {
 
     fn r#box(&mut self) { self.instrs.push(Opcode::Box as u8); }
 
+    fn uninitialized_box(&mut self) { self.instrs.push(Opcode::UninitializedBox as u8); }
+
     fn box_set(&mut self) { self.instrs.push(Opcode::BoxSet as u8); }
 
+    fn checked_box_set(&mut self) { self.instrs.push(Opcode::CheckedBoxSet as u8); }
+
     fn box_get(&mut self) { self.instrs.push(Opcode::BoxGet as u8); }
+
+    fn checked_box_get(&mut self) { self.instrs.push(Opcode::CheckedBoxGet as u8); }
+
+    fn check_use(&mut self) { self.instrs.push(Opcode::CheckUse as u8); }
 
     fn label(&mut self, label: cfg::Label) {
         self.label_indices.insert(label, self.instrs.len());
@@ -503,8 +519,12 @@ impl Gc<Bytecode> {
                 &Prune(ref prunes) => builder.prune(prunes),
 
                 &Box => builder.r#box(),
-                &BoxSet => builder.r#box_set(),
-                &BoxGet => builder.r#box_get(),
+                &UninitializedBox => builder.uninitialized_box(),
+                &BoxSet => builder.box_set(),
+                &CheckedBoxSet => builder.checked_box_set(),
+                &BoxGet => builder.box_get(),
+                &CheckedBoxGet => builder.checked_box_get(),
+                &CheckUse => builder.check_use(),
 
                 &If(_, alt) => builder.brf(alt),
                 &Goto(dest) => if dest != rpo_next.unwrap() { builder.br(dest) },

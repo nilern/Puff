@@ -34,8 +34,12 @@ pub enum Instr {
     Prune(Vec<bool>),
 
     Box,
+    UninitializedBox,
     BoxSet,
+    CheckedBoxSet,
     BoxGet,
+    CheckedBoxGet,
+    CheckUse,
 
     If(Label, Label),
     Goto(Label),
@@ -67,8 +71,12 @@ impl Instr {
             }
 
             &Box => writeln!(fmt, "{}box", indent),
+            &UninitializedBox => writeln!(fmt, "{}uninitialized-box", indent),
             &BoxSet => writeln!(fmt, "{}box-set!", indent),
+            &CheckedBoxSet => writeln!(fmt, "{}checked-box-set!", indent),
             &BoxGet => writeln!(fmt, "{}box-get", indent),
+            &CheckedBoxGet => writeln!(fmt, "{}checked-box-get", indent),
+            &CheckUse => writeln!(fmt, "{}check-use", indent),
 
             &If(conseq, alt) => writeln!(fmt, "{}if {} {}", indent, conseq, alt),
             &Goto(dest) => writeln!(fmt, "{}goto {}", indent, dest),
@@ -520,6 +528,15 @@ impl From<&anf::Expr> for Fn {
 
                 anf::Expr::Set(..) => unreachable!(),
 
+                anf::Expr::UninitializedBox => {
+                    f.block_mut(current).push(Instr::UninitializedBox);
+                    env.push();
+
+                    goto(f, current, cont);
+
+                    current
+                },
+
                 anf::Expr::Box(ref val_expr) => {
                     current = emit_expr(env, f, current, Cont::Next, val_expr);
                     f.block_mut(current).push(Instr::Box);
@@ -531,8 +548,8 @@ impl From<&anf::Expr> for Fn {
                     current
                 },
 
-                anf::Expr::BoxSet(id, ref val_expr) => {
-                    emit_use(env, f, current, id);
+                anf::Expr::BoxSet(r#box, ref val_expr) => {
+                    emit_use(env, f, current, r#box);
                     current = emit_expr(env, f, current, Cont::Next, val_expr);
                     f.block_mut(current).push(Instr::BoxSet);
                     env.popn(2);
@@ -543,9 +560,34 @@ impl From<&anf::Expr> for Fn {
                     current
                 },
 
-                anf::Expr::BoxGet(id) => {
-                    emit_use(env, f, current, id);
+                anf::Expr::CheckedBoxSet {guard, r#box, ref val_expr} => {
+                    emit_use(env, f, current, guard);
+                    emit_use(env, f, current, r#box);
+                    current = emit_expr(env, f, current, Cont::Next, val_expr);
+                    f.block_mut(current).push(Instr::CheckedBoxSet);
+                    env.popn(2);
+                    env.push();
+
+                    goto(f, current, cont);
+
+                    current
+                },
+
+                anf::Expr::BoxGet(r#box) => {
+                    emit_use(env, f, current, r#box);
                     f.block_mut(current).push(Instr::BoxGet);
+                    env.pop();
+                    env.push();
+
+                    goto(f, current, cont);
+
+                    current
+                },
+
+                anf::Expr::CheckedBoxGet {guard, r#box} => {
+                    emit_use(env, f, current, guard);
+                    emit_use(env, f, current, r#box);
+                    f.block_mut(current).push(Instr::CheckedBoxGet);
                     env.pop();
                     env.push();
 
@@ -596,6 +638,17 @@ impl From<&anf::Expr> for Fn {
                     current
                 },
 
+                anf::Expr::CheckedUse {guard, id} => {
+                    emit_use(env, f, current, guard);
+                    f.block_mut(current).push(Instr::CheckUse);
+                    env.pop();
+                    emit_use(env, f, current, id);
+
+                    goto(f, current, cont);
+
+                    current
+                },
+
                 anf::Expr::Triv(anf::Triv::Use(id)) => {
                     emit_use(env, f, current, id);
 
@@ -611,7 +664,9 @@ impl From<&anf::Expr> for Fn {
                     goto(f, current, cont);
 
                     current
-                }
+                },
+
+                anf::Expr::Letrec(..) => unreachable!()
             }
         }
 

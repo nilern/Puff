@@ -17,18 +17,23 @@ pub enum Expr {
 
     Begin(Vec<Expr>),
     Let(Vec<Binding>, Box<Expr>, /* popnnt?: */ bool),
+    Letrec(Vec<Binding>, Box<Expr>),
 
     If(Box<Expr>, Box<Expr>, Box<Expr>, LiveVars),
 
     Set(Id, Box<Expr>),
     Box(Box<Expr>),
+    UninitializedBox,
     BoxSet(Id, Box<Expr>),
+    CheckedBoxSet {guard: Id, r#box: Id, val_expr: Box<Expr>},
     BoxGet(Id),
+    CheckedBoxGet {guard: Id, r#box: Id},
 
     r#Fn(LiveVars, Params, Box<Expr>),
     Call(Id, Vec<Id>, LiveVars),
 
     Global(HandleT<Symbol>),
+    CheckedUse {guard: Id, id: Id},
     Triv(Triv)
 }
 

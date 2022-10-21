@@ -553,6 +553,8 @@ impl Mutator {
                         self.regs.push(r#box.into());
                     },
 
+                    Opcode::UninitializedBox => todo!(),
+
                     Opcode::BoxSet => {
                         let v = self.regs.pop().unwrap();
                         let r#box = self.regs.pop().unwrap();
@@ -560,13 +562,19 @@ impl Mutator {
                         unsafe { r#box.unchecked_cast::<Box>().as_mut().v = v; }
 
                         self.regs.push(r#box); // FIXME: Abstraction leak wrt. `set!`-conversion
-                    }
+                    },
+
+                    Opcode::CheckedBoxSet => todo!(),
 
                     Opcode::BoxGet => {
                         let r#box = self.regs.pop().unwrap();
 
                         self.regs.push(unsafe { r#box.unchecked_cast::<Box>().as_ref().v });
-                    }
+                    },
+
+                    Opcode::CheckedBoxGet => todo!(),
+
+                    Opcode::CheckUse => todo!(),
 
                     Opcode::Brf =>
                         if self.regs.pop().unwrap().is_truthy(self) {

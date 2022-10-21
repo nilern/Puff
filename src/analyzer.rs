@@ -1,4 +1,5 @@
 use std::rc::Rc;
+use std::collections::hash_map::HashMap;
 use std::collections::hash_set::HashSet;
 use std::boxed;
 
@@ -9,6 +10,7 @@ use crate::oref::{ORef, Gc};
 use crate::handle::HandleT;
 use crate::symbol::Symbol;
 use crate::compiler::{Compiler, Id};
+use crate::bool::Bool;
 
 pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::Expr {
     use anf::Expr::*;
@@ -53,11 +55,13 @@ pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::Expr {
                         } else if unsafe { callee.as_ref().name() == "if" } {
                             return analyze_if(cmp, env, unsafe { ls.as_ref().cdr });
                         } else if unsafe { callee.as_ref().name() == "lambda" } {
-                            return analyze_fn(cmp, env, unsafe { ls.as_ref().cdr });
+                            return analyze_lambda(cmp, env, unsafe { ls.as_ref().cdr });
                         } else if unsafe { callee.as_ref().name() == "begin" } {
                             return analyze_begin(cmp, env, unsafe { ls.as_ref().cdr });
+                        } else if unsafe { callee.as_ref().name() == "letrec" } {
+                            return analyze_letrec(cmp, env, unsafe { ls.as_ref().cdr });
                         } else if unsafe { callee.as_ref().name() == "quote" } {
-                            return analyze_quote(cmp, env, unsafe { ls.as_ref().cdr });
+                            return analyze_quote(cmp, unsafe { ls.as_ref().cdr });
                         } else if unsafe { callee.as_ref().name() == "set!" } {
                             return analyze_set(cmp, env, unsafe { ls.as_ref().cdr });
                         }
@@ -108,6 +112,7 @@ pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::Expr {
             let mut bs = bindings;
             while let Some(bs_pair) = bs.try_cast::<Pair>(cmp.mt) {
                 env = analyze_binding(cmp, &env, &mut anf_bs, unsafe { bs_pair.as_ref().car });
+
                 bs = unsafe { bs_pair.as_ref().cdr };
             }
 
@@ -120,16 +125,85 @@ pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::Expr {
 
         if let Some(args) = args.try_cast::<Pair>(cmp.mt) {
             let bindings = unsafe { args.as_ref().car };
-            let args = unsafe { args.as_ref().cdr };
 
-            if let Some(args) = args.try_cast::<Pair>(cmp.mt) {
+            if let Some(args) = unsafe { args.as_ref().cdr }.try_cast::<Pair>(cmp.mt) {
                 let body = unsafe { args.as_ref().car };
-                let args = unsafe { args.as_ref().cdr };
 
-                if args == EmptyList::instance(cmp.mt).into() {
+                if unsafe { args.as_ref().cdr } == EmptyList::instance(cmp.mt).into() {
                     let (env, bindings) = analyze_bindings(cmp, env, bindings);
                     let body = analyze_expr(cmp, &env, body);
                     Let(bindings, boxed::Box::new(body), true)
+                } else {
+                    todo!()
+                }
+            } else {
+                todo!()
+            }
+        } else {
+            todo!()
+        }
+    }
+
+    fn analyze_letrec(cmp: &mut Compiler, env: &Rc<Env>, args: ORef) -> anf::Expr {
+        fn bindings(cmp: &mut Compiler, env: &Rc<Env>, bindings: ORef) -> (Rc<Env>, Vec<(Id, Gc<Symbol>, ORef)>) {
+            fn binding(cmp: &mut Compiler, env: &Rc<Env>, binding: ORef) -> (Rc<Env>, (Id, Gc<Symbol>, ORef)) {
+                if let Some(binding) = binding.try_cast::<Pair>(cmp.mt) {
+                    let pat = unsafe { binding.as_ref().car };
+
+                    if let Some(binding) = unsafe { binding.as_ref().cdr }.try_cast::<Pair>(cmp.mt) {
+                        let val = unsafe { binding.as_ref().car };
+
+                        if unsafe { binding.as_ref().cdr } == EmptyList::instance(cmp.mt).into() {
+                            if let Some(name) = pat.try_cast::<Symbol>(cmp.mt) {
+                                let id = Id::fresh(cmp);
+                                (Rc::new(Env::Binding(id, cmp.mt.root_t(name), env.clone())), (id, name, val))
+                            } else {
+                                todo!()
+                            }
+                        } else {
+                            todo!()
+                        }
+                    } else {
+                        todo!()
+                    }
+                } else {
+                    todo!()
+                }
+            }
+
+            let mut anf_bs = Vec::new();
+            let mut env = env.clone();
+
+            let mut bs = bindings;
+            while let Some(bs_pair) = bs.try_cast::<Pair>(cmp.mt) {
+                let (e, b) = binding(cmp, &env, unsafe { bs_pair.as_ref().car });
+                anf_bs.push(b);
+                env = e;
+
+                bs = unsafe { bs_pair.as_ref().cdr };
+            }
+
+            if bs == EmptyList::instance(cmp.mt).into() {
+                (env, anf_bs)
+            } else {
+                todo!()
+            }
+        }
+
+        if let Some(args) = args.try_cast::<Pair>(cmp.mt) {
+            let sexpr_bindings = unsafe { args.as_ref().car };
+
+            if let Some(args) = unsafe { args.as_ref().cdr }.try_cast::<Pair>(cmp.mt) {
+                let body = unsafe { args.as_ref().car };
+
+                if unsafe { args.as_ref().cdr } == EmptyList::instance(cmp.mt).into() {
+                    let (env, bindings) = bindings(cmp, env, sexpr_bindings);
+
+                    let bindings = bindings.iter()
+                        .map(|(id, _, val_expr)| (*id, analyze_expr(cmp, &env, *val_expr)))
+                        .collect();
+                    let body = analyze_expr(cmp, &env, body);
+                    Letrec(bindings, boxed::Box::new(body))
                 } else {
                     todo!()
                 }
@@ -170,7 +244,7 @@ pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::Expr {
         }
     }
 
-    fn analyze_fn(cmp: &mut Compiler, env: &Rc<Env>, args: ORef) -> anf::Expr {
+    fn analyze_lambda(cmp: &mut Compiler, env: &Rc<Env>, args: ORef) -> anf::Expr {
         // TODO: Reject duplicate parameter names:
         fn analyze_params(cmp: &mut Compiler, env: &Rc<Env>, mut params: ORef) -> (Rc<Env>, anf::Params) {
             let mut anf_ps = vec![Id::fresh(cmp)]; // Id for "self" closure
@@ -237,7 +311,7 @@ pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::Expr {
         }
     }
 
-    fn analyze_quote(cmp: &mut Compiler, env: &Rc<Env>, args: ORef) -> anf::Expr {
+    fn analyze_quote(cmp: &mut Compiler, args: ORef) -> anf::Expr {
         if let Some(args) = args.try_cast::<Pair>(cmp.mt) {
             if unsafe { args.as_ref().cdr } == EmptyList::instance(cmp.mt).into() {
                 Triv(Const(unsafe { cmp.mt.root(args.as_ref().car) }))
@@ -360,7 +434,11 @@ pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::Expr {
 
     let mut expr = r#Fn(anf::LiveVars::new(), vec![Id::fresh(cmp)], boxed::Box::new(body));
 
-    expr = convert_mutables(cmp, &mutables(&expr), &expr);
+    let muts = mutables(&expr);
+
+    expr = letrec(cmp, &muts, &expr);
+
+    expr = convert_mutables(cmp, &muts, &expr); // `muts` should not have been invalidated by `letrec`
 
     liveness(&mut expr);
 
@@ -377,7 +455,7 @@ fn mutables(expr: &anf::Expr) -> HashSet<Id> {
 
             &Begin(ref stmts) => for stmt in stmts { expr_mutables(mutables, stmt) },
 
-            &Let(ref bindings, ref body, _) => {
+            &Let(ref bindings, ref body, _) | &Letrec(ref bindings, ref body) => {
                 for (_, val_expr) in bindings { expr_mutables(mutables, val_expr); }
                 expr_mutables(mutables, body);
             },
@@ -393,14 +471,15 @@ fn mutables(expr: &anf::Expr) -> HashSet<Id> {
                 expr_mutables(mutables, val_expr);
             },
 
-            &Box(..) | &BoxSet(..) | & BoxGet(..) => unreachable!(),
-
             &Fn(_, _, ref body) => expr_mutables(mutables, body),
 
             &Call(_, _, _) => (),
 
             &Global(_) => (),
-            &Triv(_) => ()
+            &Triv(_) => (),
+
+            &CheckedUse{..} | &UninitializedBox
+            | &Box(..) | &BoxSet(..) | &CheckedBoxSet{..} | &BoxGet(..) | &CheckedBoxGet{..} => unreachable!()
         }
     }
 
@@ -409,6 +488,211 @@ fn mutables(expr: &anf::Expr) -> HashSet<Id> {
     mutables
 }
 
+// OPTIMIZE: Fixing Letrec (Reloaded)
+fn letrec(cmp: &mut Compiler, mutables: &HashSet<Id>, expr: &anf::Expr) -> anf::Expr {
+    use anf::Expr::*;
+    use anf::Triv::*;
+
+    enum Access {
+        CheckedIndirect {guard: Id, r#box: Id},
+        Checked {guard: Id},
+        Indirect {r#box: Id},
+        Direct
+    }
+
+    #[derive(Clone, Copy)]
+    enum Init { Un, Statically, Semantically }
+
+    #[derive(Clone, Copy)]
+    struct IdState {
+        guard: Id,
+        init: Init,
+        src_mutable: bool,
+        used_guard: bool,
+        r#box: Option<Id>,
+    }
+
+    struct Env(HashMap<Id, IdState>);
+
+    impl Env {
+        fn new() -> Self { Self(HashMap::new()) }
+
+        fn insert(&mut self, guard: Id, id: Id, src_mutable: bool) {
+            self.0.insert(id, IdState {
+                guard,
+                init: Init::Un,
+                src_mutable,
+                used_guard: false,
+                r#box: if !src_mutable { None } else { Some(id) /* No separate immutable variable */ } });
+        }
+
+        fn initialize_statically(&mut self, id: Id) { self.0.get_mut(&id).unwrap().init = Init::Statically; }
+
+        fn initialize_semantically(&mut self, id: Id) { self.0.get_mut(&id).unwrap().init = Init::Semantically; }
+
+        fn get(&mut self, cmp: &mut Compiler, id: Id) -> Access {
+            match self.0.get_mut(&id) {
+                Some(&mut IdState {init: Init::Un, guard, ref mut used_guard, ref mut r#box, ..}) => {
+                    let r#box = r#box.unwrap_or_else(|| {
+                        let b = Id::freshen(cmp, id);
+                        *r#box = Some(b);
+                        b
+                    });
+                    *used_guard = true;
+                    Access::CheckedIndirect {guard, r#box}
+                },
+
+                Some(&mut IdState {init: Init::Statically, guard, ref mut used_guard, ..}) => {
+                    *used_guard = true;
+                    Access::Checked {guard}
+                },
+
+                Some(&mut IdState {init: Init::Semantically, src_mutable, r#box, ..}) =>
+                    if !src_mutable {
+                        Access::Direct
+                    } else {
+                        Access::Indirect {r#box: r#box.unwrap()}
+                    },
+
+                None => Access::Direct // Nonrecursively bound
+            }
+        }
+
+        fn get_box(&self, id: Id) -> Option<Id> {
+            match self.0.get(&id) {
+                Some(IdState{r#box, ..}) => *r#box,
+                None => None
+            }
+        }
+
+        fn post_get(&self, id: Id) -> IdState { *self.0.get(&id).unwrap() }
+    }
+
+    fn convert(cmp: &mut Compiler, mutables: &HashSet<Id>, env: &mut Env, expr: &anf::Expr) -> anf::Expr {
+        match expr {
+            &Define(ref definiend, ref val_expr) =>
+                Define(definiend.clone(), boxed::Box::new(convert(cmp, mutables, env, val_expr))),
+
+            &GlobalSet(ref name, ref val_expr) =>
+                GlobalSet(name.clone(), boxed::Box::new(convert(cmp, mutables, env, val_expr))),
+
+            &Begin(ref stmts) => Begin(stmts.iter().map(|stmt| convert(cmp, mutables, env, stmt)).collect()),
+
+            &Let(ref bindings, ref body, popnnt) =>
+                Let(bindings.iter().map(|(id, val_expr)| (*id, convert(cmp, mutables, env, val_expr))).collect(),
+                    boxed::Box::new(convert(cmp, mutables, env, body)),
+                    popnnt),
+
+            // OPTIMIZE: If all `lambda`:s, emit `fix` instead:
+            &Letrec(ref bindings, ref body) => {
+                let guard = Id::fresh(cmp);
+
+                for (id, _) in bindings {
+                    env.insert(guard, *id, mutables.contains(id));
+                }
+
+                let bindings = bindings.iter()
+                    .map(|(id, val_expr)| {
+                        let val_expr = convert(cmp, mutables, env, val_expr);
+                        
+                        env.initialize_statically(*id);
+
+                        match env.get_box(*id) {
+                            None => (*id, val_expr),
+
+                            Some(r#box) if r#box != *id => { // `id` was not in `mutables`
+                                let tmp = Id::freshen(cmp, *id);
+                                (*id, Let(vec![(tmp, val_expr)],
+                                    boxed::Box::new(Begin(vec![
+                                        BoxSet(r#box, boxed::Box::new(Triv(Use(tmp)))),
+                                        Triv(Use(tmp))
+                                    ])),
+                                    true))
+                            }
+
+                            Some(_) => {
+                                let ignore = Id::freshen(cmp, *id);
+                                (ignore, BoxSet(*id, boxed::Box::new(val_expr)))
+                            }
+                        }
+                    })
+                    .collect::<Vec<_>>();
+
+                for (id, _) in bindings.iter() {
+                    env.initialize_semantically(*id);
+                }
+
+                let body = convert(cmp, mutables, env, body);
+
+                let mut impl_bindings = Vec::new();
+                let mut guard_used = false;
+                for (id, _) in bindings.iter() {
+                    let id_state = env.post_get(*id);
+
+                    if let Some(r#box) = id_state.r#box {
+                        impl_bindings.push((r#box, UninitializedBox));
+                    }
+
+                    guard_used = id_state.used_guard;
+                }
+                if guard_used {
+                    impl_bindings.push((guard,
+                        Box(boxed::Box::new(Triv(Const(cmp.mt.root(Bool::instance(cmp.mt, false).into())))))));
+                }
+
+                impl_bindings.extend(bindings);
+                Let(impl_bindings, boxed::Box::new(body), true)
+            },
+
+            &If(ref cond, ref conseq, ref alt, ref live_outs) =>
+                If(boxed::Box::new(convert(cmp, mutables, env, cond)),
+                    boxed::Box::new(convert(cmp, mutables, env, conseq)),
+                    boxed::Box::new(convert(cmp, mutables, env, alt)),
+                    live_outs.clone()),
+
+            &Set(id, ref val_expr) => {
+                let val_expr = boxed::Box::new(convert(cmp, mutables, env, val_expr));
+                
+                match env.get(cmp, id) {
+                    Access::CheckedIndirect {guard, r#box} => {
+                        debug_assert!(r#box == id);
+                        CheckedBoxSet {guard, r#box, val_expr}
+                    },
+                    Access::Checked {guard} => CheckedBoxSet {guard, r#box: id, val_expr},
+                    Access::Indirect {r#box} => BoxSet(r#box, val_expr),
+                    Access::Direct => Set(id, val_expr)
+                }
+            }
+
+            &Fn(ref fvs, ref params, ref body) =>
+                Fn(fvs.clone(), params.clone(), boxed::Box::new(convert(cmp, mutables, env, body))),
+
+            &Call(callee, ref args, ref live_outs) =>
+                // Callee and args ids are not from source code and so cannot be recursively bound:
+                Call(callee, args.clone(), live_outs.clone()),
+
+            &Global(ref name) => Global(name.clone()),
+
+            &Triv(Use(id)) =>
+                match env.get(cmp, id) {
+                    Access::CheckedIndirect {guard, r#box} => CheckedBoxGet {guard, r#box},
+                    Access::Checked {guard} => CheckedUse {guard, id},
+                    Access::Indirect {r#box} => BoxGet(r#box),
+                    Access::Direct => Triv(Use(id))
+                },
+
+            &Triv(Const(ref c)) => Triv(Const(c.clone())),
+
+            &CheckedUse{..}
+            | &Box(..) | &UninitializedBox | &BoxSet(..) | &CheckedBoxSet{..} | &BoxGet(..) | &CheckedBoxGet{..} =>
+                unreachable!()
+        }
+    }
+
+    convert(cmp, mutables, &mut Env::new(), expr)
+}
+
+// TODO: Combine with `letrec` pass since that already emits boxes?
 fn convert_mutables(cmp: &mut Compiler, mutables: &HashSet<Id>, expr: &anf::Expr) -> anf::Expr {
     use anf::Expr::*;
     use anf::Triv::*;
@@ -449,7 +733,18 @@ fn convert_mutables(cmp: &mut Compiler, mutables: &HashSet<Id>, expr: &anf::Expr
 
         &Set(id, ref val_expr) => BoxSet(id, boxed::Box::new(convert_mutables(cmp, mutables, val_expr))),
 
-        &Box(..) | &BoxSet(..) | &BoxGet(..) => unreachable!(),
+        &Box(ref val_expr) => Box(boxed::Box::new(convert_mutables(cmp, mutables, val_expr))),
+
+        &UninitializedBox => UninitializedBox,
+
+        &BoxSet(r#box, ref val_expr) => BoxSet(r#box, boxed::Box::new(convert_mutables(cmp, mutables, val_expr))),
+
+        &CheckedBoxSet {guard, r#box, ref val_expr} =>
+            CheckedBoxSet {guard, r#box, val_expr: boxed::Box::new(convert_mutables(cmp, mutables, val_expr))},
+
+        &BoxGet(r#box) => BoxGet(r#box),
+
+        &CheckedBoxGet {guard, r#box} => CheckedBoxGet {guard, r#box},
 
         &Fn(ref fvs, ref params, ref body) => {
             let mut bindings = Vec::new();
@@ -482,11 +777,18 @@ fn convert_mutables(cmp: &mut Compiler, mutables: &HashSet<Id>, expr: &anf::Expr
 
         &Global(ref name) => Global(name.clone()),
 
-        &Triv(Use(id)) if mutables.contains(&id) => BoxGet(id),
+        &CheckedUse {guard, id} =>
+            if mutables.contains(&id) {
+                CheckedBoxGet {guard, r#box: id}
+            } else {
+                CheckedUse {guard, id}
+            },
 
-        &Triv(Use(id)) => Triv(Use(id)),
+        &Triv(Use(id)) => if mutables.contains(&id) { BoxGet(id) } else { Triv(Use(id)) },
 
-        &Triv(Const(ref c)) => Triv(Const(c.clone()))
+        &Triv(Const(ref c)) => Triv(Const(c.clone())),
+
+        &Letrec(..) => unreachable!()
     }
 }
 
@@ -528,12 +830,25 @@ fn liveness(expr: &mut anf::Expr) {
 
             &mut Box(ref mut val_expr) => live_outs = live_ins(val_expr, live_outs),
 
-            &mut BoxSet(id, ref mut val_expr) => {
+            &mut UninitializedBox => (),
+
+            &mut BoxSet(r#box, ref mut val_expr) => {
                 live_outs = live_ins(val_expr, live_outs);
-                live_outs.insert(id);
+                live_outs.insert(r#box);
             },
 
-            &mut BoxGet(id) => { live_outs.insert(id); }
+            &mut CheckedBoxSet {guard, r#box, ref mut val_expr} => {
+                live_outs = live_ins(val_expr, live_outs);
+                live_outs.insert(r#box);
+                live_outs.insert(guard);
+            },
+
+            &mut BoxGet(r#box) => { live_outs.insert(r#box); }
+
+            &mut CheckedBoxGet {guard, r#box} => {
+                live_outs.insert(r#box);
+                live_outs.insert(guard);
+            }
 
             &mut r#Fn(ref mut fvs, ref params, ref mut body) => {
                 let mut free_vars = {
@@ -563,9 +878,16 @@ fn liveness(expr: &mut anf::Expr) {
 
             &mut Global(_) => (),
 
+            &mut CheckedUse {guard, id} => {
+                live_outs.insert(id);
+                live_outs.insert(guard);
+            },
+
             &mut Triv(Use(id)) => { live_outs.insert(id); },
 
-            &mut Triv(Const(_)) => ()
+            &mut Triv(Const(_)) => (),
+
+            &mut Letrec(..) => unreachable!()
         }
 
         live_outs
