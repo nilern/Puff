@@ -169,10 +169,10 @@ pub fn verify(mt: &Mutator, code: &Bytecode) -> Result<(), IndexedErr<Vec<usize>
                 },
 
                 &Instr::CheckedBoxSet => {
+                    amt.pop()?;
                     if amt.pop()? != AbstractType::Box {
                         return Err(IndexedErr {err: Err::TypeError, byte_index: byte_path(bp, amt.pc)});
                     }
-                    amt.pop()?;
                     if amt.pop()? != AbstractType::Box {
                         return Err(IndexedErr {err: Err::TypeError, byte_index: byte_path(bp, amt.pc)});
                     }

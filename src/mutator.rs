@@ -570,9 +570,9 @@ impl Mutator {
                     },
 
                     Opcode::CheckedBoxSet => {
-                        let guard = unsafe { self.regs.pop().unwrap().unchecked_cast::<Box>() };
                         let v = self.regs.pop().unwrap();
                         let r#box = self.regs.pop().unwrap();
+                        let guard = unsafe { self.regs.pop().unwrap().unchecked_cast::<Box>() };
 
                         if unsafe { guard.as_ref().v.is_truthy(self) } {
                             unsafe { r#box.unchecked_cast::<Box>().as_mut().v = v; }
@@ -590,8 +590,8 @@ impl Mutator {
                     },
 
                     Opcode::CheckedBoxGet => {
-                        let guard = unsafe { self.regs.pop().unwrap().unchecked_cast::<Box>() };
                         let r#box = self.regs.pop().unwrap();
+                        let guard = unsafe { self.regs.pop().unwrap().unchecked_cast::<Box>() };
 
                         if unsafe { guard.as_ref().v.is_truthy(self) } {
                             self.regs.push(unsafe { r#box.unchecked_cast::<Box>().as_ref().v });

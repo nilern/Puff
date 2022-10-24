@@ -622,7 +622,7 @@ fn letrec(cmp: &mut Compiler, mutables: &HashSet<Id>, expr: &anf::Expr) -> anf::
                     env.initialize_semantically(*id);
                 }
 
-                let body = convert(cmp, mutables, env, body);
+                let mut body = convert(cmp, mutables, env, body);
 
                 let mut impl_bindings = Vec::new();
                 let mut guard_used = false;
@@ -638,6 +638,10 @@ fn letrec(cmp: &mut Compiler, mutables: &HashSet<Id>, expr: &anf::Expr) -> anf::
                 if guard_used {
                     impl_bindings.push((guard,
                         Box(boxed::Box::new(Triv(Const(cmp.mt.root(Bool::instance(cmp.mt, false).into())))))));
+                    body = Begin(vec![
+                        BoxSet(guard, boxed::Box::new(Triv(Const(cmp.mt.root(Bool::instance(cmp.mt, true).into()))))),
+                        body
+                    ]);
                 }
 
                 impl_bindings.extend(bindings);
