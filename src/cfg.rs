@@ -514,6 +514,7 @@ impl From<&anf::Expr> for Fn {
 
                     alt_label = emit_expr(&mut alt_env, f, alt_label, join, alt);
 
+
                     if let Cont::Ret = cont {
                     } else {
                         let (conseq_mask, alt_mask) = Env::join_prune_masks(env, &alt_env, live_outs);
@@ -521,6 +522,7 @@ impl From<&anf::Expr> for Fn {
                         if conseq_mask.iter().any(|&prune| prune) { f.insert_prune(conseq_label, conseq_mask); }
                         if alt_mask.iter().any(|&prune| prune) { f.insert_prune(alt_label, alt_mask); }
                     }
+                    env.max_regs = env.max_regs.max(alt_env.max_regs);
 
                     if let Cont::Label(join_label) = join { join_label } else { current }
                 },
