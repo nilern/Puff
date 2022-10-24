@@ -67,7 +67,7 @@ fn main() {
 
                             println!("");
 
-                            match unsafe { verify(&mt, &[], code.as_ref()) } {
+                            match unsafe { verify(&mt, code.as_ref()) } {
                                 Ok(()) => {
                                     println!("");
 
