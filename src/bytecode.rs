@@ -83,21 +83,34 @@ fn encode_prune_mask(dest: &mut Vec<u8>, mask: &[bool]) {
 }
 
 pub fn decode_prune_mask(bytes: &[u8]) -> Prunes {
-    let byte = *bytes.get(0).unwrap();
     Prunes {
         is_nonempty: true,
         byte_index: 0,
         bit_index: 0,
-        byte,
         bytes
     }
+}
+
+pub fn prune_mask_len(bytes: &[u8]) -> Option<usize> {
+    let mut len = 0;
+
+    loop {
+        if let Some(byte) = bytes.get(len) {
+            len += 1;
+
+            if byte & HIGH_BIT == 0 { break; }
+        } else {
+            return None;
+        }
+    }
+
+    Some(len)
 }
 
 pub struct Prunes<'a> {
     is_nonempty: bool,
     byte_index: usize,
     bit_index: usize,
-    byte: u8,
     bytes: &'a [u8]
 }
 
@@ -106,18 +119,16 @@ impl<'a> Iterator for Prunes<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.is_nonempty {
-            let prune = (self.byte >> (6 - self.bit_index)) & 1 == 1;
+            debug_assert!(self.byte_index < self.bytes.len());
+            let byte = self.bytes[self.byte_index];
+            let prune = (byte >> (6 - self.bit_index)) & 1 == 1;
 
             if self.bit_index < 6 {
                 self.bit_index += 1;
             } else {
-                self.is_nonempty = self.byte & HIGH_BIT == HIGH_BIT;
-
-                if self.is_nonempty {
-                    self.byte_index += 1;
-                    self.bit_index = 0;
-                    self.byte = self.bytes[self.byte_index];
-                }
+                self.is_nonempty = byte & HIGH_BIT != 0;
+                self.byte_index += 1;
+                self.bit_index = 0;
             }
 
             Some(prune)
@@ -131,6 +142,7 @@ impl<'a> Iterator for Prunes<'a> {
 pub struct Bytecode {
     pub arity: usize,
     pub max_regs: usize,
+    pub clovers_len: usize,
     pub consts: Gc<Array<ORef>>
 }
 
@@ -153,11 +165,11 @@ impl DisplayWithin for Gc<Bytecode> {
 }
 
 impl Bytecode {
-    pub const TYPE_LEN: usize = 4;
+    pub const TYPE_LEN: usize = 5;
 
-    pub fn new(mt: &mut Mutator, arity: usize, max_regs: usize, consts: HandleT<Array<ORef>>, instrs: &[u8])
-        -> Gc<Self>
-    {
+    pub fn new(mt: &mut Mutator, arity: usize, max_regs: usize, clovers_len: usize, consts: HandleT<Array<ORef>>,
+        instrs: &[u8]
+    ) -> Gc<Self> {
         unsafe {
             let r#type = Self::reify(mt).unchecked_cast::<IndexedType>();
             let mut nptr = mt.alloc_indexed(r#type, instrs.len()).cast::<Self>();
@@ -165,6 +177,7 @@ impl Bytecode {
             nptr.as_ptr().write(Bytecode {
                 arity,
                 max_regs,
+                clovers_len,
                 consts: *consts
             });
             nptr.as_mut().indexed_field_mut().copy_from_slice(instrs);
@@ -177,7 +190,7 @@ impl Bytecode {
 
     fn disassemble(&self, mt: &Mutator, fmt: &mut fmt::Formatter, indent: &str) -> fmt::Result {
         unsafe {
-            write!(fmt, "{}(", indent)?;
+            write!(fmt, "{}(clovers {}) (", indent, self.clovers_len)?;
             if self.arity > 0 {
                 write!(fmt, "_")?;
 
@@ -186,6 +199,7 @@ impl Bytecode {
                 }
             }
             writeln!(fmt, ")")?;
+            writeln!(fmt, "{}(locals {})", indent, self.max_regs)?;
 
             let mut instrs = self.instrs().iter().enumerate();
             while let Some((i, &byte)) = instrs.next() {
@@ -353,6 +367,7 @@ impl Bytecode {
 struct Builder {
     arity: usize,
     max_regs: usize,
+    clovers_len: usize,
     consts: Vec<Handle>,
     instrs: Vec<u8>,
     label_indices: HashMap<cfg::Label, usize>,
@@ -360,10 +375,11 @@ struct Builder {
 }
 
 impl Builder {
-    fn new(arity: usize, max_regs: usize) -> Self {
+    fn new(arity: usize, max_regs: usize, clovers_len: usize) -> Self {
         Self {
             arity,
             max_regs,
+            clovers_len,
             consts: Vec::new(),
             instrs: Vec::new(),
             label_indices: HashMap::new(),
@@ -497,7 +513,7 @@ impl Builder {
             let consts = Array::<ORef>::from_handles(mt, &self.consts);
             mt.root_t(consts)
         };
-        Bytecode::new(mt, self.arity, self.max_regs, consts, &self.instrs)
+        Bytecode::new(mt, self.arity, self.max_regs, self.clovers_len, consts, &self.instrs)
     }
 }
 
@@ -552,7 +568,7 @@ impl Gc<Bytecode> {
 
         let po = f.post_order();
 
-        let mut builder = Builder::new(f.arity, f.max_regs);
+        let mut builder = Builder::new(f.arity, f.max_regs, f.clovers_len);
 
         let mut rpo = po.iter().rev().peekable();
         while let Some(&label) = rpo.next() {

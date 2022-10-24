@@ -56,9 +56,7 @@ impl ORef {
         Gc::new_unchecked(NonNull::new_unchecked(self.0 as *mut T))
     }
 
-    pub fn try_cast<T: Reify>(self, mt: &Mutator) -> Option<Gc<T>>
-        where Gc<T::Kind>: AsType
-    {
+    pub fn try_cast<T: Reify>(self, mt: &Mutator) -> Option<Gc<T>> where Gc<T::Kind>: AsType {
         if let Ok(obj) = Gc::<()>::try_from(self) {
             obj.try_cast::<T>(mt)
         } else {
@@ -205,10 +203,12 @@ impl<T> Gc<T> {
 }
 
 impl<T: HeapObj> Gc<T> {
-    pub fn try_cast<U: Reify>(self, mt: &Mutator) -> Option<Gc<U>>
-        where Gc<U::Kind>: AsType
-    {
-        if unsafe { self.as_ref() }.r#type() == U::reify(mt).as_type() {
+    pub fn instance_of<U: Reify>(self, mt: &Mutator) -> bool where Gc<U::Kind>: AsType {
+        unsafe { self.as_ref() }.r#type() == U::reify(mt).as_type()
+    }
+
+    pub fn try_cast<U: Reify>(self, mt: &Mutator) -> Option<Gc<U>> where Gc<U::Kind>: AsType {
+        if self.instance_of::<U>(mt) {
             Some(unsafe { self.unchecked_cast::<U>() })
         } else {
             None

@@ -102,6 +102,7 @@ pub type Block = Vec<Instr>;
 pub struct Fn {
     pub arity: usize,
     pub max_regs: usize,
+    pub clovers_len: usize,
     pub blocks: Vec<Block>
 }
 
@@ -110,7 +111,9 @@ impl DisplayWithin for &Fn {
 }
 
 impl Fn {
-    pub fn new(arity: usize, max_regs: usize) -> Self { Fn { arity, max_regs, blocks: Vec::new() } }
+    pub fn new(arity: usize, max_regs: usize, clovers_len: usize) -> Self {
+        Fn { arity, max_regs, clovers_len, blocks: Vec::new() }
+    }
 
     pub fn block(&self, i: Label) -> &Block { &self.blocks[i.0] }
 
@@ -155,7 +158,7 @@ impl Fn {
     }
 
     pub fn fmt(&self, mt: &Mutator, fmt: &mut fmt::Formatter, indent: &str) -> fmt::Result {
-        write!(fmt, "{}(", indent)?;
+        write!(fmt, "{}(clovers {}) (", indent, self.clovers_len)?;
         if self.arity > 0 {
             write!(fmt, "_")?;
 
@@ -164,6 +167,7 @@ impl Fn {
             }
         }
         writeln!(fmt, ")")?;
+        writeln!(fmt, "{}(locals {})", indent, self.max_regs)?;
 
         for (label, block) in self.blocks.iter().enumerate() {
             writeln!(fmt, "{}{}:", indent, label)?;
@@ -309,11 +313,6 @@ impl From<&anf::Expr> for Fn {
                         self.reg_ids.remove(reg);
                     }
                 }
-            }
-
-            fn closure(&mut self, nclovers: usize) {
-                self.reg_ids.truncate(self.reg_ids.len() - nclovers);
-                self.reg_ids.push(None);
             }
 
             fn call(&mut self, argc: usize, prunes: &[bool]) {
@@ -601,12 +600,12 @@ impl From<&anf::Expr> for Fn {
 
                     for &fv in fvs.iter() {
                         emit_use(env, f, current, fv);
-                        env.push();
                     }
 
                     let code = emit_fn(&fvs, params, body);
                     f.block_mut(current).push(Instr::Fn(code, fvs.len()));
-                    env.closure(fvs.len());
+                    env.popn(fvs.len());
+                    env.push();
 
                     goto(f, current, cont);
 
@@ -672,7 +671,7 @@ impl From<&anf::Expr> for Fn {
 
         fn emit_fn(clovers: &[Id], params: &[Id], body: &anf::Expr) -> Fn {
             let mut env = Env::new(clovers, params);
-            let mut f = Fn::new(params.len(), 0);
+            let mut f = Fn::new(params.len(), 0, clovers.len());
             let current = f.create_block();
             let _ = emit_expr(&mut env, &mut f, current, Cont::Ret, body);
             f.max_regs = env.max_regs;

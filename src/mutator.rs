@@ -60,7 +60,7 @@ pub struct Mutator {
     code: Option<Gc<Bytecode>>,
     consts: Option<Gc<Array<ORef>>>,
     pc: usize,
-    regs: Regs,
+    regs: Regs<ORef>,
     stack: Vec<ORef>
 }
 
@@ -196,7 +196,8 @@ impl Mutator {
             bytecode.as_type().as_mut().indexed_field_mut().copy_from_slice(&[
                 Field { r#type: usize_type.as_type(), offset: 0 },
                 Field { r#type: usize_type.as_type(), offset: size_of::<usize>() },
-                Field { r#type: array_of_any.as_type(), offset: 2 * size_of::<usize>() },
+                Field { r#type: usize_type.as_type(), offset: 2 * size_of::<usize>() },
+                Field { r#type: array_of_any.as_type(), offset: 3 * size_of::<usize>() },
                 Field {
                     r#type: u8_type.as_type(),
                     offset: min_size_of_indexed::<Bytecode>()
@@ -326,7 +327,7 @@ impl Mutator {
         arg
     }
 
-    pub fn regs(&self) -> &Regs { &self.regs }
+    pub fn regs(&self) -> &Regs<ORef> { &self.regs }
 
     pub fn push(&mut self, v: ORef) { self.regs.push(v); }
 
@@ -516,7 +517,7 @@ impl Mutator {
                     Opcode::PopNNT => {
                         let n = self.next_oparg();
 
-                        self.regs.popnnt(n);
+                        unsafe { self.regs.popnnt_unchecked(n); }
                     },
 
                     Opcode::Prune => {
@@ -628,7 +629,7 @@ impl Mutator {
 
                         unsafe { self.regs.push_unchecked(self.consts().as_ref().indexed_field()[ci]); }
                         let closure = Closure::new(self, len);
-                        self.regs.popn(len + 1);
+                        unsafe { self.regs.popn_unchecked(len + 1); }
                         unsafe { self.regs.push_unchecked(closure.into()); }
                     },
 

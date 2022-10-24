@@ -17,6 +17,7 @@ mod builtins;
 mod r#box;
 mod namespace;
 mod bytecode;
+mod verifier;
 mod anf;
 mod cfg;
 mod analyzer;
@@ -30,6 +31,7 @@ use reader::Reader;
 use mutator::Mutator;
 use compiler::compile;
 use closure::Closure;
+use verifier::verify;
 
 const PROMPT: &'static str = "molysite> ";
 const HISTORY_FILENAME: &'static str = ".molysite-history.txt";
@@ -65,12 +67,23 @@ fn main() {
 
                             println!("");
 
-                            mt.push((*code).into());
-                            let f = Closure::new(&mut mt, 0);
-                            mt.pop();
-                            mt.push(f.into());
-                            let v = mt.invoke();
-                            println!("{}", v.within(&mt));
+                            match unsafe { verify(&mt, &[], code.as_ref()) } {
+                                Ok(()) => {
+                                    println!("");
+
+                                    mt.push((*code).into());
+                                    let f = Closure::new(&mut mt, 0);
+                                    mt.pop();
+                                    mt.push(f.into());
+                                    let v = mt.invoke();
+                                    println!("{}", v.within(&mt));
+                                },
+
+                                Err(error) => {
+                                    println!("VerificationError: {:?}", error);
+                                    break;
+                                }
+                            }
                         },
                         Err(err) => {
                             println!("Error: {:?}", err);
