@@ -55,34 +55,34 @@ pub fn verify(mt: &Mutator, code: &Bytecode) -> Result<(), IndexedErr<Vec<usize>
         ) -> Result<(), IndexedErr<Vec<usize>>>
         {
             match stmt {
-                &Instr::Define {sym_index} =>
-                    match AbstractType::of(mt, amt.get_const(&cfg, sym_index)?) {
-                        AbstractType::Symbol => {
-                            let t = amt.pop()?;
-                            amt.push(t /* HACK */)?;
-                            amt.pc += 2;
-                        },
-                        _ => return Err(IndexedErr {err: Err::TypeError, byte_index: byte_path(bp, amt.pc)})
-                    },
+                &Instr::Define {sym_index} => {
+                    if AbstractType::of(mt, amt.get_const(&cfg, sym_index)?) != AbstractType::Symbol {
+                        return Err(IndexedErr {err: Err::TypeError, byte_index: byte_path(bp, amt.pc)});
+                    }
 
-                &Instr::GlobalSet {sym_index} =>
-                    match AbstractType::of(mt, amt.get_const(&cfg, sym_index)?) {
-                        AbstractType::Symbol => {
-                            let t = amt.pop()?;
-                            amt.push(t /* HACK */)?;
-                            amt.pc += 2;
-                        },
-                        _ => return Err(IndexedErr {err: Err::TypeError, byte_index: byte_path(bp, amt.pc)})
-                    },
+                    let t = amt.pop()?;
+                    amt.push(t /* HACK */)?;
+                    amt.pc += 2;
+                },
 
-                &Instr::Global {sym_index} =>
-                    match AbstractType::of(mt, amt.get_const(&cfg, sym_index)?) {
-                        AbstractType::Symbol => {
-                            amt.push(AbstractType::Any)?;
-                            amt.pc += 2;
-                        },
-                        _ => return Err(IndexedErr {err: Err::TypeError, byte_index: byte_path(bp, amt.pc)})
-                    },
+                &Instr::GlobalSet {sym_index} => {
+                    if AbstractType::of(mt, amt.get_const(&cfg, sym_index)?) != AbstractType::Symbol {
+                        return Err(IndexedErr {err: Err::TypeError, byte_index: byte_path(bp, amt.pc)});
+                    }
+
+                    let t = amt.pop()?;
+                    amt.push(t /* HACK */)?;
+                    amt.pc += 2;
+                },
+
+                &Instr::Global {sym_index} => {
+                    if AbstractType::of(mt, amt.get_const(&cfg, sym_index)?) != AbstractType::Symbol {
+                        return Err(IndexedErr {err: Err::TypeError, byte_index: byte_path(bp, amt.pc)});
+                    }
+
+                    amt.push(AbstractType::Any)?;
+                    amt.pc += 2;
+                },
 
                 &Instr::Const {index} => {
                     let c = amt.get_const(&cfg, index)?;
@@ -97,25 +97,25 @@ pub fn verify(mt: &Mutator, code: &Bytecode) -> Result<(), IndexedErr<Vec<usize>
                 },
 
                 &Instr::Clover {index} =>
-                    match amt.get_reg(0)? {
-                        &AbstractType::Closure {len} =>
-                            if index < len {
-                                if len != clovers.len() {
-                                    return Err(IndexedErr {
-                                        err: Err::SelfClosureReplaced,
-                                        byte_index: byte_path(bp, amt.pc)
-                                    });
-                                }
+                    if let &AbstractType::Closure {len} = amt.get_reg(0)? {
+                        if index >= len {
+                            return Err(IndexedErr {
+                                err: Err::CloversOverrun(index),
+                                byte_index: byte_path(bp, amt.pc)
+                            });
+                        }
 
-                                amt.push(clovers[index])?;
-                                amt.pc += 2;
-                            } else {
-                                return Err(IndexedErr {
-                                    err: Err::CloversOverrun(index),
-                                    byte_index: byte_path(bp, amt.pc)
-                                });
-                            },
-                        _ => return Err(IndexedErr {err: Err::TypeError, byte_index: byte_path(bp, amt.pc)})
+                        if len != clovers.len() {
+                            return Err(IndexedErr {
+                                err: Err::SelfClosureReplaced,
+                                byte_index: byte_path(bp, amt.pc)
+                            });
+                        }
+
+                        amt.push(clovers[index])?;
+                        amt.pc += 2;
+                    } else {
+                        return Err(IndexedErr {err: Err::TypeError, byte_index: byte_path(bp, amt.pc)})
                     },
 
                 &Instr::PopNNT {n} => {
@@ -160,82 +160,80 @@ pub fn verify(mt: &Mutator, code: &Bytecode) -> Result<(), IndexedErr<Vec<usize>
 
                 &Instr::BoxSet => {
                     amt.pop()?;
-                    match amt.pop()? {
-                        AbstractType::Box => {
-                            amt.push(AbstractType::Box)?; // FIXME: Abstraction leak wrt. `set!`-conversion
-                            amt.pc += 1;
-                        },
-                        _ => return Err(IndexedErr {err: Err::TypeError, byte_index: byte_path(bp, amt.pc)})
+                    if amt.pop()? != AbstractType::Box {
+                        return Err(IndexedErr {err: Err::TypeError, byte_index: byte_path(bp, amt.pc)});
                     }
+
+                    amt.push(AbstractType::Box)?; // FIXME: Abstraction leak wrt. `set!`-conversion
+                    amt.pc += 1;
                 },
 
-                &Instr::CheckedBoxSet =>
-                    match amt.pop()? {
-                        AbstractType::Box => {
-                            amt.pop()?;
-                            match amt.pop()? {
-                                AbstractType::Box => {
-                                    amt.push(AbstractType::Box)?; // FIXME: Abstraction leak wrt. `set!`-conversion
-                                    amt.pc += 1;
-                                },
-                                _ => return Err(IndexedErr {err: Err::TypeError, byte_index: byte_path(bp, amt.pc)})
-                            }
-                        },
-                        _ => return Err(IndexedErr {err: Err::TypeError, byte_index: byte_path(bp, amt.pc)})
-                    },
+                &Instr::CheckedBoxSet => {
+                    if amt.pop()? != AbstractType::Box {
+                        return Err(IndexedErr {err: Err::TypeError, byte_index: byte_path(bp, amt.pc)});
+                    }
+                    amt.pop()?;
+                    if amt.pop()? != AbstractType::Box {
+                        return Err(IndexedErr {err: Err::TypeError, byte_index: byte_path(bp, amt.pc)});
+                    }
 
-                &Instr::BoxGet =>
-                    match amt.pop()? {
-                        AbstractType::Box => {
-                            amt.push(AbstractType::Any)?;
-                            amt.pc += 1;
-                        },
-                        _ => return Err(IndexedErr {err: Err::TypeError, byte_index: byte_path(bp, amt.pc)})
-                    },
+                    amt.push(AbstractType::Box)?; // FIXME: Abstraction leak wrt. `set!`-conversion
+                    amt.pc += 1;
+                },
 
-                &Instr::CheckedBoxGet =>
-                    match amt.pop()? {
-                        AbstractType::Box =>
-                            match amt.pop()? {
-                                AbstractType::Box => {
-                                    amt.push(AbstractType::Any)?;
-                                    amt.pc += 1;
-                                },
-                                _ => return Err(IndexedErr {err: Err::TypeError, byte_index: byte_path(bp, amt.pc)})
-                            },
-                        _ => return Err(IndexedErr {err: Err::TypeError, byte_index: byte_path(bp, amt.pc)})
-                    },
+                &Instr::BoxGet => {
+                    if amt.pop()? != AbstractType::Box {
+                        return Err(IndexedErr {err: Err::TypeError, byte_index: byte_path(bp, amt.pc)});
+                    }
 
-                &Instr::CheckUse =>
-                    match amt.pop()? {
-                        AbstractType::Box => amt.pc += 1,
-                        _ => return Err(IndexedErr {err: Err::TypeError, byte_index: byte_path(bp, amt.pc)})
-                    },
+                    amt.push(AbstractType::Any)?;
+                    amt.pc += 1;
+                },
+
+                &Instr::CheckedBoxGet => {
+                    if amt.pop()? != AbstractType::Box {
+                        return Err(IndexedErr {err: Err::TypeError, byte_index: byte_path(bp, amt.pc)});
+                    }
+                    if amt.pop()? != AbstractType::Box {
+                        return Err(IndexedErr {err: Err::TypeError, byte_index: byte_path(bp, amt.pc)});
+                    }
+
+                    amt.push(AbstractType::Any)?;
+                    amt.pc += 1;
+                },
+
+                &Instr::CheckUse => {
+                    if amt.pop()? != AbstractType::Box {
+                        return Err(IndexedErr {err: Err::TypeError, byte_index: byte_path(bp, amt.pc)});
+                    }
+
+                    amt.pc += 1;
+                },
 
                 &Instr::Fn {code_index, len} => {
                     let code = amt.get_const(&cfg, code_index)?;
                     if let Some(code) = code.try_cast::<Bytecode>(mt) {
                         let clovers_len = unsafe { code.as_ref().clovers_len };
-                        if len == clovers_len {
-                            if amt.regs.len() >= len {
-                                // Recurse into closure:
-                                unsafe {
-                                    let clovers = &amt.regs.as_slice()[amt.regs.len() - clovers_len..];
-                                    verify_in(mt, &byte_path(bp, amt.pc), clovers, code.as_ref())?;
-                                }
-
-                                amt.popn(len)?;
-                                amt.push(AbstractType::Closure {len})?;
-                                amt.pc += 3;
-                            } else {
-                                return Err(IndexedErr {
-                                    err: Err::RegsOverrun(amt.regs.len()),
-                                    byte_index: byte_path(bp, amt.pc)
-                                });
-                            }
-                        } else {
+                        if len != clovers_len {
                             return Err(IndexedErr {err: Err::CloversArgc(len), byte_index: byte_path(bp, amt.pc)});
                         }
+
+                        if amt.regs.len() < len {
+                            return Err(IndexedErr {
+                                err: Err::RegsOverrun(amt.regs.len()),
+                                byte_index: byte_path(bp, amt.pc)
+                            });
+                        }
+
+                        // Recurse into closure:
+                        unsafe {
+                            let clovers = &amt.regs.as_slice()[amt.regs.len() - clovers_len..];
+                            verify_in(mt, &byte_path(bp, amt.pc), clovers, code.as_ref())?;
+                        }
+
+                        amt.popn(len)?;
+                        amt.push(AbstractType::Closure {len})?;
+                        amt.pc += 3;
                     } else {
                         return Err(IndexedErr {err: Err::TypeError, byte_index: byte_path(bp, amt.pc)});
                     }
@@ -344,7 +342,7 @@ pub fn verify(mt: &Mutator, code: &Bytecode) -> Result<(), IndexedErr<Vec<usize>
     verify_in(mt, &[], &[], code)
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum AbstractType {
     Bytecode,
     Closure {len: usize},
