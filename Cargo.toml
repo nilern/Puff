@@ -10,3 +10,11 @@ description = "An implementation of the algorithmic language Scheme"
 [dependencies]
 clap = { version = "4.0.18", features = ["derive"] }
 rustyline = "10.0.0"
+
+[lib]
+name = "molysite"
+path = "src/lib.rs"
+
+[[bin]]
+name = "molysite"
+path = "src/main.rs"
