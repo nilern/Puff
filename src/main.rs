@@ -24,6 +24,7 @@ mod analyzer;
 mod compiler;
 mod util;
 
+use clap::Parser;
 use rustyline::error::ReadlineError;
 use rustyline;
 
@@ -33,11 +34,18 @@ use compiler::compile;
 use closure::Closure;
 use verifier::verify;
 
+#[derive(Parser)]
+#[command(author, version, about, long_about = None)] // Read from `Cargo.toml`
+struct Args {
+    #[arg(long)]
+    debug: bool
+}
+
 const PROMPT: &'static str = "molysite> ";
 const HISTORY_FILENAME: &'static str = ".molysite-history.txt";
     
 fn main() {
-    let debug = true;
+    let debug = Args::parse().debug;
 
     let mut rl = rustyline::Editor::<()>::new().unwrap();
 
@@ -79,7 +87,7 @@ fn main() {
                                     mt.pop();
                                     mt.push(f.into());
                                     let v = mt.invoke();
-                                    
+
                                     println!("{}", v.within(&mt));
                                 },
 
