@@ -71,7 +71,11 @@ pub fn verify(mt: &Mutator, code: &Bytecode) -> Result<(), IndexedErr<Vec<usize>
                     let pred_amt = amts.get(pred_leader_index).unwrap();
                     oamt = Some(match oamt {
                         Some(amt) => amt.join_at(pred_amt, *leader_index)?,
-                        None => pred_amt.clone()
+                        None => {
+                            let mut amt = pred_amt.clone();
+                            amt.pc = *leader_index;
+                            amt
+                        }
                     })
                 }
                 oamt.unwrap() // `block.predecessors` can't be empty since `block` is not the entry block but in RPO
