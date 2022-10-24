@@ -80,7 +80,7 @@ pub fn verify(mt: &Mutator, code: &Bytecode) -> Result<(), IndexedErr<Vec<usize>
             for stmt in block.stmts.iter() {
                 match stmt {
                     &Instr::Define {sym_index} =>
-                        match AbstractType::of(mt, amt.get_const(code, sym_index)?) {
+                        match AbstractType::of(mt, amt.get_const(&cfg, sym_index)?) {
                             AbstractType::Symbol => {
                                 let t = amt.pop()?;
                                 amt.push(t /* HACK */)?;
@@ -90,7 +90,7 @@ pub fn verify(mt: &Mutator, code: &Bytecode) -> Result<(), IndexedErr<Vec<usize>
                         },
 
                     &Instr::GlobalSet {sym_index} =>
-                        match AbstractType::of(mt, amt.get_const(code, sym_index)?) {
+                        match AbstractType::of(mt, amt.get_const(&cfg, sym_index)?) {
                             AbstractType::Symbol => {
                                 let t = amt.pop()?;
                                 amt.push(t /* HACK */)?;
@@ -100,7 +100,7 @@ pub fn verify(mt: &Mutator, code: &Bytecode) -> Result<(), IndexedErr<Vec<usize>
                         },
 
                     &Instr::Global {sym_index} =>
-                        match AbstractType::of(mt, amt.get_const(code, sym_index)?) {
+                        match AbstractType::of(mt, amt.get_const(&cfg, sym_index)?) {
                             AbstractType::Symbol => {
                                 amt.push(AbstractType::Any)?;
                                 amt.pc += 2;
@@ -109,7 +109,7 @@ pub fn verify(mt: &Mutator, code: &Bytecode) -> Result<(), IndexedErr<Vec<usize>
                         },
 
                     &Instr::Const {index} => {
-                        let c = amt.get_const(code, index)?;
+                        let c = amt.get_const(&cfg, index)?;
                         amt.push(AbstractType::of(mt, c))?;
                         amt.pc += 2;
                     },
@@ -131,7 +131,7 @@ pub fn verify(mt: &Mutator, code: &Bytecode) -> Result<(), IndexedErr<Vec<usize>
                                         });
                                     }
 
-                                    amt.push(clovers[index]);
+                                    amt.push(clovers[index])?;
                                     amt.pc += 2;
                                 } else {
                                     return Err(IndexedErr {
@@ -183,7 +183,7 @@ pub fn verify(mt: &Mutator, code: &Bytecode) -> Result<(), IndexedErr<Vec<usize>
                     },
 
                     &Instr::BoxSet => {
-                        let t = amt.pop()?;
+                        amt.pop()?;
                         match amt.pop()? {
                             AbstractType::Box => {
                                 amt.push(AbstractType::Box)?; // FIXME: Abstraction leak wrt. `set!`-conversion
@@ -196,7 +196,7 @@ pub fn verify(mt: &Mutator, code: &Bytecode) -> Result<(), IndexedErr<Vec<usize>
                     &Instr::CheckedBoxSet =>
                         match amt.pop()? {
                             AbstractType::Box => {
-                                let t = amt.pop()?;
+                                amt.pop()?;
                                 match amt.pop()? {
                                     AbstractType::Box => {
                                         amt.push(AbstractType::Box)?; // FIXME: Abstraction leak wrt. `set!`-conversion
@@ -236,36 +236,34 @@ pub fn verify(mt: &Mutator, code: &Bytecode) -> Result<(), IndexedErr<Vec<usize>
                             _ => return Err(IndexedErr {err: Err::TypeError, byte_index: byte_path(bp, amt.pc)})
                         },
 
-                    &Instr::Fn {code_index, len} =>
-                        if let Some(code) = unsafe { code.consts.as_ref().indexed_field().get(code_index) } {
-                            if let Some(code) = code.try_cast::<Bytecode>(mt) {
-                                let clovers_len = unsafe { code.as_ref().clovers_len };
-                                if len == clovers_len {
-                                    if amt.regs.len() >= len {
-                                        // Recurse into closure:
-                                        unsafe {
-                                            let clovers = &amt.regs.as_slice()[amt.regs.len() - clovers_len..];
-                                            verify_in(mt, &byte_path(bp, amt.pc), clovers, code.as_ref())?;
-                                        }
-
-                                        amt.popn(len)?;
-                                        amt.push(AbstractType::Closure {len})?;
-                                        amt.pc += 3;
-                                    } else {
-                                        return Err(IndexedErr {
-                                            err: Err::RegsOverrun(amt.regs.len()),
-                                            byte_index: byte_path(bp, amt.pc)
-                                        });
+                    &Instr::Fn {code_index, len} => {
+                        let code = amt.get_const(&cfg, code_index)?;
+                        if let Some(code) = code.try_cast::<Bytecode>(mt) {
+                            let clovers_len = unsafe { code.as_ref().clovers_len };
+                            if len == clovers_len {
+                                if amt.regs.len() >= len {
+                                    // Recurse into closure:
+                                    unsafe {
+                                        let clovers = &amt.regs.as_slice()[amt.regs.len() - clovers_len..];
+                                        verify_in(mt, &byte_path(bp, amt.pc), clovers, code.as_ref())?;
                                     }
+
+                                    amt.popn(len)?;
+                                    amt.push(AbstractType::Closure {len})?;
+                                    amt.pc += 3;
                                 } else {
-                                    return Err(IndexedErr {err: Err::CloversArgc(len), byte_index: byte_path(bp, amt.pc)});
+                                    return Err(IndexedErr {
+                                        err: Err::RegsOverrun(amt.regs.len()),
+                                        byte_index: byte_path(bp, amt.pc)
+                                    });
                                 }
                             } else {
-                                return Err(IndexedErr {err: Err::TypeError, byte_index: byte_path(bp, amt.pc)});
+                                return Err(IndexedErr {err: Err::CloversArgc(len), byte_index: byte_path(bp, amt.pc)});
                             }
                         } else {
-                            return Err(IndexedErr {err: Err::ConstsOverrun(code_index), byte_index: byte_path(bp, amt.pc)});
-                        },
+                            return Err(IndexedErr {err: Err::TypeError, byte_index: byte_path(bp, amt.pc)});
+                        }
+                    },
 
                     &Instr::Call {argc, prunes} => { // TODO: Warn about unnecessarily long prune mask
                         amt.popn(argc)?; // Callee and args
@@ -418,8 +416,8 @@ impl AbstractMutator {
         Ok(Self {pc, regs, byte_path: self.byte_path.clone()})
     }
 
-    fn get_const(&self, code: &Bytecode, index: usize) -> Result<ORef, IndexedErr<Vec<usize>>> {
-        if let Some(&c) = unsafe { code.consts.as_ref().indexed_field().get(index) } {
+    fn get_const(&self, cfg: &CFG, index: usize) -> Result<ORef, IndexedErr<Vec<usize>>> {
+        if let Some(&c) = unsafe { cfg.consts.as_ref().indexed_field().get(index) } {
             Ok(c)
         } else {
             Err(IndexedErr {err: Err::ConstsOverrun(index), byte_index: byte_path(&self.byte_path, self.pc) })
@@ -587,7 +585,7 @@ impl<'a> TryFrom<&'a Bytecode> for CFG<'a> {
                     if dest < instrs.len() {
                         match branch_targets.entry(dest) {
                             hash_map::Entry::Occupied(mut entry) => { entry.get_mut().insert(block_start); },
-                            hash_map::Entry::Vacant(mut entry) => { entry.insert(iter::once(block_start).collect()); }
+                            hash_map::Entry::Vacant(entry) => { entry.insert(iter::once(block_start).collect()); }
                         }
                     } else {
                         return Err(IndexedErr{err: Err::BranchOut(dest), byte_index: i});
@@ -611,7 +609,7 @@ impl<'a> TryFrom<&'a Bytecode> for CFG<'a> {
                     if alt < instrs.len() {
                         match branch_targets.entry(alt) {
                             hash_map::Entry::Occupied(mut entry) => { entry.get_mut().insert(block_start); },
-                            hash_map::Entry::Vacant(mut entry) => { entry.insert(iter::once(block_start).collect()); }
+                            hash_map::Entry::Vacant(entry) => { entry.insert(iter::once(block_start).collect()); }
                         }
                     } else {
                         return Err(IndexedErr{err: Err::BranchOut(alt), byte_index: i});
