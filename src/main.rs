@@ -59,7 +59,6 @@ fn main() {
                         Ok(sv) => {
                             if debug {
                                 println!("{}", sv.v.within(&mt));
-
                                 println!("");
                             }
 
@@ -70,7 +69,6 @@ fn main() {
 
                             if debug {
                                 println!("{}", code.within(&mt));
-
                                 println!("");
                             }
 
@@ -81,6 +79,7 @@ fn main() {
                                     mt.pop();
                                     mt.push(f.into());
                                     let v = mt.invoke();
+                                    
                                     println!("{}", v.within(&mt));
                                 },
 
