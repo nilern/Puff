@@ -37,13 +37,16 @@ impl<'a> Compiler<'a> {
     }
 }
 
-pub fn compile(mt: &mut Mutator, expr: ORef) -> Gc<Bytecode> {
+pub fn compile(mt: &mut Mutator, expr: ORef, debug: bool) -> Gc<Bytecode> {
     let mut cmp = Compiler::new(mt);
 
     let anf = analyze(&mut cmp, expr);
 
     let cfg = cfg::Fn::from(&anf);
-    println!("{}", cfg.within(cmp.mt));
+
+    if debug {
+        println!("{}", cfg.within(cmp.mt));
+    }
     
     Gc::<Bytecode>::from_cfg(&mut cmp, &cfg)
 }

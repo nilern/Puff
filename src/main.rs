@@ -37,6 +37,8 @@ const PROMPT: &'static str = "molysite> ";
 const HISTORY_FILENAME: &'static str = ".molysite-history.txt";
     
 fn main() {
+    let debug = true;
+
     let mut rl = rustyline::Editor::<()>::new().unwrap();
 
     if rl.load_history(HISTORY_FILENAME).is_err() {
@@ -55,22 +57,25 @@ fn main() {
                 while let Some(res) = reader.next(&mut mt) {
                     match res {
                         Ok(sv) => {
-                            println!("{}", sv.v.within(&mt));
+                            if debug {
+                                println!("{}", sv.v.within(&mt));
 
-                            println!("");
+                                println!("");
+                            }
 
                             let code = {
-                                let code = compile(&mut mt, *sv.v);
+                                let code = compile(&mut mt, *sv.v, debug);
                                 mt.root_t(code)
                             };
-                            println!("{}", code.within(&mt));
 
-                            println!("");
+                            if debug {
+                                println!("{}", code.within(&mt));
+
+                                println!("");
+                            }
 
                             match unsafe { verify(&mt, code.as_ref()) } {
                                 Ok(()) => {
-                                    println!("");
-
                                     mt.push((*code).into());
                                     let f = Closure::new(&mut mt, 0);
                                     mt.pop();
