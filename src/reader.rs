@@ -66,12 +66,14 @@ pub struct Reader<'i> {
     input: Input<'i>
 }
 
+fn is_initial(c: char) -> bool { c.is_alphabetic() || is_special_initial(c) }
+
 fn is_special_initial(c: char) -> bool {
     c == '!' || c == '$' || c == '%' || c == '&' || c == '*' || c == '/' || c == ':'
     || c == '<' || c == '=' || c == '>' || c == '?' || c == '^' || c == '_' || c == '~'
 }
 
-fn is_initial(c: char) -> bool { c.is_alphabetic() || is_special_initial(c) }
+fn is_subsequent(c: char) -> bool { is_initial(c) || c.is_digit(10) || is_special_subsequent(c) }
 
 fn is_special_subsequent(c: char) -> bool { c == '+' || c == '-' || c == '.' || c == '@' }
 
@@ -140,7 +142,7 @@ impl<'i> Reader<'i> {
         let start = first_pc.pos;
 
         while let Some(pc) = self.input.peek() {
-            if is_initial(pc.v) || is_special_subsequent(pc.v) {
+            if is_subsequent(pc.v) {
                 self.input.next();
             } else {
                 break;

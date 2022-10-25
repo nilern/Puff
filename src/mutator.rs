@@ -302,6 +302,8 @@ impl Mutator {
             // -----------------------------------------------------------------
 
             for (name, f) in [("eq?", builtins::EQ), ("fx-", builtins::FX_SUB), ("fx*", builtins::FX_MUL),
+                ("pair?", builtins::IS_PAIR), ("null?", builtins::IS_NULL), ("cons", builtins::CONS),
+                ("car", builtins::CAR), ("cdr", builtins::CDR),
                 ("eval", builtins::EVAL), ("load", builtins::LOAD)
             ] {
                 let name = Symbol::new(&mut mt, name);
@@ -353,6 +355,8 @@ impl Mutator {
     }
 
     pub fn regs(&self) -> &Regs<ORef> { &self.regs }
+
+    pub fn regs_mut(&mut self) -> &mut Regs<ORef> { &mut self.regs }
 
     pub fn push(&mut self, v: ORef) { self.regs.push(v); }
 
@@ -427,8 +431,10 @@ impl Mutator {
                 for i in ((acc_index - varargs_len)..acc_index).rev() {
                     unsafe {
                         let pair = self.alloc_static::<Pair>();
-                        (*pair.as_ptr()).car = self.regs[i];
-                        (*pair.as_ptr()).cdr = self.regs[acc_index];
+                        pair.as_ptr().write(Pair {
+                            car: self.regs[i],
+                            cdr: self.regs[acc_index]
+                        });
                         self.regs[acc_index] = Gc::new_unchecked(pair).into();
                     }
                 }
@@ -545,7 +551,7 @@ impl Mutator {
                         if let Some(var) = self.ns.get(name) {
                             unsafe { self.regs.push_unchecked(var.as_ref().value()); }
                         } else {
-                            todo!()
+                            unsafe { todo!("Unbound {}", name.as_ref().name()); }
                         }
                     }
 

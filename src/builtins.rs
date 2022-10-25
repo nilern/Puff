@@ -2,7 +2,7 @@ use std::fs;
 
 use crate::native_fn::{NativeFn, Answer};
 use crate::mutator::Mutator;
-use crate::oref::Fixnum;
+use crate::oref::{Fixnum, Gc};
 use crate::handle::HandleT;
 use crate::bool::Bool;
 use crate::string::String;
@@ -70,6 +70,88 @@ pub const FX_MUL: NativeFn = NativeFn {
     code: fx_mul
 };
 
+fn is_pair(mt: &mut Mutator) -> Answer {
+    let last_index = mt.regs().len() - 1;
+
+    let res = if let Ok(obj) = Gc::<()>::try_from(mt.regs()[last_index]) {
+        obj.instance_of::<Pair>(mt)
+    } else {
+        false
+    };
+
+    mt.regs_mut()[last_index] = Bool::instance(mt, res).into();
+    Answer::Ret
+}
+
+pub const IS_PAIR: NativeFn = NativeFn {
+    arity: 2,
+    code: is_pair
+};
+
+fn is_null(mt: &mut Mutator) -> Answer {
+    let last_index = mt.regs().len() - 1;
+
+    let res = mt.regs()[last_index] == EmptyList::instance(mt).into();
+
+    mt.regs_mut()[last_index] = Bool::instance(mt, res).into();
+    Answer::Ret
+}
+
+pub const IS_NULL: NativeFn = NativeFn {
+    arity: 2,
+    code: is_null
+};
+
+fn cons(mt: &mut Mutator) -> Answer {
+    let last_index = mt.regs().len() - 1;
+
+    let pair = unsafe { mt.alloc_static::<Pair>() };
+    unsafe { pair.as_ptr().write(Pair {
+        car: mt.regs()[last_index - 1],
+        cdr: mt.regs()[last_index]
+    }) };
+
+    unsafe { mt.regs_mut()[last_index] = Gc::new_unchecked(pair).into(); }
+    Answer::Ret
+}
+
+pub const CONS: NativeFn = NativeFn {
+    arity: 3,
+    code: cons
+};
+
+fn car(mt: &mut Mutator) -> Answer {
+    let last_index = mt.regs().len() - 1;
+
+    let pair = mt.regs()[last_index].try_cast::<Pair>(mt).unwrap_or_else(||
+        todo!()
+    );
+
+    unsafe { mt.regs_mut()[last_index] = pair.as_ref().car; }
+    Answer::Ret
+}
+
+pub const CAR: NativeFn = NativeFn {
+    arity: 2,
+    code: car
+};
+
+fn cdr(mt: &mut Mutator) -> Answer {
+    let last_index = mt.regs().len() - 1;
+
+    let pair = mt.regs()[last_index].try_cast::<Pair>(mt).unwrap_or_else(||
+        todo!()
+    );
+
+    unsafe { mt.regs_mut()[last_index] = pair.as_ref().cdr; }
+    Answer::Ret
+}
+
+pub const CDR: NativeFn = NativeFn {
+    arity: 2,
+    code: cdr
+};
+
 fn eval(mt: &mut Mutator) -> Answer {
     let sexpr = mt.regs()[mt.regs().len() - 1];
 
@@ -84,7 +166,7 @@ fn eval(mt: &mut Mutator) -> Answer {
         println!("{}", code.within(&mt));
         println!("");
     }
-    
+
     if let Err(err) = unsafe { verify(mt, code.as_ref()) } {
         todo!()
     }
