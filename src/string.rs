@@ -26,7 +26,7 @@ impl String {
 
     pub fn new(mt: &mut Mutator, chars: &str) -> Gc<String> {
         unsafe {
-            let mut nptr: NonNull<Self> = mt.alloc_indexed(Self::reify(mt), chars.len()).cast();
+            let nptr: NonNull<Self> = mt.alloc_indexed(Self::reify(mt), chars.len()).cast();
 
             (*nptr.as_ptr()).indexed_field_ptr_mut()
                 .copy_from_nonoverlapping(chars.as_ptr(), chars.len());

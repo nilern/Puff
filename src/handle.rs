@@ -1,7 +1,7 @@
 use std::alloc::{Layout, alloc, dealloc};
 use std::cell::Cell;
 use std::mem::{size_of, align_of, transmute};
-use std::ops::Deref;
+use std::ops::{Deref, DerefMut};
 use std::ptr::NonNull;
 use std::marker::PhantomData;
 
@@ -17,12 +17,16 @@ struct FreeHandleImpl {
     next: Option<NonNull<FreeHandleImpl>>
 }
 
-pub struct Handle(*const LiveHandleImpl);
+pub struct Handle(*mut LiveHandleImpl);
 
 impl Deref for Handle {
     type Target = ORef;
 
     fn deref(&self) -> &Self::Target { unsafe { &(*self.0).oref } }
+}
+
+impl DerefMut for Handle {
+    fn deref_mut(&mut self) -> &mut Self::Target { unsafe { &mut (*self.0).oref } }
 }
 
 impl Clone for Handle {
@@ -49,6 +53,12 @@ impl<T> Deref for HandleT<T> {
 
     fn deref(&self) -> &Self::Target {
         unsafe { transmute::<_, &Self::Target>(&*self.handle) }
+    }
+}
+
+impl<T> DerefMut for HandleT<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe { transmute::<_, &mut Self::Target>(&mut *self.handle) }
     }
 }
 

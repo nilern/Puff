@@ -16,7 +16,7 @@ use crate::closure::Closure;
 use crate::regs::Regs;
 use crate::r#box::Box;
 use crate::namespace::{Namespace, Var};
-use crate::native_fn::{self, NativeFn};
+use crate::native_fn::{self, NativeFn, Answer};
 use crate::builtins;
 use crate::bool::Bool;
 use crate::string::String;
@@ -159,7 +159,7 @@ impl Mutator {
                 }
             ]);
 
-            let mut string: NonNull<IndexedType> = Type::bootstrap_new(&mut heap, r#type, String::TYPE_LEN)?;
+            let string: NonNull<IndexedType> = Type::bootstrap_new(&mut heap, r#type, String::TYPE_LEN)?;
             string.as_ptr().write(IndexedType::new_unchecked(Type {
                 min_size: min_size_of_indexed::<String>(),
                 align: align_of_indexed::<String>()
@@ -292,7 +292,9 @@ impl Mutator {
             // Create builtins:
             // -----------------------------------------------------------------
 
-            for (name, f) in [("eq?", builtins::EQ), ("fx-", builtins::FX_SUB), ("fx*", builtins::FX_MUL)] {
+            for (name, f) in [("eq?", builtins::EQ), ("fx-", builtins::FX_SUB), ("fx*", builtins::FX_MUL),
+                ("eval", builtins::EVAL), ("load", builtins::LOAD)
+            ] {
                 let name = Symbol::new(&mut mt, name);
                 let f = NativeFn::new(&mut mt, f);
                 let f = mt.root_t(f);
@@ -342,6 +344,16 @@ impl Mutator {
     pub fn regs(&self) -> &Regs<ORef> { &self.regs }
 
     pub fn push(&mut self, v: ORef) { self.regs.push(v); }
+
+    pub fn push_global(&mut self, name: &str) {
+        let name = Symbol::new(self, name);
+
+        if let Some(var) = self.ns.get(name) {
+            unsafe { self.regs.push(var.as_ref().value()); }
+        } else {
+            todo!()
+        }
+    }
 
     pub fn pop(&mut self) -> Option<ORef> { self.regs.pop() }
 
@@ -405,10 +417,10 @@ impl Mutator {
             }
 
             // Call:
-            unsafe { (callee.as_ref().code)(self); }
-
-            // Return:
-            self.ret()
+            match unsafe { (callee.as_ref().code)(self) } {
+                Answer::Ret => self.ret(),
+                Answer::TailCall {argc} => self.tailcall(argc) // trampoline
+            }
         } else {
             todo!()
         }

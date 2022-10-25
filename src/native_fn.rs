@@ -3,7 +3,13 @@ use crate::oref::{Reify, Gc};
 use crate::heap_obj::NonIndexed;
 use crate::r#type::NonIndexedType;
 
-pub type Code = fn(&mut Mutator);
+#[must_use]
+pub enum Answer {
+    Ret,
+    TailCall {argc: usize}
+}
+
+pub type Code = fn(&mut Mutator) -> Answer;
 
 #[repr(C)]
 pub struct NativeFn {

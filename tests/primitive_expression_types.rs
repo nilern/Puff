@@ -11,14 +11,11 @@ fn eval_string(mt: &mut Mutator, s: &str) -> ORef {
 
     let res = reader.next(mt).unwrap();
     let sv = res.unwrap();
-    let code = {
-        let code = compile(mt, *sv.v, false);
-        mt.root_t(code)
-    };
+    let code = compile(mt, *sv.v, false);
 
     unsafe { verify(&mt, code.as_ref()) }.unwrap();
 
-    mt.push((*code).into());
+    mt.push(code.into());
     let f = Closure::new(mt, 0);
     mt.pop();
     mt.push(f.into());

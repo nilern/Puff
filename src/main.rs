@@ -71,10 +71,7 @@ fn main() {
                                 println!("");
                             }
 
-                            let code = {
-                                let code = compile(&mut mt, *sv.v, debug);
-                                mt.root_t(code)
-                            };
+                            let code = compile(&mut mt, *sv.v, debug);
 
                             if debug {
                                 println!("{}", code.within(&mt));
@@ -83,7 +80,7 @@ fn main() {
 
                             match unsafe { verify(&mt, code.as_ref()) } {
                                 Ok(()) => {
-                                    mt.push((*code).into());
+                                    mt.push(code.into());
                                     let f = Closure::new(&mut mt, 0);
                                     mt.pop();
                                     mt.push(f.into());
