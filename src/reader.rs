@@ -6,6 +6,7 @@ use crate::symbol::Symbol;
 use crate::list::{EmptyList, Pair};
 use crate::heap_obj::Singleton;
 use crate::string::String;
+use crate::bool::Bool;
 
 struct Input<'a> {
     chars: &'a str,
@@ -288,6 +289,34 @@ impl<'i> Reader<'i> {
                     self.read_string(mt, pc)
                         .map(|ps| ps.map(|s| mt.root(s.into())))
                 },
+
+                '#' => {
+                    let start = pc.pos;
+                    self.input.next();
+
+                    if let Some(pc) = self.input.peek() {
+                        match pc.v {
+                            't' => {
+                                self.input.next();
+                                Ok(Spanning {
+                                    v: Bool::instance(mt, true),
+                                    span: Span {start, end: self.input.pos}
+                                })
+                            },
+                            'f' => {
+                                self.input.next();
+                                Ok(Spanning {
+                                    v: Bool::instance(mt, false),
+                                    span: Span {start, end: self.input.pos}
+                                })
+                            },
+                            _ => todo!()
+                        }
+                        .map(|pb| pb.map(|n| mt.root(ORef::from(n))))
+                    } else {
+                        Err(())
+                    }
+                }
 
                 c if c.is_digit(radix) => {
                     self.input.next();
