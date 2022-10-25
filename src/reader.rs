@@ -5,6 +5,7 @@ use crate::mutator::Mutator;
 use crate::symbol::Symbol;
 use crate::list::{EmptyList, Pair};
 use crate::heap_obj::Singleton;
+use crate::string::String;
 
 struct Input<'a> {
     chars: &'a str,
@@ -99,9 +100,7 @@ impl<'i> Reader<'i> {
         }
     }
 
-    fn read_fixnum(&mut self, radix: u32, first_pc: Positioned<char>)
-        -> ReadResult<Fixnum>
-    {
+    fn read_fixnum(&mut self, radix: u32, first_pc: Positioned<char>) -> ReadResult<Fixnum> {
         let mut n = first_pc.v.to_digit(radix).unwrap() as isize;
         let start = first_pc.pos;
         let mut end = start;
@@ -127,9 +126,7 @@ impl<'i> Reader<'i> {
         }
     }
 
-    fn read_symbol(&mut self, mt: &mut Mutator, first_pc: Positioned<char>)
-        -> Spanning<Gc<Symbol>>
-    {
+    fn read_symbol(&mut self, mt: &mut Mutator, first_pc: Positioned<char>) -> Spanning<Gc<Symbol>> {
         let start = first_pc.pos;
 
         while let Some(pc) = self.input.peek() {
@@ -147,9 +144,34 @@ impl<'i> Reader<'i> {
         }
     }
 
-    fn read_list(&mut self, mt: &mut Mutator, lparen: Positioned<char>)
-        -> ReadResult<Handle>
-    {
+    fn read_string(&mut self, mt: &mut Mutator, double_quote: Positioned<char>) -> ReadResult<Gc<String>> {
+        let start = double_quote.pos;
+
+        loop {
+            if let Some(pc) = self.input.peek() {
+                match pc.v {
+                    '"' => {
+                        self.input.next();
+                        break;
+                    },
+
+                    '\\' => todo!(),
+
+                    _ => { self.input.next(); }
+                }
+            } else {
+                return Err(());
+            }
+        }
+
+        let end = self.input.pos;
+        Ok(Spanning {
+            v: String::new(mt, &self.input.chars[start.index + 1..end.index - 1]),
+            span: Span {start, end}
+        })
+    }
+
+    fn read_list(&mut self, mt: &mut Mutator, lparen: Positioned<char>) -> ReadResult<Handle> {
         let start = lparen.pos;
         let mut vs: Vec<Handle> = Vec::new();
 
@@ -212,18 +234,22 @@ impl<'i> Reader<'i> {
                     self.read_quoted(mt, pc)
                 },
 
+                '"' => {
+                    self.input.next();
+                    self.read_string(mt, pc)
+                        .map(|ps| ps.map(|s| mt.root(s.into())))
+                },
+
                 c if c.is_digit(radix) => {
                     self.input.next();
                     self.read_fixnum(radix, pc).map(|sv| sv.map(ORef::from))
-                        .map(|res|
-                            res.map(|n| mt.root(ORef::from(n))))
+                        .map(|pn| pn.map(|n| mt.root(ORef::from(n))))
                 },
 
                 c if is_initial(c) => {
                     self.input.next();
                     Ok(self.read_symbol(mt, pc).map(ORef::from))
-                        .map(|res|
-                            res.map(|n| mt.root(ORef::from(n))))
+                        .map(|ps| ps.map(|n| mt.root(ORef::from(n))))
                 },
 
                 _ => Err(())

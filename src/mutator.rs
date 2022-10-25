@@ -19,6 +19,7 @@ use crate::namespace::{Namespace, Var};
 use crate::native_fn::{self, NativeFn};
 use crate::builtins;
 use crate::bool::Bool;
+use crate::string::String;
 
 const USIZE_TYPE_SIZE: usize = min_size_of_indexed::<Type>();
 
@@ -32,6 +33,7 @@ pub struct Types {
     pub r#type: Gc<IndexedType>,
     pub bool: Gc<BitsType>,
     pub symbol: Gc<IndexedType>,
+    pub string: Gc<IndexedType>,
     pub pair: Gc<NonIndexedType>,
     pub empty_list: Gc<NonIndexedType>,
     pub array_of_any: Gc<IndexedType>,
@@ -157,6 +159,16 @@ impl Mutator {
                 }
             ]);
 
+            let mut string: NonNull<IndexedType> = Type::bootstrap_new(&mut heap, r#type, String::TYPE_LEN)?;
+            string.as_ptr().write(IndexedType::new_unchecked(Type {
+                min_size: min_size_of_indexed::<String>(),
+                align: align_of_indexed::<String>()
+            }));
+            (*(string.as_ptr() as *mut Type)).indexed_field_mut().copy_from_slice(&[
+                Field {r#type: u8_type.as_type(), offset: min_size_of_indexed::<String>()}
+            ]);
+            let string = Gc::new_unchecked(string);
+
             let mut pair = Gc::new_unchecked(Type::bootstrap_new(
                 &mut heap, r#type, Pair::TYPE_LEN
             )?);
@@ -264,8 +276,8 @@ impl Mutator {
                 heap,
                 handles: HandlePool::new(),
 
-                types: Types { r#type, bool, symbol, pair, empty_list,  bytecode, array_of_any, closure, native_fn,
-                    r#box, var },
+                types: Types { r#type, bool, symbol, string, pair, empty_list,  bytecode, array_of_any, closure,
+                    native_fn, r#box, var },
                 singletons: Singletons { r#true, r#false, empty_list: empty_list_inst },
                 symbols: SymbolTable::new(),
                 ns: Namespace::new(),

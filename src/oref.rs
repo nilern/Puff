@@ -11,6 +11,7 @@ use crate::closure::Closure;
 use crate::bytecode::Bytecode;
 use crate::bool::Bool;
 use crate::r#box::Box;
+use crate::string::String;
 
 trait Tagged {
     const TAG: usize;
@@ -259,6 +260,8 @@ impl DisplayWithin for Gc<()> {
                 write!(fmt, ")")
             } else if let Some(_) = self.try_cast::<EmptyList>(mt) {
                 write!(fmt, "()")
+            } else if let Some(this) = self.try_cast::<String>(mt) {
+                write!(fmt, "\"{}\"", this.as_ref().as_str())
             } else if let Some(this) = self.try_cast::<Bool>(mt) {
                 if bool::from(this.as_ref().0) {
                     write!(fmt, "#t")

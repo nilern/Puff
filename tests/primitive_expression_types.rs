@@ -4,6 +4,7 @@ use molysite::compiler::compile;
 use molysite::closure::Closure;
 use molysite::verifier::verify;
 use molysite::oref::{ORef, Fixnum};
+use molysite::string::String;
 
 fn eval_string(mt: &mut Mutator, s: &str) -> ORef {
     let mut reader = Reader::new(s);
@@ -29,10 +30,14 @@ fn eval_string(mt: &mut Mutator, s: &str) -> ORef {
 }
 
 #[test]
-fn fixnum_literal() {
+fn literals() {
     let mut mt = Mutator::new(1 << 20).unwrap();
 
     let n = eval_string(&mut mt, "5");
-
     assert_eq!(n, Fixnum::try_from(5isize).unwrap().into());
+
+    let s = eval_string(&mut mt, "\"\"");
+    unsafe { assert_eq!(s.try_cast::<String>(&mt).unwrap().as_ref().as_str(), ""); }
+    let s = eval_string(&mut mt, "\"foo\"");
+    unsafe { assert_eq!(s.try_cast::<String>(&mt).unwrap().as_ref().as_str(), "foo"); }
 }

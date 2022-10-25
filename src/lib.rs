@@ -5,6 +5,7 @@ mod heap;
 pub mod reader;
 mod pos;
 mod symbol;
+pub mod string;
 mod regs;
 pub mod mutator;
 mod heap_obj;
