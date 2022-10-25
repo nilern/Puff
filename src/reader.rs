@@ -311,7 +311,7 @@ mod tests {
 
     #[test]
     fn read_fixnums() {
-        let mut mt = Mutator::new(1 << 20 /* 1 MiB */).unwrap();
+        let mut mt = Mutator::new(1 << 20 /* 1 MiB */, false).unwrap();
 
         let mut reader = Reader::new("  5  23  ");
         let mut vs = Vec::new();
@@ -347,7 +347,7 @@ mod tests {
 
     #[test]
     fn read_symbols() {
-        let mut mt = Mutator::new(1 << 20 /* 1 MiB */).unwrap();
+        let mut mt = Mutator::new(1 << 20 /* 1 MiB */, false).unwrap();
 
         let mut reader = Reader::new("  foo  bar  ");
         let mut vs = Vec::new();

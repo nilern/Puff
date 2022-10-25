@@ -29,6 +29,10 @@ const USIZE_TYPE_LAYOUT: Layout = unsafe {
     )
 };
 
+pub struct Cfg {
+    pub debug: bool
+}
+
 pub struct Types {
     pub r#type: Gc<IndexedType>,
     pub bool: Gc<BitsType>,
@@ -51,6 +55,8 @@ pub struct Singletons {
 }
 
 pub struct Mutator {
+    cfg: Cfg,
+
     heap: Heap,
     handles: HandlePool,
 
@@ -67,7 +73,7 @@ pub struct Mutator {
 }
 
 impl Mutator {
-    pub fn new(heap_size: usize) -> Option<Self> {
+    pub fn new(heap_size: usize, debug: bool) -> Option<Self> {
         let mut heap = Heap::new(heap_size);
 
         unsafe {
@@ -273,6 +279,8 @@ impl Mutator {
             // -----------------------------------------------------------------
 
             let mut mt = Self {
+                cfg: Cfg {debug},
+
                 heap,
                 handles: HandlePool::new(),
 
@@ -307,6 +315,8 @@ impl Mutator {
             Some(mt)
         }
     }
+
+    pub fn cfg(&self) -> &Cfg { &self.cfg }
 
     pub fn types(&self) -> &Types { &self.types }
 
@@ -711,6 +721,6 @@ mod tests {
 
     #[test]
     fn mutator_new() {
-        Mutator::new(1 << 20 /* 1 MiB */);
+        Mutator::new(1 << 20 /* 1 MiB */, false);
     }
 }

@@ -188,7 +188,7 @@ mod tests {
 
     #[test]
     fn test_add_get() {
-        let mut mt = Mutator::new(1 << 20).unwrap();
+        let mut mt = Mutator::new(1 << 20, false).unwrap();
         let mut ns = Namespace::new();
 
         let foo = Symbol::new(&mut mt, "foo");

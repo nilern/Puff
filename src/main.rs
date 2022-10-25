@@ -54,7 +54,7 @@ fn main() {
         println!("No previous history.");
     }
 
-    let mut mt = Mutator::new(1 << 20 /* 1 MiB */).unwrap();
+    let mut mt = Mutator::new(1 << 20 /* 1 MiB */, debug).unwrap();
 
     loop {
         match rl.readline(PROMPT) {

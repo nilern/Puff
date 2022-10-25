@@ -73,7 +73,18 @@ pub const FX_MUL: NativeFn = NativeFn {
 fn eval(mt: &mut Mutator) -> Answer {
     let sexpr = mt.regs()[mt.regs().len() - 1];
 
-    let code = compile(mt, sexpr, false);
+    if mt.cfg().debug {
+        println!("{}", sexpr.within(&mt));
+        println!("");
+    }
+
+    let code = compile(mt, sexpr, mt.cfg().debug);
+
+    if mt.cfg().debug {
+        println!("{}", code.within(&mt));
+        println!("");
+    }
+    
     if let Err(err) = unsafe { verify(mt, code.as_ref()) } {
         todo!()
     }

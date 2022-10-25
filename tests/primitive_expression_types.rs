@@ -11,7 +11,7 @@ fn eval_string(mt: &mut Mutator, s: &str) -> ORef {
 
     let res = reader.next(mt).unwrap();
     let sv = res.unwrap();
-    let code = compile(mt, *sv.v, false);
+    let code = compile(mt, *sv.v, mt.cfg().debug);
 
     unsafe { verify(&mt, code.as_ref()) }.unwrap();
 
@@ -28,7 +28,7 @@ fn eval_string(mt: &mut Mutator, s: &str) -> ORef {
 
 #[test]
 fn literals() {
-    let mut mt = Mutator::new(1 << 20).unwrap();
+    let mut mt = Mutator::new(1 << 20, false).unwrap();
 
     let n = eval_string(&mut mt, "5");
     assert_eq!(n, Fixnum::try_from(5isize).unwrap().into());

@@ -172,7 +172,7 @@ mod tests {
 
     #[test]
     fn symbol_new() {
-        let mut mt = Mutator::new(1 << 20 /* 1 MiB */).unwrap();
+        let mut mt = Mutator::new(1 << 20 /* 1 MiB */, false).unwrap();
         let bootstrap_symbols_len = mt.symbols().len;
 
         let sym1 = Symbol::new(&mut mt, "foo");
