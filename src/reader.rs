@@ -1,5 +1,5 @@
 use crate::oref::{ORef, Fixnum, Gc};
-use crate::handle::Handle;
+use crate::handle::{Handle, HandleT};
 use crate::pos::{Pos, Positioned, Span, Spanning};
 use crate::mutator::Mutator;
 use crate::symbol::Symbol;
@@ -77,6 +77,16 @@ fn is_special_subsequent(c: char) -> bool { c == '+' || c == '-' || c == '.' || 
 
 impl<'i> Reader<'i> {
     pub fn new(chars: &'i str) -> Self { Reader {input: Input::new(chars) } }
+
+    fn intertoken_space(&mut self) {
+        while let Some(pc) = self.input.peek() {
+            if pc.v.is_whitespace() {
+                self.input.next();
+            } else {
+                break;
+            }
+        }
+    }
 
     fn read_quoted(&mut self, mt: &mut Mutator, quote: Positioned<char>) -> ReadResult<Handle> {
         let start = quote.pos;
@@ -173,52 +183,89 @@ impl<'i> Reader<'i> {
 
     fn read_list(&mut self, mt: &mut Mutator, lparen: Positioned<char>) -> ReadResult<Handle> {
         let start = lparen.pos;
-        let mut vs: Vec<Handle> = Vec::new();
 
-        loop {
-            while let Some(pc) = self.input.peek() {
-                if pc.v.is_whitespace() {
-                    self.input.next();
-                } else {
-                    break;
-                }
+        let empty = mt.root(EmptyList::instance(mt).into());
+
+        self.intertoken_space();
+
+        // ()
+        if let Some(pc) = self.input.peek() {
+            if pc.v == ')' {
+                self.input.next();
+                return Ok(Spanning {
+                    v: empty,
+                    span: Span {start, end: self.input.pos}
+                })
             }
+        }
+
+        let car: Handle = match self.next(mt) {
+            Some(res) => res?.v,
+            None => return Err(())
+        };
+
+        let ls: HandleT<Pair> = {
+            let ls = Pair::new(mt, car, empty.clone());
+            mt.root_t(ls)
+        };
+
+        let mut last_pair = ls.clone();
+        loop {
+            self.intertoken_space();
 
             match self.input.peek() {
-                Some(pc) =>
-                    if pc.v != ')' {
-                        match self.next(mt) {
-                            Some(res) => vs.push(res?.v),
-                            None => return Err(()) // FIXME
-                        }
-                    } else {
-                        self.input.next();
-                        break;
+                Some(pc) if pc.v == ')' => { // (<datum>+)
+                    self.input.next();
+                    break;
+                },
+
+                Some(pc) if pc.v == '.' => { // (<datum>+ . <datum>)
+                    self.input.next();
+
+                    match self.next(mt) {
+                        Some(res) => unsafe { last_pair.as_mut().cdr = *res?.v; },
+                        None => return Err(())
+                    }
+
+                    self.intertoken_space();
+
+                    match self.input.peek() {
+                        Some(pc) =>
+                            match pc.v {
+                                ')' => {
+                                    self.input.next();
+                                    break;
+                                },
+                                _ => return Err(())
+                            }
+
+                        None => return Err(())
+                    }
+                },
+
+                Some(_) => // (<datum>+ ...
+                    match self.next(mt) {
+                        Some(res) => {
+                            let pair = Pair::new(mt, res?.v, empty.clone());
+                            unsafe { last_pair.as_mut().cdr = pair.into(); }
+                            last_pair = mt.root_t(pair);
+                        },
+
+                        None => return Err(())
                     },
-                None => return Err(()) // FIXME
+
+                None => return Err(())
             }
         }
 
-        let mut ls: Handle = mt.root(EmptyList::instance(mt).into());
-        for v in vs.iter().rev() {
-            let new_ls = Pair::new(mt, v.clone(), ls);
-            ls = mt.root(new_ls.into());
-        }
-        
         Ok(Spanning {
-            v: ls,
+            v: ls.into(),
             span: Span {start, end: self.input.pos}
         })
     }
 
     pub fn next(&mut self, mt: &mut Mutator) -> Option<ReadResult<Handle>> {
-        while let Some(pc) = self.input.peek() {
-            if pc.v.is_whitespace() {
-                self.input.next();
-            } else {
-                break;
-            }
-        }
+        self.intertoken_space();
 
         self.input.peek().map(|pc| {
             let radix = 10;
