@@ -29,7 +29,7 @@ pub enum Expr {
     BoxGet(Id),
     CheckedBoxGet {guard: Id, r#box: Id},
 
-    r#Fn(LiveVars, Params, Box<Expr>),
+    r#Fn(LiveVars, Params, bool, Box<Expr>),
     Call(Id, Vec<Id>, LiveVars),
 
     Global(HandleT<Symbol>),

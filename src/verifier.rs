@@ -703,7 +703,7 @@ impl<'a> TryFrom<&'a Bytecode> for CFG<'a> {
         if blocks.len() == 0 { return Err(IndexedErr{err: Err::MissingTerminator, byte_index: 0}); }
 
         Ok(CFG {
-            arity: code.arity,
+            arity: code.min_arity + code.varargs as usize,
             max_regs: code.max_regs,
             clovers_len: code.clovers_len,
             consts: code.consts,

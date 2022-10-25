@@ -246,7 +246,7 @@ pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::Expr {
 
     fn analyze_lambda(cmp: &mut Compiler, env: &Rc<Env>, args: ORef) -> anf::Expr {
         // TODO: Reject duplicate parameter names:
-        fn analyze_params(cmp: &mut Compiler, env: &Rc<Env>, mut params: ORef) -> (Rc<Env>, anf::Params) {
+        fn analyze_params(cmp: &mut Compiler, env: &Rc<Env>, mut params: ORef) -> (Rc<Env>, anf::Params, bool) {
             let mut anf_ps = vec![Id::fresh(cmp)]; // Id for "self" closure
             let mut env = env.clone();
 
@@ -263,7 +263,13 @@ pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::Expr {
             }
 
             if params == EmptyList::instance(cmp.mt).into() {
-                (env, anf_ps)
+                (env, anf_ps, false)
+            } else if let Some(param) = params.try_cast::<Symbol>(cmp.mt) {
+                let id = Id::fresh(cmp);
+                anf_ps.push(id);
+                env = Rc::new(Env::Binding(id, cmp.mt.root_t(param), env.clone()));
+
+                (env, anf_ps, true)
             } else {
                 todo!()
             }
@@ -276,10 +282,10 @@ pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::Expr {
                 let body = unsafe { args.as_ref().car };
 
                 if unsafe { args.as_ref().cdr } == EmptyList::instance(cmp.mt).into() {
-                    let (env, params) = analyze_params(cmp, env, params);
+                    let (env, params, varargs) = analyze_params(cmp, env, params);
                     let body = analyze_expr(cmp, &env, body);
 
-                    r#Fn(anf::LiveVars::new(), params, boxed::Box::new(body))
+                    r#Fn(anf::LiveVars::new(), params, varargs, boxed::Box::new(body))
                 } else {
                     todo!()
                 }
@@ -432,7 +438,7 @@ pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::Expr {
 
     let body = analyze_toplevel_form(cmp, expr);
 
-    let mut expr = r#Fn(anf::LiveVars::new(), vec![Id::fresh(cmp)], boxed::Box::new(body));
+    let mut expr = r#Fn(anf::LiveVars::new(), vec![Id::fresh(cmp)], false, boxed::Box::new(body));
 
     let muts = mutables(&expr);
 
@@ -471,7 +477,7 @@ fn mutables(expr: &anf::Expr) -> HashSet<Id> {
                 expr_mutables(mutables, val_expr);
             },
 
-            &Fn(_, _, ref body) => expr_mutables(mutables, body),
+            &Fn(_, _, _, ref body) => expr_mutables(mutables, body),
 
             &Call(_, _, _) => (),
 
@@ -668,8 +674,8 @@ fn letrec(cmp: &mut Compiler, mutables: &HashSet<Id>, expr: &anf::Expr) -> anf::
                 }
             }
 
-            &Fn(ref fvs, ref params, ref body) =>
-                Fn(fvs.clone(), params.clone(), boxed::Box::new(convert(cmp, mutables, env, body))),
+            &Fn(ref fvs, ref params, varargs, ref body) =>
+                Fn(fvs.clone(), params.clone(), varargs, boxed::Box::new(convert(cmp, mutables, env, body))),
 
             &Call(callee, ref args, ref live_outs) =>
                 // Callee and args ids are not from source code and so cannot be recursively bound:
@@ -750,7 +756,7 @@ fn convert_mutables(cmp: &mut Compiler, mutables: &HashSet<Id>, expr: &anf::Expr
 
         &CheckedBoxGet {guard, r#box} => CheckedBoxGet {guard, r#box},
 
-        &Fn(ref fvs, ref params, ref body) => {
+        &Fn(ref fvs, ref params, varargs, ref body) => {
             let mut bindings = Vec::new();
 
             let params = params.iter()
@@ -767,7 +773,7 @@ fn convert_mutables(cmp: &mut Compiler, mutables: &HashSet<Id>, expr: &anf::Expr
 
             let body = convert_mutables(cmp, mutables, body);
 
-            Fn(fvs.clone(), params, boxed::Box::new(
+            Fn(fvs.clone(), params, varargs, boxed::Box::new(
                 if bindings.len() == 0 {
                     body
                 } else {
@@ -854,7 +860,7 @@ fn liveness(expr: &mut anf::Expr) {
                 live_outs.insert(guard);
             }
 
-            &mut r#Fn(ref mut fvs, ref params, ref mut body) => {
+            &mut r#Fn(ref mut fvs, ref params, _, ref mut body) => {
                 let mut free_vars = {
                     let mut live_outs = anf::LiveVars::new();
                     live_outs.insert(params[0]); // "self" closure should always be live

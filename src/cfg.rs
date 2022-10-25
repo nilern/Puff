@@ -100,7 +100,8 @@ impl Instr {
 pub type Block = Vec<Instr>;
 
 pub struct Fn {
-    pub arity: usize,
+    pub min_arity: usize,
+    pub varargs: bool,
     pub max_regs: usize,
     pub clovers_len: usize,
     pub blocks: Vec<Block>
@@ -111,8 +112,8 @@ impl DisplayWithin for &Fn {
 }
 
 impl Fn {
-    pub fn new(arity: usize, max_regs: usize, clovers_len: usize) -> Self {
-        Fn { arity, max_regs, clovers_len, blocks: Vec::new() }
+    pub fn new(min_arity: usize, varargs: bool, max_regs: usize, clovers_len: usize) -> Self {
+        Fn { min_arity, varargs, max_regs, clovers_len, blocks: Vec::new() }
     }
 
     pub fn block(&self, i: Label) -> &Block { &self.blocks[i.0] }
@@ -158,15 +159,26 @@ impl Fn {
     }
 
     pub fn fmt(&self, mt: &Mutator, fmt: &mut fmt::Formatter, indent: &str) -> fmt::Result {
-        write!(fmt, "{}(clovers {}) (", indent, self.clovers_len)?;
-        if self.arity > 0 {
-            write!(fmt, "_")?;
+        write!(fmt, "{}(clovers {}) ", indent, self.clovers_len)?;
+        if self.min_arity > 0 {
+            write!(fmt, "(_")?;
 
-            for _ in 1..self.arity {
+            for _ in 1..self.min_arity {
                 write!(fmt, " _")?;
             }
+
+            if self.varargs {
+                write!(fmt, " . _")?;
+            }
+
+            writeln!(fmt, ")")?;
+        } else {
+            if !self.varargs {
+                writeln!(fmt, "()")?;
+            } else {
+                writeln!(fmt, "_")?;
+            }
         }
-        writeln!(fmt, ")")?;
         writeln!(fmt, "{}(locals {})", indent, self.max_regs)?;
 
         for (label, block) in self.blocks.iter().enumerate() {
@@ -597,14 +609,14 @@ impl From<&anf::Expr> for Fn {
                     current
                 },
 
-                anf::Expr::Fn(ref fvs, ref params, ref body) => {
+                anf::Expr::Fn(ref fvs, ref params, varargs, ref body) => {
                     let fvs = fvs.iter().map(|&id| id).collect::<Vec<Id>>();
 
                     for &fv in fvs.iter() {
                         emit_use(env, f, current, fv);
                     }
 
-                    let code = emit_fn(&fvs, params, body);
+                    let code = emit_fn(&fvs, params, varargs, body);
                     f.block_mut(current).push(Instr::Fn(code, fvs.len()));
                     env.popn(fvs.len());
                     env.push();
@@ -671,18 +683,18 @@ impl From<&anf::Expr> for Fn {
             }
         }
 
-        fn emit_fn(clovers: &[Id], params: &[Id], body: &anf::Expr) -> Fn {
+        fn emit_fn(clovers: &[Id], params: &[Id], varargs: bool, body: &anf::Expr) -> Fn {
             let mut env = Env::new(clovers, params);
-            let mut f = Fn::new(params.len(), 0, clovers.len());
+            let mut f = Fn::new(params.len() - varargs as usize, varargs, 0, clovers.len());
             let current = f.create_block();
             let _ = emit_expr(&mut env, &mut f, current, Cont::Ret, body);
             f.max_regs = env.max_regs;
             f
         }
 
-        if let anf::Expr::Fn(ref fvs, ref params, ref body) = expr {
+        if let anf::Expr::Fn(ref fvs, ref params, varargs, ref body) = expr {
             let fvs = fvs.iter().map(|&id| id).collect::<Vec<Id>>();
-            emit_fn(&fvs, params, body)
+            emit_fn(&fvs, params, *varargs, body)
         } else {
             todo!()
         }

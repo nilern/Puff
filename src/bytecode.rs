@@ -140,7 +140,8 @@ impl<'a> Iterator for Prunes<'a> {
 
 #[repr(C)]
 pub struct Bytecode {
-    pub arity: usize,
+    pub min_arity: usize,
+    pub varargs: bool,
     pub max_regs: usize,
     pub clovers_len: usize,
     pub consts: Gc<Array<ORef>>
@@ -165,17 +166,18 @@ impl DisplayWithin for Gc<Bytecode> {
 }
 
 impl Bytecode {
-    pub const TYPE_LEN: usize = 5;
+    pub const TYPE_LEN: usize = 6;
 
-    pub fn new(mt: &mut Mutator, arity: usize, max_regs: usize, clovers_len: usize, consts: HandleT<Array<ORef>>,
-        instrs: &[u8]
+    pub fn new(mt: &mut Mutator, min_arity: usize, varargs: bool, max_regs: usize, clovers_len: usize,
+        consts: HandleT<Array<ORef>>, instrs: &[u8]
     ) -> Gc<Self> {
         unsafe {
             let r#type = Self::reify(mt).unchecked_cast::<IndexedType>();
             let mut nptr = mt.alloc_indexed(r#type, instrs.len()).cast::<Self>();
 
             nptr.as_ptr().write(Bytecode {
-                arity,
+                min_arity,
+                varargs,
                 max_regs,
                 clovers_len,
                 consts: *consts
@@ -190,15 +192,26 @@ impl Bytecode {
 
     fn disassemble(&self, mt: &Mutator, fmt: &mut fmt::Formatter, indent: &str) -> fmt::Result {
         unsafe {
-            write!(fmt, "{}(clovers {}) (", indent, self.clovers_len)?;
-            if self.arity > 0 {
-                write!(fmt, "_")?;
+            write!(fmt, "{}(clovers {}) ", indent, self.clovers_len)?;
+            if self.min_arity > 0 {
+                write!(fmt, "(_")?;
 
-                for _ in 1..self.arity {
+                for _ in 1..self.min_arity {
                     write!(fmt, " _")?;
                 }
+
+                if self.varargs {
+                    write!(fmt, " . _")?;
+                }
+
+                writeln!(fmt, ")")?;
+            } else {
+                if !self.varargs {
+                    writeln!(fmt, "()")?;
+                } else {
+                    writeln!(fmt, "_")?;
+                }
             }
-            writeln!(fmt, ")")?;
             writeln!(fmt, "{}(locals {})", indent, self.max_regs)?;
 
             let mut instrs = self.instrs().iter().enumerate();
@@ -365,7 +378,8 @@ impl Bytecode {
 }
 
 struct Builder {
-    arity: usize,
+    min_arity: usize,
+    varargs: bool,
     max_regs: usize,
     clovers_len: usize,
     consts: Vec<Handle>,
@@ -375,9 +389,10 @@ struct Builder {
 }
 
 impl Builder {
-    fn new(arity: usize, max_regs: usize, clovers_len: usize) -> Self {
+    fn new(min_arity: usize, varargs: bool, max_regs: usize, clovers_len: usize) -> Self {
         Self {
-            arity,
+            min_arity,
+            varargs,
             max_regs,
             clovers_len,
             consts: Vec::new(),
@@ -513,7 +528,7 @@ impl Builder {
             let consts = Array::<ORef>::from_handles(mt, &self.consts);
             mt.root_t(consts)
         };
-        Bytecode::new(mt, self.arity, self.max_regs, self.clovers_len, consts, &self.instrs)
+        Bytecode::new(mt, self.min_arity, self.varargs, self.max_regs, self.clovers_len, consts, &self.instrs)
     }
 }
 
@@ -568,7 +583,7 @@ impl Gc<Bytecode> {
 
         let po = f.post_order();
 
-        let mut builder = Builder::new(f.arity, f.max_regs, f.clovers_len);
+        let mut builder = Builder::new(f.min_arity, f.varargs, f.max_regs, f.clovers_len);
 
         let mut rpo = po.iter().rev().peekable();
         while let Some(&label) = rpo.next() {

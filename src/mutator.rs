@@ -6,7 +6,7 @@ use crate::heap::Heap;
 use crate::oref::{AsType, ORef, Gc, Fixnum};
 use crate::r#type::{Type, Field, IndexedType, NonIndexedType, BitsType};
 use crate::symbol::{Symbol, SymbolTable};
-use crate::heap_obj::{NonIndexed, Indexed, Header, min_size_of_indexed,
+use crate::heap_obj::{NonIndexed, Indexed, Singleton, Header, min_size_of_indexed,
     align_of_indexed};
 use crate::handle::{Handle, HandleT, HandlePool};
 use crate::list::{EmptyList, Pair};
@@ -213,9 +213,10 @@ impl Mutator {
             });
             bytecode.as_type().as_mut().indexed_field_mut().copy_from_slice(&[
                 Field { r#type: usize_type.as_type(), offset: 0 },
-                Field { r#type: usize_type.as_type(), offset: size_of::<usize>() },
+                Field { r#type: bool.as_type(), offset: size_of::<usize>() },
                 Field { r#type: usize_type.as_type(), offset: 2 * size_of::<usize>() },
-                Field { r#type: array_of_any.as_type(), offset: 3 * size_of::<usize>() },
+                Field { r#type: usize_type.as_type(), offset: 3 * size_of::<usize>() },
+                Field { r#type: array_of_any.as_type(), offset: 4 * size_of::<usize>() },
                 Field {
                     r#type: u8_type.as_type(),
                     offset: min_size_of_indexed::<Bytecode>()
@@ -410,9 +411,29 @@ impl Mutator {
             // TODO: GC safepoint (only becomes necessary with multithreading)
 
             // Check arity:
-            // TODO: Varargs
-            if argc != unsafe { self.code().as_ref().arity } {
-                todo!()
+            let min_arity = unsafe { self.code().as_ref().min_arity };
+            if ! unsafe { self.code().as_ref().varargs } {
+                if argc != min_arity {
+                    todo!()
+                }
+            } else {
+                if argc < min_arity {
+                    todo!()
+                }
+
+                let varargs_len = argc - min_arity;
+                let acc_index = self.regs.len();
+                self.regs.push(EmptyList::instance(self).into());
+                for i in ((acc_index - varargs_len)..acc_index).rev() {
+                    unsafe {
+                        let pair = self.alloc_static::<Pair>();
+                        (*pair.as_ptr()).car = self.regs[i];
+                        (*pair.as_ptr()).cdr = self.regs[acc_index];
+                        self.regs[acc_index] = Gc::new_unchecked(pair).into();
+                    }
+                }
+
+                unsafe { self.regs.popnnt_unchecked(varargs_len); }
             }
 
             None

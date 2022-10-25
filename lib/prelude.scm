@@ -1,5 +1,1 @@
-(define zero 0)
-
-(define one zero)
-
-(set! one 1)
+(define list (lambda ls ls))
