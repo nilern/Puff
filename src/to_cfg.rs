@@ -29,10 +29,10 @@ struct Env {
 
 impl Env {
     fn new(clover_ids: &[Id], param_ids: &[Id]) -> Self {
-        let mut clovers = HashMap::new();
-        for (i, &id) in clover_ids.iter().enumerate() {
-            clovers.insert(id, i);
-        }
+        let mut clovers: HashMap<Id, usize> = clover_ids.iter()
+            .enumerate()
+            .map(|(i, &id)| (id, i))
+            .collect();
 
         let mut reg_ids = Vec::with_capacity(param_ids.len());
         let mut id_regs = HashMap::new();
@@ -62,7 +62,7 @@ impl Env {
     }
 
     fn pop(&mut self) {
-        if let Some(id) = self.reg_ids.pop().flatten() {
+        if let Some(id) = self.reg_ids.pop().unwrap() {
             self.id_regs.remove(&id);
         }
     }
@@ -85,7 +85,12 @@ impl Env {
             }
         }
 
+        let top = *self.reg_ids.last().unwrap();
         self.reg_ids.truncate(self.reg_ids.len() - n);
+        *self.reg_ids.last_mut().unwrap() = top;
+        if let Some(id) = top {
+            self.id_regs.insert(id, self.reg_ids.len() - 1);
+        }
     }
 
     fn prune(&mut self, prunes: &[bool]) {
@@ -314,8 +319,6 @@ fn emit_expr(env: &mut Env, builder: &mut CfgBuilder, cont: Cont, expr: &anf::Ex
             }
         },
 
-        anf::Expr::Set(..) => unreachable!(),
-
         anf::Expr::UninitializedBox => {
             builder.push(Instr::UninitializedBox);
             env.push();
@@ -430,7 +433,7 @@ fn emit_expr(env: &mut Env, builder: &mut CfgBuilder, cont: Cont, expr: &anf::Ex
             cont.goto(builder);
         },
 
-        anf::Expr::Letrec(..) => unreachable!()
+        anf::Expr::Letrec(..) | anf::Expr::Set(..) => unreachable!()
     }
 }
 
