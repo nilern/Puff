@@ -129,9 +129,12 @@ impl Env {
         let mut mask = vec![true; self.reg_ids.len() - argc - 1];
 
         for id in live_outs {
-            self.id_regs.get(id)
-                .and_then(|&reg| mask.get_mut(reg))
-                .map(|dest| *dest = false);
+            if let Some(&reg) = self.id_regs.get(id) {
+                let prune = mask.get_mut(reg).unwrap_or_else(|| {
+                    panic!("Live variable {:?} in callee/arg register {}", id, reg)
+                });
+                *prune = false;
+            }
         }
 
         mask
