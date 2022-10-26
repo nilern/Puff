@@ -21,6 +21,7 @@ mod bytecode;
 pub mod verifier;
 mod anf;
 mod cfg;
+mod to_cfg;
 mod analyzer;
 pub mod compiler;
 mod util;

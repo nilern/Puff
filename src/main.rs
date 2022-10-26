@@ -21,6 +21,7 @@ mod bytecode;
 mod verifier;
 mod anf;
 mod cfg;
+mod to_cfg;
 mod analyzer;
 mod compiler;
 mod util;
