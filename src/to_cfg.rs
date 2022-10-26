@@ -5,6 +5,15 @@ use crate::cfg::{Fn, Instr, Label};
 use crate::anf;
 use crate::compiler::Id;
 
+struct CfgBuilder {
+    f: Fn,
+    current: Label
+}
+
+impl CfgBuilder {
+    fn push(&mut self, instr: Instr) { self.f.block_mut(self.current).push(instr); }
+}
+
 enum Loc {
     Reg(usize),
     Clover(usize)
@@ -193,82 +202,73 @@ enum Cont {
 }
 
 impl Cont {
-    fn goto(self, f: &mut Fn, current: Label) {
+    fn goto(self, builder: &mut CfgBuilder) {
         match self {
             Cont::Next => (),
-
-            Cont::Label(dest) => f.block_mut(current).push(Instr::Goto(dest)),
-
-            Cont::Ret => f.block_mut(current).push(Instr::Ret)
+            Cont::Label(dest) => builder.push(Instr::Goto(dest)),
+            Cont::Ret => builder.push(Instr::Ret)
         }
     }
 }
 
-fn emit_use(env: &mut Env, f: &mut Fn, current: Label, r#use: Id) {
+fn emit_use(env: &mut Env, builder: &mut CfgBuilder, r#use: Id) {
     match env.get(r#use) {
         Loc::Reg(reg) => {
-            f.block_mut(current).push(Instr::Local(reg));
+            builder.push(Instr::Local(reg));
             env.push();
         },
 
         Loc::Clover(i) => {
-            f.block_mut(current).push(Instr::Clover(i));
+            builder.push(Instr::Clover(i));
             env.push();
         }
     }
 }
 
-#[must_use]
-fn emit_expr(env: &mut Env, f: &mut Fn, mut current: Label, cont: Cont, expr: &anf::Expr) -> Label {
+fn emit_expr(env: &mut Env, builder: &mut CfgBuilder, cont: Cont, expr: &anf::Expr) {
     match *expr {
         anf::Expr::Define(ref definiend, ref val_expr) => {
-            current = emit_expr(env, f, current, Cont::Next, val_expr);
-            f.block_mut(current).push(Instr::Define(definiend.clone()));
+            emit_expr(env, builder, Cont::Next, val_expr);
+            builder.push(Instr::Define(definiend.clone()));
             env.pop();
             env.push();
 
-            cont.goto(f, current);
-
-            current
+            cont.goto(builder);
         },
         anf::Expr::GlobalSet(ref definiend, ref val_expr) => {
-            current = emit_expr(env, f, current, Cont::Next, val_expr);
-            f.block_mut(current).push(Instr::GlobalSet(definiend.clone()));
+            emit_expr(env, builder, Cont::Next, val_expr);
+            builder.push(Instr::GlobalSet(definiend.clone()));
             env.pop();
             env.push();
 
-            cont.goto(f, current);
-
-            current
+            cont.goto(builder);
         },
 
         anf::Expr::Begin(ref stmts) => {
             for stmt in &stmts[0..(stmts.len() - 1)] {
-                current = emit_expr(env, f, current, Cont::Next, stmt);
+                emit_expr(env, builder, Cont::Next, stmt);
             }
 
-            current = emit_expr(env, f, current, cont, stmts.last().unwrap());
+            emit_expr(env, builder, cont, stmts.last().unwrap());
 
             if let Cont::Ret = cont {
                 /* ret/tailcall will take care of popping */
             } else {
                 let pop_count = stmts.len() - 1;
                 if pop_count > 0 {
-                    f.block_mut(current).push(Instr::PopNNT(pop_count));
+                    builder.push(Instr::PopNNT(pop_count));
                     env.popnnt(pop_count);
                 }
             }
-
-            current
         }
 
         anf::Expr::Let(ref bindings, ref body, popnnt) => {
             for &(id, ref val) in bindings {
-                current = emit_expr(env, f, current, Cont::Next, val);
+                emit_expr(env, builder, Cont::Next, val);
                 env.name_top(id);
             }
 
-            current = emit_expr(env, f, current, cont, &**body);
+            emit_expr(env, builder, cont, &**body);
 
             if popnnt {
                 if let Cont::Ret = cont {
@@ -276,181 +276,158 @@ fn emit_expr(env: &mut Env, f: &mut Fn, mut current: Label, cont: Cont, expr: &a
                 } else {
                     let nbs = bindings.len();
                     if nbs > 0 {
-                        f.block_mut(current).push(Instr::PopNNT(nbs));
+                        builder.push(Instr::PopNNT(nbs));
                         env.popnnt(nbs);
                     }
                 }
             }
-
-            current
         },
 
         anf::Expr::If(ref cond, ref conseq, ref alt, ref live_outs) => {
-            let mut conseq_label = f.create_block();
-            let mut alt_label = f.create_block();
-            let join = if let Cont::Next = cont { Cont::Label(f.create_block()) } else { cont };
+            let mut conseq_label = builder.f.create_block();
+            let mut alt_label = builder.f.create_block();
+            let join = if let Cont::Next = cont { Cont::Label(builder.f.create_block()) } else { cont };
 
-            current = emit_expr(env, f, current, Cont::Next, cond);
-            f.block_mut(current).push(Instr::If(conseq_label, alt_label));
+            emit_expr(env, builder, Cont::Next, cond);
+            builder.push(Instr::If(conseq_label, alt_label));
             env.pop();
 
             let mut alt_env = env.clone();
 
-            conseq_label = emit_expr(env, f, conseq_label, join, conseq);
+            builder.current = conseq_label;
+            emit_expr(env, builder, join, conseq);
 
-            alt_label = emit_expr(&mut alt_env, f, alt_label, join, alt);
-
+            builder.current = alt_label;
+            emit_expr(&mut alt_env, builder, join, alt);
 
             if let Cont::Ret = cont {
             } else {
                 let (conseq_mask, alt_mask) = Env::join_prune_masks(env, &alt_env, live_outs);
                 env.prune(&conseq_mask);
-                if conseq_mask.iter().any(|&prune| prune) { f.insert_prune(conseq_label, conseq_mask); }
-                if alt_mask.iter().any(|&prune| prune) { f.insert_prune(alt_label, alt_mask); }
+                if conseq_mask.iter().any(|&prune| prune) { builder.f.insert_prune(conseq_label, conseq_mask); }
+                if alt_mask.iter().any(|&prune| prune) { builder.f.insert_prune(alt_label, alt_mask); }
             }
             env.max_regs = env.max_regs.max(alt_env.max_regs);
 
-            if let Cont::Label(join_label) = join { join_label } else { current }
+            if let Cont::Label(join_label) = join {
+                builder.current = join_label;
+            }
         },
 
         anf::Expr::Set(..) => unreachable!(),
 
         anf::Expr::UninitializedBox => {
-            f.block_mut(current).push(Instr::UninitializedBox);
+            builder.push(Instr::UninitializedBox);
             env.push();
 
-            cont.goto(f, current);
-
-            current
+            cont.goto(builder);
         },
 
         anf::Expr::Box(ref val_expr) => {
-            current = emit_expr(env, f, current, Cont::Next, val_expr);
-            f.block_mut(current).push(Instr::Box);
+            emit_expr(env, builder, Cont::Next, val_expr);
+            builder.push(Instr::Box);
             env.pop();
             env.push();
 
-            cont.goto(f, current);
-
-            current
+            cont.goto(builder);
         },
 
         anf::Expr::BoxSet(r#box, ref val_expr) => {
-            emit_use(env, f, current, r#box);
-            current = emit_expr(env, f, current, Cont::Next, val_expr);
-            f.block_mut(current).push(Instr::BoxSet);
+            emit_use(env, builder, r#box);
+            emit_expr(env, builder, Cont::Next, val_expr);
+            builder.push(Instr::BoxSet);
             env.popn(2);
             env.push();
 
-            cont.goto(f, current);
-
-            current
+            cont.goto(builder);
         },
 
         anf::Expr::CheckedBoxSet {guard, r#box, ref val_expr} => {
-            emit_use(env, f, current, guard);
-            emit_use(env, f, current, r#box);
-            current = emit_expr(env, f, current, Cont::Next, val_expr);
-            f.block_mut(current).push(Instr::CheckedBoxSet);
+            emit_use(env, builder, guard);
+            emit_use(env, builder, r#box);
+            emit_expr(env, builder, Cont::Next, val_expr);
+            builder.push(Instr::CheckedBoxSet);
             env.popn(3);
             env.push();
 
-            cont.goto(f, current);
-
-            current
+            cont.goto(builder);
         },
 
         anf::Expr::BoxGet(r#box) => {
-            emit_use(env, f, current, r#box);
-            f.block_mut(current).push(Instr::BoxGet);
+            emit_use(env, builder, r#box);
+            builder.push(Instr::BoxGet);
             env.pop();
             env.push();
 
-            cont.goto(f, current);
-
-            current
+            cont.goto(builder);
         },
 
         anf::Expr::CheckedBoxGet {guard, r#box} => {
-            emit_use(env, f, current, guard);
-            emit_use(env, f, current, r#box);
-            f.block_mut(current).push(Instr::CheckedBoxGet);
+            emit_use(env, builder, guard);
+            emit_use(env, builder, r#box);
+            builder.push(Instr::CheckedBoxGet);
             env.popn(2);
             env.push();
 
-            cont.goto(f, current);
-
-            current
+            cont.goto(builder);
         },
 
         anf::Expr::Fn(ref fvs, ref params, varargs, ref body) => {
             let fvs = fvs.iter().map(|&id| id).collect::<Vec<Id>>();
 
             for &fv in fvs.iter() {
-                emit_use(env, f, current, fv);
+                emit_use(env, builder, fv);
             }
 
             let code = emit_fn(&fvs, params, varargs, body);
-            f.block_mut(current).push(Instr::Fn(code, fvs.len()));
+            builder.push(Instr::Fn(code, fvs.len()));
             env.popn(fvs.len());
             env.push();
 
-            cont.goto(f, current);
-
-            current
+            cont.goto(builder);
         },
 
         anf::Expr::Call(_, ref args, ref live_outs) => {
             // Due to `anf::Expr` construction in `analyze`, code for callee and args already emitted.
 
             if let Cont::Ret = cont {
-                f.block_mut(current).push(Instr::TailCall(args.len()));
+                builder.push(Instr::TailCall(args.len()));
             } else {
                 let prunes = env.prune_mask(args.len(), live_outs);
                 env.call(args.len(), &prunes);
-                f.block_mut(current).push(Instr::Call(args.len(), prunes));
+                builder.push(Instr::Call(args.len(), prunes));
 
-                cont.goto(f, current);
+                cont.goto(builder);
             }
-
-            current
         },
 
         anf::Expr::Global(ref name) => {
-            f.block_mut(current).push(Instr::Global(name.clone()));
+            builder.push(Instr::Global(name.clone()));
             env.push();
 
-            cont.goto(f, current);
-
-            current
+            cont.goto(builder);
         },
 
         anf::Expr::CheckedUse {guard, id} => {
-            emit_use(env, f, current, guard);
-            f.block_mut(current).push(Instr::CheckUse);
+            emit_use(env, builder, guard);
+            builder.push(Instr::CheckUse);
             env.pop();
-            emit_use(env, f, current, id);
+            emit_use(env, builder, id);
 
-            cont.goto(f, current);
-
-            current
+            cont.goto(builder);
         },
 
         anf::Expr::Triv(anf::Triv::Use(id)) => {
-            emit_use(env, f, current, id);
+            emit_use(env, builder, id);
 
-            cont.goto(f, current);
-
-            current
+            cont.goto(builder);
         },
 
         anf::Expr::Triv(anf::Triv::Const(ref c)) => {
-            f.block_mut(current).push(Instr::Const(c.clone()));
+            builder.push(Instr::Const(c.clone()));
             env.push();
 
-            cont.goto(f, current);
-
-            current
+            cont.goto(builder);
         },
 
         anf::Expr::Letrec(..) => unreachable!()
@@ -461,7 +438,11 @@ fn emit_fn(clovers: &[Id], params: &[Id], varargs: bool, body: &anf::Expr) -> Fn
     let mut env = Env::new(clovers, params);
     let mut f = Fn::new(params.len() - varargs as usize, varargs, 0, clovers.len());
     let current = f.create_block();
-    let _ = emit_expr(&mut env, &mut f, current, Cont::Ret, body);
+    let mut builder = CfgBuilder {f, current};
+
+    emit_expr(&mut env, &mut builder, Cont::Ret, body);
+
+    let mut f = builder.f;
     f.max_regs = env.max_regs;
     f
 }
