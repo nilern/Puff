@@ -168,6 +168,10 @@ fn eval(mt: &mut Mutator) -> Answer {
     }
 
     if let Err(err) = unsafe { verify(mt, code.as_ref()) } {
+        if mt.cfg().debug {
+            println!("VerificationError: {:?}", err);
+        }
+
         todo!()
     }
 

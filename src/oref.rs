@@ -1,9 +1,10 @@
 use std::fmt::{self, Debug, Display};
 use std::mem::{size_of, transmute};
 use std::ptr::NonNull;
+use pretty::RcDoc;
 
 use crate::r#type::{Type, NonIndexedType, IndexedType, BitsType};
-use crate::heap_obj::{HeapObj, Header};
+use crate::heap_obj::{Singleton, HeapObj, Header};
 use crate::mutator::Mutator;
 use crate::symbol::Symbol;
 use crate::list::{Pair, EmptyList};
@@ -66,22 +67,29 @@ impl ORef {
     }
 
     pub fn is_truthy(self, mt: &Mutator) -> bool { self != Bool::instance(mt, false).into() }
+
+    pub fn to_doc(self, mt: &Mutator) -> RcDoc<()> {
+        match Gc::<()>::try_from(self) {
+            Ok(obj) => obj.to_doc(mt),
+            Err(_) => RcDoc::as_string(self.within(mt))
+        }
+    }
 }
 
 impl DisplayWithin for ORef {
-    fn fmt_within(&self, mt: &Mutator, fmt: &mut fmt::Formatter) -> fmt::Result
-    {
+    fn fmt_within(&self, mt: &Mutator, fmt: &mut fmt::Formatter) -> fmt::Result {
         match self.tag() {
             Gc::<()>::TAG => unsafe {
                 let ptr = NonNull::new_unchecked(self.0 as *mut ());
                 Gc::new_unchecked(ptr).fmt_within(mt, fmt)
             },
-            Fixnum::TAG =>
-                Display::fmt(&isize::from(Fixnum(self.0)), fmt),
-            Flonum::TAG =>
-                Display::fmt(&f64::from(Flonum(self.0)), fmt),
-            Char::TAG =>
-                Display::fmt(&char::from(Char(self.0)), fmt),
+
+            Fixnum::TAG => Display::fmt(&isize::from(Fixnum(self.0)), fmt),
+
+            Flonum::TAG => Display::fmt(&f64::from(Flonum(self.0)), fmt),
+
+            Char::TAG => Display::fmt(&char::from(Char(self.0)), fmt),
+
             _ => unreachable!()
         }
     }
@@ -324,8 +332,36 @@ impl<T> Gc<T> {
 
     pub unsafe fn unchecked_cast<R>(self) -> Gc<R> { Gc::<R>(self.0.cast()) }
 
-    pub fn within(self, mt: &Mutator) -> WithinMt<Self> {
-        WithinMt {v: self, mt}
+    pub fn within(self, mt: &Mutator) -> WithinMt<Self> { WithinMt {v: self, mt} }
+}
+
+impl Gc<()> {
+    pub fn to_doc(self, mt: &Mutator) -> RcDoc<()> {
+        if let Some(pair) = self.try_cast::<Pair>(mt) {
+            unsafe {
+                let mut doc = RcDoc::text("(").append(pair.as_ref().car.to_doc(mt));
+                
+                let mut ls = pair.as_ref().cdr;
+                loop {
+                    if let Some(pair) = ls.try_cast::<Pair>(mt) {
+                        doc = doc.append(RcDoc::line())
+                            .append(pair.as_ref().car.to_doc(mt));
+                        ls = pair.as_ref().cdr;
+                    } else if ls == EmptyList::instance(mt).into() {
+                        doc = doc.append(RcDoc::text(")"));
+                        break;
+                    } else {
+                        doc = doc.append(RcDoc::line()).append(RcDoc::text(".")).append(RcDoc::line())
+                            .append(ls.to_doc(mt)).append(RcDoc::text(")"));
+                        break;
+                    }
+                }
+
+                doc
+            }
+        } else {
+            RcDoc::text(format!("{}", self.within(mt)))
+        }
     }
 }
 

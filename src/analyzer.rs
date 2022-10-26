@@ -89,7 +89,10 @@ pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::Expr {
 
                         if unsafe { binding.as_ref().cdr } == EmptyList::instance(cmp.mt).into() {
                             if let Some(name) = pat.try_cast::<Symbol>(cmp.mt) {
-                                let id = Id::fresh(cmp);
+                                let id = {
+                                    let name = cmp.mt.root_t(name);
+                                    Id::src_fresh(cmp, name)
+                                };
                                 anf_bs.push((id, analyze_expr(cmp, &env, val)));
                                 Rc::new(Env::Binding(id, cmp.mt.root_t(name), env.clone()))
                             } else {
@@ -155,7 +158,10 @@ pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::Expr {
 
                         if unsafe { binding.as_ref().cdr } == EmptyList::instance(cmp.mt).into() {
                             if let Some(name) = pat.try_cast::<Symbol>(cmp.mt) {
-                                let id = Id::fresh(cmp);
+                                let id = {
+                                    let name = cmp.mt.root_t(name);
+                                    Id::src_fresh(cmp, name)
+                                };
                                 (Rc::new(Env::Binding(id, cmp.mt.root_t(name), env.clone())), (id, name, val))
                             } else {
                                 todo!()
@@ -252,7 +258,10 @@ pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::Expr {
 
             while let Some(ps_pair) = params.try_cast::<Pair>(cmp.mt) {
                 if let Some(param) = unsafe { ps_pair.as_ref().car }.try_cast::<Symbol>(cmp.mt) {
-                    let id = Id::fresh(cmp);
+                    let id = {
+                        let param = cmp.mt.root_t(param);
+                        Id::src_fresh(cmp, param)
+                    };
                     anf_ps.push(id);
                     env = Rc::new(Env::Binding(id, cmp.mt.root_t(param), env.clone()));
                 } else {
@@ -265,7 +274,10 @@ pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::Expr {
             if params == EmptyList::instance(cmp.mt).into() {
                 (env, anf_ps, false)
             } else if let Some(param) = params.try_cast::<Symbol>(cmp.mt) {
-                let id = Id::fresh(cmp);
+                let id = {
+                    let param = cmp.mt.root_t(param);
+                    Id::src_fresh(cmp, param)
+                };
                 anf_ps.push(id);
                 env = Rc::new(Env::Binding(id, cmp.mt.root_t(param), env.clone()));
 

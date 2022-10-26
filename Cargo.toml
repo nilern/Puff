@@ -9,6 +9,7 @@ description = "An implementation of the algorithmic language Scheme"
 
 [dependencies]
 clap = { version = "4.0.18", features = ["derive"] }
+pretty = "0.11.3"
 rustyline = "10.0.0"
 
 [lib]
