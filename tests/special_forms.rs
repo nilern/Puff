@@ -4,7 +4,6 @@ use molysite::compiler::compile;
 use molysite::closure::Closure;
 use molysite::verifier::verify;
 use molysite::oref::{ORef, Fixnum};
-use molysite::string::String;
 use molysite::symbol::Symbol;
 use molysite::vector::Vector;
 use molysite::heap_obj::{Singleton, Indexed};
@@ -138,7 +137,6 @@ fn test_set() {
 
     assert_eq!(eval_string(&mut mt, "((lambda (x) (begin (set! x 1) x)) 0)"),
         Fixnum::try_from(1isize).unwrap().into());
-
 }
 
 #[test]
@@ -149,4 +147,17 @@ fn test_begin() {
 
     assert_eq!(eval_string(&mut mt, "((lambda (x) (begin (set! x 1) x)) 0)"),
         Fixnum::try_from(1isize).unwrap().into());
+}
+
+#[test]
+fn test_letrec() {
+    let mut mt = Mutator::new(1 << 20, false).unwrap();
+
+    assert_eq!(eval_string(&mut mt, "(letrec ((ans 42)) ans)"), Fixnum::try_from(42isize).unwrap().into());
+
+    assert!(eval_string(&mut mt, "(letrec ((forever (lambda () (forever)))) forever)").instance_of::<Closure>(&mt));
+
+    assert_eq!(eval_string(&mut mt,
+        "(letrec ((fact (lambda (n) (if (eq? n 0) 1 (fx* n (fact (fx- n 1))))))) (fact 5))"),
+        Fixnum::try_from(120isize).unwrap().into());
 }
