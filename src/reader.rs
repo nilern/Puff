@@ -79,6 +79,10 @@ fn is_subsequent(c: char) -> bool { is_initial(c) || c.is_digit(10) || is_specia
 
 fn is_special_subsequent(c: char) -> bool { c == '+' || c == '-' || c == '.' || c == '@' }
 
+fn is_explicit_sign(c: char) -> bool { c == '+' || c == '-' }
+
+fn is_sign_subsequent(c: char) -> bool { is_initial(c) || is_explicit_sign(c) || c == '@' }
+
 impl<'i> Reader<'i> {
     pub fn new(chars: &'i str) -> Self { Reader {input: Input::new(chars) } }
 
@@ -141,8 +145,6 @@ impl<'i> Reader<'i> {
     }
 
     fn read_symbol(&mut self, mt: &mut Mutator, first_pc: Positioned<char>) -> Spanning<Gc<Symbol>> {
-        let start = first_pc.pos;
-
         while let Some(pc) = self.input.peek() {
             if is_subsequent(pc.v) {
                 self.input.next();
@@ -151,10 +153,24 @@ impl<'i> Reader<'i> {
             }
         }
 
-        let end = self.input.pos;
         Spanning {
-            v: Symbol::new(mt, &self.input.chars[start.index..end.index]),
-            span: Span {start, end}
+            v: Symbol::new(mt, &self.input.chars[first_pc.pos.index..self.input.pos.index]),
+            span: Span {start: first_pc.pos, end: self.input.pos}
+        }
+    }
+
+    fn read_peculiar_identifier(&mut self, mt: &mut Mutator, sign: Positioned<char>) -> Spanning<Gc<Symbol>> {
+        while let Some(pc) = self.input.peek() {
+            if is_sign_subsequent(pc.v) {
+                self.input.next();
+            } else {
+                break;
+            }
+        }
+
+        Spanning {
+            v: Symbol::new(mt, &self.input.chars[sign.pos.index..self.input.pos.index]),
+            span: Span {start: sign.pos, end: self.input.pos}
         }
     }
 
@@ -363,6 +379,18 @@ impl<'i> Reader<'i> {
                     Ok(self.read_symbol(mt, pc).map(ORef::from))
                         .map(|ps| ps.map(|n| mt.root(ORef::from(n))))
                 },
+
+                c if is_explicit_sign(c) => {
+                    self.input.next();
+
+                    match self.input.peek() {
+                        Some(pc) if pc.v.is_digit(radix) => todo!(),
+
+                        Some(_) | None =>
+                            Ok(self.read_peculiar_identifier(mt, pc).map(ORef::from))
+                                .map(|ps| ps.map(|n| mt.root(ORef::from(n))))
+                    }
+                }
 
                 _ => Err(())
             }

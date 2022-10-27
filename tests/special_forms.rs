@@ -29,7 +29,7 @@ fn eval_string(mt: &mut Mutator, s: &str) -> ORef {
     v
 }
 
-fn assert_vector_equal(mt: &Mutator, v1: ORef, v2: ORef) -> bool {
+fn assert_vector_equal(mt: &Mutator, v1: ORef, v2: ORef) {
     let v1 = v1.try_cast::<Vector<ORef>>(mt).unwrap();
     let v2 = v2.try_cast::<Vector<ORef>>(mt).unwrap();
 
@@ -40,8 +40,6 @@ fn assert_vector_equal(mt: &Mutator, v1: ORef, v2: ORef) -> bool {
             assert_eq!(v, u);
         }
     }
-
-    true
 }
 
 #[test]
