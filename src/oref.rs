@@ -4,7 +4,7 @@ use std::ptr::NonNull;
 use pretty::RcDoc;
 
 use crate::r#type::{Type, NonIndexedType, IndexedType, BitsType};
-use crate::heap_obj::{Singleton, HeapObj, Header};
+use crate::heap_obj::{Singleton, HeapObj, Header, Indexed};
 use crate::mutator::Mutator;
 use crate::symbol::Symbol;
 use crate::list::{Pair, EmptyList};
@@ -13,6 +13,7 @@ use crate::bytecode::Bytecode;
 use crate::bool::Bool;
 use crate::r#box::Box;
 use crate::string::String;
+use crate::vector::Vector;
 
 trait Tagged {
     const TAG: usize;
@@ -276,6 +277,18 @@ impl DisplayWithin for Gc<()> {
                 } else {
                     write!(fmt, "#f")
                 }
+            } else if let Some(vs) = self.try_cast::<Vector<ORef>>(mt) {
+                write!(fmt, "#(")?;
+
+                if vs.as_ref().indexed_field().len() > 0 {
+                    write!(fmt, "{}", vs.as_ref().indexed_field()[0].within(mt))?;
+
+                    for v in &vs.as_ref().indexed_field()[1..] {
+                        write!(fmt, " {}", v.within(mt))?;
+                    }
+                }
+
+                write!(fmt, ")")
             } else if let Some(_) = self.try_cast::<Closure>(mt) {
                 write!(fmt, "#<fn @ {:p}>", self.0)
             } else if let Some(_) = self.try_cast::<Box>(mt) {

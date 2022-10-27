@@ -7,6 +7,7 @@ use crate::list::{EmptyList, Pair};
 use crate::heap_obj::Singleton;
 use crate::string::String;
 use crate::bool::Bool;
+use crate::vector::Vector;
 
 struct Input<'a> {
     chars: &'a str,
@@ -212,6 +213,7 @@ impl<'i> Reader<'i> {
             mt.root_t(ls)
         };
 
+        // (<datum> ...
         let mut last_pair = ls.clone();
         loop {
             self.intertoken_space();
@@ -267,6 +269,34 @@ impl<'i> Reader<'i> {
         })
     }
 
+    fn read_vector(&mut self, mt: &mut Mutator, start: Pos) -> ReadResult<Gc<Vector<ORef>>> {
+        let mut vs: Vec<Handle> = Vec::new();
+
+        loop {
+            self.intertoken_space();
+
+            match self.input.peek() {
+                Some(pc) if pc.v == ')' => {
+                    self.input.next();
+                    break;
+                },
+
+                Some(_) =>
+                    match self.next(mt) {
+                        Some(res) => vs.push(res?.v),
+                        None => return Err(())
+                    },
+
+                None => return Err(())
+            }
+        }
+
+        Ok(Spanning {
+            v: Vector::<ORef>::from_handles(mt, &vs),
+            span: Span {start, end: self.input.pos}
+        })
+    }
+
     pub fn next(&mut self, mt: &mut Mutator) -> Option<ReadResult<Handle>> {
         self.intertoken_space();
 
@@ -299,20 +329,24 @@ impl<'i> Reader<'i> {
                             't' => {
                                 self.input.next();
                                 Ok(Spanning {
-                                    v: Bool::instance(mt, true),
+                                    v: ORef::from(Bool::instance(mt, true)),
                                     span: Span {start, end: self.input.pos}
                                 })
                             },
                             'f' => {
                                 self.input.next();
                                 Ok(Spanning {
-                                    v: Bool::instance(mt, false),
+                                    v: ORef::from(Bool::instance(mt, false)),
                                     span: Span {start, end: self.input.pos}
                                 })
                             },
+                            '(' => {
+                                self.input.next();
+                                self.read_vector(mt, start).map(|pv| pv.map(ORef::from))
+                            }
                             _ => todo!()
                         }
-                        .map(|pb| pb.map(|n| mt.root(ORef::from(n))))
+                        .map(|pv| pv.map(|v| mt.root(v)))
                     } else {
                         Err(())
                     }
