@@ -5,6 +5,7 @@ use molysite::closure::Closure;
 use molysite::verifier::verify;
 use molysite::oref::{ORef, Fixnum};
 use molysite::string::String;
+use molysite::symbol::Symbol;
 
 fn eval_string(mt: &mut Mutator, s: &str) -> ORef {
     let mut reader = Reader::new(s);
@@ -27,14 +28,14 @@ fn eval_string(mt: &mut Mutator, s: &str) -> ORef {
 }
 
 #[test]
-fn literals() {
+fn quote() {
     let mut mt = Mutator::new(1 << 20, false).unwrap();
 
-    let n = eval_string(&mut mt, "5");
-    assert_eq!(n, Fixnum::try_from(5isize).unwrap().into());
-
-    let s = eval_string(&mut mt, "\"\"");
-    unsafe { assert_eq!(s.try_cast::<String>(&mt).unwrap().as_ref().as_str(), ""); }
-    let s = eval_string(&mut mt, "\"foo\"");
-    unsafe { assert_eq!(s.try_cast::<String>(&mt).unwrap().as_ref().as_str(), "foo"); }
+    assert_eq!(eval_string(&mut mt, "(quote a)"), Symbol::new(&mut mt, "a").into());
+    assert_eq!(
+        eval_string(&mut mt, "(quote #(a b c))"),
+        *Reader::new("#(a b c)").next(&mut mt).unwrap().unwrap().v);
+    assert_eq!(
+        eval_string(&mut mt, "(quote (+ 1 2))"),
+        *Reader::new("(+ 1 2)").next(&mut mt).unwrap().unwrap().v);
 }
