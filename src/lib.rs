@@ -10,7 +10,7 @@ mod regs;
 pub mod mutator;
 pub mod heap_obj;
 mod bool;
-mod list;
+pub mod list;
 pub mod vector;
 pub mod closure;
 mod native_fn;
