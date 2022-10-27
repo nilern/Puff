@@ -63,7 +63,15 @@ impl ORef {
         if let Ok(obj) = Gc::<()>::try_from(self) {
             obj.try_cast::<T>(mt)
         } else {
-            None
+            None // FIXME: casting to e.g. Fixnum
+        }
+    }
+
+    pub fn instance_of<T: Reify>(self, mt: &Mutator) -> bool where Gc<T::Kind>: AsType {
+        if let Ok(obj) = Gc::<()>::try_from(self) {
+            obj.instance_of::<T>(mt)
+        } else {
+            false // FIXME: instance_of e.g. Fixnum
         }
     }
 

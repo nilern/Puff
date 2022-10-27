@@ -98,3 +98,25 @@ fn test_quote() {
     let ls2 = *Reader::new("(quote a)").next(&mut mt).unwrap().unwrap().v;
     assert_list_equal(&mt, ls1, ls2);
 }
+
+#[test]
+fn test_lambda() {
+    let mut mt = Mutator::new(1 << 20, false).unwrap();
+
+    let f = eval_string(&mut mt, "(lambda () 42)");
+    assert!(f.instance_of::<Closure>(&mt));
+
+    assert_eq!(eval_string(&mut mt, "((lambda () 42))"), Fixnum::try_from(42isize).unwrap().into());
+
+    assert_eq!(eval_string(&mut mt, "((lambda (x) x) 42)"), Fixnum::try_from(42isize).unwrap().into());
+
+    let ls1 = eval_string(&mut mt, "((lambda ls ls) 1 2 3)");
+    let ls2 = *Reader::new("(1 2 3)").next(&mut mt).unwrap().unwrap().v;
+    assert_list_equal(&mt, ls1, ls2);
+
+    let ls1 = eval_string(&mut mt, "((lambda (x . ls) ls) 1 2 3)");
+    let ls2 = *Reader::new("(2 3)").next(&mut mt).unwrap().unwrap().v;
+    assert_list_equal(&mt, ls1, ls2);
+
+    assert_eq!(eval_string(&mut mt, "(letrec ((f (lambda () 42))) (f))"), Fixnum::try_from(42isize).unwrap().into());
+}
