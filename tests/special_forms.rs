@@ -7,8 +7,8 @@ use molysite::oref::{ORef, Fixnum};
 use molysite::string::String;
 use molysite::symbol::Symbol;
 use molysite::vector::Vector;
-use molysite::heap_obj::{Singleton, Indexed};
-use molysite::list::{Pair, EmptyList};
+use molysite::heap_obj::Indexed;
+use molysite::list::Pair;
 
 fn eval_string(mt: &mut Mutator, s: &str) -> ORef {
     let mut reader = Reader::new(s);
@@ -56,8 +56,8 @@ fn assert_list_equal(mt: &Mutator, mut ls1: ORef, mut ls2: ORef) {
             } else {
                 assert!(false);
             }
-        } else if ls1 == EmptyList::instance(mt).into() {
-            assert_eq!(ls2, EmptyList::instance(mt).into());
+        } else {
+            assert_eq!(ls1, ls2);
             break;
         }
     }
