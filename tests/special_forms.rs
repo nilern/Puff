@@ -120,3 +120,11 @@ fn test_lambda() {
 
     assert_eq!(eval_string(&mut mt, "(letrec ((f (lambda () 42))) (f))"), Fixnum::try_from(42isize).unwrap().into());
 }
+
+#[test]
+fn test_if() {
+    let mut mt = Mutator::new(1 << 20, false).unwrap();
+
+    assert_eq!(eval_string(&mut mt, "(if #t 2 3)"), Fixnum::try_from(2isize).unwrap().into());
+    assert_eq!(eval_string(&mut mt, "(if #f 2 3)"), Fixnum::try_from(3isize).unwrap().into());
+}
