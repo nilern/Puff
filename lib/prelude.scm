@@ -7,17 +7,17 @@
     (if (pair? list1)
       (letrec ((map-tail! (lambda (ls last-pair)
                             (if (pair? ls)
-                              (let* ((pair (cons (proc (car ls)) '())))
+                              (letrec ((pair (cons (proc (car ls)) '())))
                                 (begin
                                   (set-cdr! last-pair (proc (car ls)))
                                   (map-tail! (cdr ls) pair)))
                               (if (null? ls)
                                 ls
-                                (error "map: improper list" list1))))))
-        (let* ((ls* (cons (proc (car list1)) '())))
-          (begin
-            (map-tail! (cdr list1) ls*)
-            ls*)))
+                                (error "map: improper list" list1)))))
+               (ls* (cons (proc (car list1)) '())))
+        (begin
+          (map-tail! (cdr list1) ls*)
+          ls*))
       (if (null? list1)
         list1
         (error "map: improper list" list1)))))
