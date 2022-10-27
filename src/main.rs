@@ -11,7 +11,7 @@ mod mutator;
 mod heap_obj;
 mod bool;
 mod list;
-mod array;
+mod vector;
 mod closure;
 mod native_fn;
 mod builtins;

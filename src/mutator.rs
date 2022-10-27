@@ -11,7 +11,7 @@ use crate::heap_obj::{NonIndexed, Indexed, Singleton, Header, min_size_of_indexe
 use crate::handle::{Handle, HandleT, HandlePool};
 use crate::list::{EmptyList, Pair};
 use crate::bytecode::{Opcode, Bytecode, decode_prune_mask};
-use crate::array::Array;
+use crate::vector::Vector;
 use crate::closure::Closure;
 use crate::regs::Regs;
 use crate::r#box::Box;
@@ -40,7 +40,7 @@ pub struct Types {
     pub string: Gc<IndexedType>,
     pub pair: Gc<NonIndexedType>,
     pub empty_list: Gc<NonIndexedType>,
-    pub array_of_any: Gc<IndexedType>,
+    pub vector_of_any: Gc<IndexedType>,
     pub bytecode: Gc<IndexedType>,
     pub closure: Gc<IndexedType>,
     pub native_fn: Gc<NonIndexedType>,
@@ -66,7 +66,7 @@ pub struct Mutator {
     ns: Namespace,
 
     code: Option<Gc<Bytecode>>,
-    consts: Option<Gc<Array<ORef>>>,
+    consts: Option<Gc<Vector<ORef>>>,
     pc: usize,
     regs: Regs<ORef>,
     stack: Vec<ORef>
@@ -192,14 +192,14 @@ impl Mutator {
             )?);
             *empty_list.as_mut() = NonIndexedType::from_static::<EmptyList>();
 
-            let mut array_of_any = Gc::new_unchecked(Type::bootstrap_new(
-                &mut heap, r#type, Array::<ORef>::TYPE_LEN
+            let mut vector_of_any = Gc::new_unchecked(Type::bootstrap_new(
+                &mut heap, r#type, Vector::<ORef>::TYPE_LEN
             )?);
-            *array_of_any.as_mut() = IndexedType::new_unchecked(Type {
-                min_size: min_size_of_indexed::<Array::<ORef>>(),
-                align: align_of_indexed::<Array::<ORef>>()
+            *vector_of_any.as_mut() = IndexedType::new_unchecked(Type {
+                min_size: min_size_of_indexed::<Vector::<ORef>>(),
+                align: align_of_indexed::<Vector::<ORef>>()
             });
-            array_of_any.as_type().as_mut().indexed_field_mut()
+            vector_of_any.as_type().as_mut().indexed_field_mut()
                 .copy_from_slice(&[
                     Field { r#type: any, offset: 0 }
                 ]);
@@ -216,7 +216,7 @@ impl Mutator {
                 Field { r#type: bool.as_type(), offset: size_of::<usize>() },
                 Field { r#type: usize_type.as_type(), offset: 2 * size_of::<usize>() },
                 Field { r#type: usize_type.as_type(), offset: 3 * size_of::<usize>() },
-                Field { r#type: array_of_any.as_type(), offset: 4 * size_of::<usize>() },
+                Field { r#type: vector_of_any.as_type(), offset: 4 * size_of::<usize>() },
                 Field {
                     r#type: u8_type.as_type(),
                     offset: min_size_of_indexed::<Bytecode>()
@@ -285,7 +285,7 @@ impl Mutator {
                 heap,
                 handles: HandlePool::new(),
 
-                types: Types { r#type, bool, symbol, string, pair, empty_list,  bytecode, array_of_any, closure,
+                types: Types { r#type, bool, symbol, string, pair, empty_list,  bytecode, vector_of_any, closure,
                     native_fn, r#box, var },
                 singletons: Singletons { r#true, r#false, empty_list: empty_list_inst },
                 symbols: SymbolTable::new(),
@@ -338,7 +338,7 @@ impl Mutator {
 
     unsafe fn code(&self) -> Gc<Bytecode> { self.code.unwrap() }
 
-    unsafe fn consts(&self) -> Gc<Array<ORef>> { self.consts.unwrap() }
+    unsafe fn consts(&self) -> Gc<Vector<ORef>> { self.consts.unwrap() }
 
     fn next_opcode(&mut self) -> Result<Opcode, ()> {
         let op = Opcode::try_from(unsafe { self.code().as_ref().instrs()[self.pc] });

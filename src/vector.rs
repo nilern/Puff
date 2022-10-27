@@ -6,32 +6,33 @@ use crate::handle::Handle;
 use crate::mutator::Mutator;
 use crate::r#type::IndexedType;
 
+/// Immutable vector
 #[repr(C)]
-pub struct Array<T>{
+pub struct Vector<T>{
     phantom: PhantomData<T>
 }
 
-unsafe impl<T> Indexed for Array<T> {
+unsafe impl<T> Indexed for Vector<T> {
     type Item = T;
 }
 
-impl Reify for Array<ORef> {
+impl Reify for Vector<ORef> {
     type Kind = IndexedType;
 
-    fn reify(mt: &Mutator) -> Gc<Self::Kind> { mt.types().array_of_any }
+    fn reify(mt: &Mutator) -> Gc<Self::Kind> { mt.types().vector_of_any }
 }
 
-impl<T> Array<T> {
+impl<T> Vector<T> {
     // The indexed field, .phantom is just for Rust typing:
     pub const TYPE_LEN: usize = 1;
 }
 
-impl Array<ORef> {
+impl Vector<ORef> {
     pub fn from_handles(mt: &mut Mutator, handles: &[Handle]) -> Gc<Self> {
         unsafe {
             let mut nptr = mt.alloc_indexed(Self::reify(mt), handles.len()).cast::<Self>();
 
-            nptr.as_ptr().write(Array {phantom: Default::default()});
+            nptr.as_ptr().write(Vector {phantom: Default::default()});
             let mut v = nptr.as_mut().indexed_field_ptr_mut();
             for handle in handles {
                 v.write(**handle);

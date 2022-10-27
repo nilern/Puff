@@ -6,7 +6,7 @@ use std::iter;
 
 use crate::bytecode::{Bytecode, Opcode, decode_prune_mask, prune_mask_len};
 use crate::oref::{Gc, ORef};
-use crate::array::Array;
+use crate::vector::Vector;
 use crate::regs::Regs;
 use crate::heap_obj::Indexed;
 use crate::mutator::Mutator;
@@ -497,7 +497,7 @@ struct CFG<'a> {
     arity: usize,
     max_regs: usize,
     clovers_len: usize,
-    consts: Gc<Array<ORef>>,
+    consts: Gc<Vector<ORef>>,
     blocks: HashMap<usize, Block<'a>>
 }
 

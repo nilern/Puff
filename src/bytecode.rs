@@ -4,7 +4,7 @@ use std::collections::hash_map::HashMap;
 
 use crate::oref::{Reify, DisplayWithin, ORef, Gc};
 use crate::heap_obj::Indexed;
-use crate::array::Array;
+use crate::vector::Vector;
 use crate::mutator::Mutator;
 use crate::handle::{Handle, HandleT};
 use crate::r#type::IndexedType;
@@ -144,7 +144,7 @@ pub struct Bytecode {
     pub varargs: bool,
     pub max_regs: usize,
     pub clovers_len: usize,
-    pub consts: Gc<Array<ORef>>
+    pub consts: Gc<Vector<ORef>>
 }
 
 unsafe impl Indexed for Bytecode {
@@ -169,7 +169,7 @@ impl Bytecode {
     pub const TYPE_LEN: usize = 6;
 
     pub fn new(mt: &mut Mutator, min_arity: usize, varargs: bool, max_regs: usize, clovers_len: usize,
-        consts: HandleT<Array<ORef>>, instrs: &[u8]
+        consts: HandleT<Vector<ORef>>, instrs: &[u8]
     ) -> Gc<Self> {
         unsafe {
             let r#type = Self::reify(mt).unchecked_cast::<IndexedType>();
@@ -525,7 +525,7 @@ impl Builder {
         self.backpatch();
 
         let consts = {
-            let consts = Array::<ORef>::from_handles(mt, &self.consts);
+            let consts = Vector::<ORef>::from_handles(mt, &self.consts);
             mt.root_t(consts)
         };
         Bytecode::new(mt, self.min_arity, self.varargs, self.max_regs, self.clovers_len, consts, &self.instrs)
