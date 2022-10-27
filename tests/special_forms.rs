@@ -7,8 +7,8 @@ use molysite::oref::{ORef, Fixnum};
 use molysite::string::String;
 use molysite::symbol::Symbol;
 use molysite::vector::Vector;
-use molysite::heap_obj::Indexed;
-use molysite::list::Pair;
+use molysite::heap_obj::{Singleton, Indexed};
+use molysite::list::{Pair, EmptyList};
 
 fn eval_string(mt: &mut Mutator, s: &str) -> ORef {
     let mut reader = Reader::new(s);
@@ -75,5 +75,26 @@ fn test_quote() {
 
     let ls1 = eval_string(&mut mt, "(quote (+ 1 2))");
     let ls2 = *Reader::new("(+ 1 2)").next(&mut mt).unwrap().unwrap().v;
+    assert_list_equal(&mt, ls1, ls2);
+
+
+    assert_eq!(eval_string(&mut mt, "'a"), Symbol::new(&mut mt, "a").into());
+
+    let v1 = eval_string(&mut mt, "'#(a b c)");
+    let v2 = *Reader::new("#(a b c)").next(&mut mt).unwrap().unwrap().v;
+    assert_vector_equal(&mt, v1, v2);
+
+    assert_eq!(eval_string(&mut mt, "'()"), EmptyList::instance(&mt).into());
+
+    let ls1 = eval_string(&mut mt, "'(+ 1 2)");
+    let ls2 = *Reader::new("(+ 1 2)").next(&mut mt).unwrap().unwrap().v;
+    assert_list_equal(&mt, ls1, ls2);
+
+    let ls1 = eval_string(&mut mt, "'(quote a)");
+    let ls2 = *Reader::new("(quote a)").next(&mut mt).unwrap().unwrap().v;
+    assert_list_equal(&mt, ls1, ls2);
+
+    let ls1 = eval_string(&mut mt, "''a");
+    let ls2 = *Reader::new("(quote a)").next(&mut mt).unwrap().unwrap().v;
     assert_list_equal(&mt, ls1, ls2);
 }
