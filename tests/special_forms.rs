@@ -128,3 +128,15 @@ fn test_if() {
     assert_eq!(eval_string(&mut mt, "(if #t 2 3)"), Fixnum::try_from(2isize).unwrap().into());
     assert_eq!(eval_string(&mut mt, "(if #f 2 3)"), Fixnum::try_from(3isize).unwrap().into());
 }
+
+#[test]
+fn test_set() {
+    let mut mt = Mutator::new(1 << 20, false).unwrap();
+
+    assert_eq!(eval_string(&mut mt, "(begin (define x 0) (set! x 1) x)"),
+        Fixnum::try_from(1isize).unwrap().into());
+
+    assert_eq!(eval_string(&mut mt, "((lambda (x) (begin (set! x 1) x)) 0)"),
+        Fixnum::try_from(1isize).unwrap().into());
+
+}
