@@ -140,3 +140,13 @@ fn test_set() {
         Fixnum::try_from(1isize).unwrap().into());
 
 }
+
+#[test]
+fn test_begin() {
+    let mut mt = Mutator::new(1 << 20, false).unwrap();
+
+    assert_eq!(eval_string(&mut mt, "(begin 42)"), Fixnum::try_from(42isize).unwrap().into());
+
+    assert_eq!(eval_string(&mut mt, "((lambda (x) (begin (set! x 1) x)) 0)"),
+        Fixnum::try_from(1isize).unwrap().into());
+}
