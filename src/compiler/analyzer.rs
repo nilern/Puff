@@ -3,7 +3,7 @@ use std::collections::hash_set::HashSet;
 use std::boxed;
 
 use crate::list::{Pair, EmptyList};
-use crate::anf;
+use crate::compiler::anf;
 use crate::heap_obj::Singleton;
 use crate::oref::{ORef, Gc};
 use crate::handle::HandleT;

@@ -4,14 +4,19 @@ use std::io::stdout;
 use std::boxed;
 use pretty::RcDoc;
 
+mod anf;
+mod analyzer;
+pub mod cfg;
+mod to_cfg;
+mod emit;
+
 use crate::bytecode::Bytecode;
 use crate::oref::{ORef, Gc};
-use crate::anf;
 use crate::handle::HandleT;
 use crate::mutator::Mutator;
 use crate::symbol::Symbol;
-use crate::cfg;
-use crate::analyzer::analyze;
+use analyzer::analyze;
+use emit::emit;
 use crate::bool::Bool;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -86,7 +91,7 @@ pub fn compile(mt: &mut Mutator, expr: ORef, debug: bool) -> Gc<Bytecode> {
         println!("{}", cfg.within(cmp.mt));
     }
     
-    Gc::<Bytecode>::from_cfg(&mut cmp, &cfg)
+    emit(&mut cmp, &cfg)
 }
 
 fn mutables(expr: &anf::Expr) -> HashSet<Id> {

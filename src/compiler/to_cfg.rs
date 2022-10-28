@@ -1,8 +1,8 @@
 use std::rc::Rc;
 use std::collections::hash_map::HashMap;
 
-use crate::cfg::{Fn, Instr, Label};
-use crate::anf;
+use crate::compiler::cfg::{Fn, Instr, Label};
+use crate::compiler::anf;
 use crate::compiler::Id;
 
 struct CfgBuilder {

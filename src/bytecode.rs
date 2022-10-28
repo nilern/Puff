@@ -9,7 +9,7 @@ use crate::mutator::Mutator;
 use crate::handle::{Handle, HandleT};
 use crate::r#type::IndexedType;
 use crate::compiler::Compiler;
-use crate::cfg;
+use crate::compiler::cfg;
 use crate::symbol::Symbol;
 
 #[derive(Debug)]
@@ -377,7 +377,7 @@ impl Bytecode {
     }
 }
 
-struct Builder {
+pub struct Builder {
     min_arity: usize,
     varargs: bool,
     max_regs: usize,
@@ -389,7 +389,7 @@ struct Builder {
 }
 
 impl Builder {
-    fn new(min_arity: usize, varargs: bool, max_regs: usize, clovers_len: usize) -> Self {
+    pub fn new(min_arity: usize, varargs: bool, max_regs: usize, clovers_len: usize) -> Self {
         Self {
             min_arity,
             varargs,
@@ -403,7 +403,7 @@ impl Builder {
     }
 
     // TODO: Deduplicate constants
-    fn define(&mut self, name: HandleT<Symbol>) {
+    pub fn define(&mut self, name: HandleT<Symbol>) {
         self.instrs.push(Opcode::Define as u8);
 
         let i = u8::try_from(self.consts.len()).unwrap();
@@ -412,7 +412,7 @@ impl Builder {
     }
 
     // TODO: Deduplicate constants
-    fn global_set(&mut self, name: HandleT<Symbol>) {
+    pub fn global_set(&mut self, name: HandleT<Symbol>) {
         self.instrs.push(Opcode::GlobalSet as u8);
 
         let i = u8::try_from(self.consts.len()).unwrap();
@@ -421,7 +421,7 @@ impl Builder {
     }
 
     // TODO: Deduplicate constants
-    fn global(&mut self, name: HandleT<Symbol>) {
+    pub fn global(&mut self, name: HandleT<Symbol>) {
         self.instrs.push(Opcode::Global as u8);
 
         let i = u8::try_from(self.consts.len()).unwrap();
@@ -430,7 +430,7 @@ impl Builder {
     }
 
     // TODO: Deduplicate constants
-    fn r#const(&mut self, v: Handle) {
+    pub fn r#const(&mut self, v: Handle) {
         self.instrs.push(Opcode::Const as u8);
 
         let i = u8::try_from(self.consts.len()).unwrap();
@@ -438,57 +438,57 @@ impl Builder {
         self.instrs.push(i);
     }
 
-    fn local(&mut self, reg: usize) {
+    pub fn local(&mut self, reg: usize) {
         self.instrs.push(Opcode::Local as u8);
         self.instrs.push(u8::try_from(reg).unwrap());
     }
 
-    fn clover(&mut self, i: usize) {
+    pub fn clover(&mut self, i: usize) {
         self.instrs.push(Opcode::Clover as u8);
         self.instrs.push(u8::try_from(i).unwrap());
     }
 
-    fn popnnt(&mut self, n: usize) {
+    pub fn popnnt(&mut self, n: usize) {
         self.instrs.push(Opcode::PopNNT as u8);
         self.instrs.push(u8::try_from(n).unwrap());
     }
 
-    fn prune(&mut self, prunes: &[bool]) {
+    pub fn prune(&mut self, prunes: &[bool]) {
         self.instrs.push(Opcode::Prune as u8);
         encode_prune_mask(&mut self.instrs, prunes);
     }
 
-    fn r#box(&mut self) { self.instrs.push(Opcode::Box as u8); }
+    pub fn r#box(&mut self) { self.instrs.push(Opcode::Box as u8); }
 
-    fn uninitialized_box(&mut self) { self.instrs.push(Opcode::UninitializedBox as u8); }
+    pub fn uninitialized_box(&mut self) { self.instrs.push(Opcode::UninitializedBox as u8); }
 
-    fn box_set(&mut self) { self.instrs.push(Opcode::BoxSet as u8); }
+    pub fn box_set(&mut self) { self.instrs.push(Opcode::BoxSet as u8); }
 
-    fn checked_box_set(&mut self) { self.instrs.push(Opcode::CheckedBoxSet as u8); }
+    pub fn checked_box_set(&mut self) { self.instrs.push(Opcode::CheckedBoxSet as u8); }
 
-    fn box_get(&mut self) { self.instrs.push(Opcode::BoxGet as u8); }
+    pub fn box_get(&mut self) { self.instrs.push(Opcode::BoxGet as u8); }
 
-    fn checked_box_get(&mut self) { self.instrs.push(Opcode::CheckedBoxGet as u8); }
+    pub fn checked_box_get(&mut self) { self.instrs.push(Opcode::CheckedBoxGet as u8); }
 
-    fn check_use(&mut self) { self.instrs.push(Opcode::CheckUse as u8); }
+    pub fn check_use(&mut self) { self.instrs.push(Opcode::CheckUse as u8); }
 
-    fn label(&mut self, label: cfg::Label) {
+    pub fn label(&mut self, label: cfg::Label) {
         self.label_indices.insert(label, self.instrs.len());
     }
 
-    fn brf(&mut self, label: cfg::Label) {
+    pub fn brf(&mut self, label: cfg::Label) {
         self.instrs.push(Opcode::Brf as u8);
         self.br_dests.insert(self.instrs.len(), label);
         self.instrs.push(0);
     }
 
-    fn br(&mut self, label: cfg::Label) {
+    pub fn br(&mut self, label: cfg::Label) {
         self.instrs.push(Opcode::Br as u8);
         self.br_dests.insert(self.instrs.len(), label);
         self.instrs.push(0);
     }
 
-    fn r#fn(&mut self, code: HandleT<Bytecode>, len: usize) {
+    pub fn r#fn(&mut self, code: HandleT<Bytecode>, len: usize) {
         self.instrs.push(Opcode::r#Fn as u8);
 
         let i = u8::try_from(self.consts.len()).unwrap();
@@ -498,18 +498,18 @@ impl Builder {
         self.instrs.push(u8::try_from(len).unwrap());
     }
 
-    fn call(&mut self, argc: usize, prune_mask: &[bool]) {
+    pub fn call(&mut self, argc: usize, prune_mask: &[bool]) {
         self.instrs.push(Opcode::Call as u8);
         self.instrs.push(u8::try_from(argc.checked_add(1).unwrap()).unwrap());
         encode_prune_mask(&mut self.instrs, prune_mask);
     }
 
-    fn tailcall(&mut self, argc: usize) {
+    pub fn tailcall(&mut self, argc: usize) {
         self.instrs.push(Opcode::TailCall as u8);
         self.instrs.push(u8::try_from(argc.checked_add(1).unwrap()).unwrap());
     }
 
-    fn ret(&mut self) { self.instrs.push(Opcode::Ret as u8); }
+    pub fn ret(&mut self) { self.instrs.push(Opcode::Ret as u8); }
 
     fn backpatch(&mut self) {
         for (&i, dest) in self.br_dests.iter() {
@@ -521,7 +521,7 @@ impl Builder {
         }
     }
 
-    fn build(mut self, mt: &mut Mutator) -> Gc<Bytecode> {
+    pub fn build(mut self, mt: &mut Mutator) -> Gc<Bytecode> {
         self.backpatch();
 
         let consts = {
@@ -529,67 +529,5 @@ impl Builder {
             mt.root_t(consts)
         };
         Bytecode::new(mt, self.min_arity, self.varargs, self.max_regs, self.clovers_len, consts, &self.instrs)
-    }
-}
-
-impl Gc<Bytecode> {
-    pub fn from_cfg(cmp: &mut Compiler, f: &cfg::Fn) -> Gc<Bytecode> {
-        fn emit_instr(cmp: &mut Compiler, builder: &mut Builder, instr: &cfg::Instr, rpo_next: Option<cfg::Label>) {
-            use cfg::Instr::*;
-
-            match instr {
-                &Define(ref name) => builder.define(name.clone()),
-                &GlobalSet(ref name) => builder.global_set(name.clone()),
-                &Global(ref name) => builder.global(name.clone()),
-
-                &Const(ref c) => builder.r#const(c.clone()),
-                &Local(reg) => builder.local(reg),
-                &Clover(i) => builder.clover(i),
-
-                &PopNNT(n) => builder.popnnt(n),
-                &Prune(ref prunes) => builder.prune(prunes),
-
-                &Box => builder.r#box(),
-                &UninitializedBox => builder.uninitialized_box(),
-                &BoxSet => builder.box_set(),
-                &CheckedBoxSet => builder.checked_box_set(),
-                &BoxGet => builder.box_get(),
-                &CheckedBoxGet => builder.checked_box_get(),
-                &CheckUse => builder.check_use(),
-
-                &If(_, alt) => builder.brf(alt),
-                &Goto(dest) => if dest != rpo_next.unwrap() { builder.br(dest) },
-
-                &Fn(ref code, len) => {
-                    let code = Gc::<Bytecode>::from_cfg(cmp, code);
-                    builder.r#fn(cmp.mt.root_t(code), len);
-                },
-
-                &Call(argc, ref prunes) => builder.call(argc, prunes),
-                &TailCall(argc) => builder.tailcall(argc),
-                &Ret => builder.ret()
-            }
-        }
-
-        fn emit_block(cmp: &mut Compiler, builder: &mut Builder, f: &cfg::Fn, label: cfg::Label,
-            rpo_next: Option<cfg::Label>
-        ) {
-            builder.label(label);
-
-            for instr in f.block(label).iter() {
-                emit_instr(cmp, builder, instr, rpo_next);
-            }
-        }
-
-        let po = f.post_order();
-
-        let mut builder = Builder::new(f.min_arity, f.varargs, f.max_regs, f.clovers_len);
-
-        let mut rpo = po.iter().rev().peekable();
-        while let Some(&label) = rpo.next() {
-            emit_block(cmp, &mut builder, f, label, rpo.peek().map(|&&label| label));
-        }
-
-        builder.build(cmp.mt)
     }
 }
