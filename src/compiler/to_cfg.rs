@@ -237,36 +237,38 @@ fn emit_use(env: &mut Env, builder: &mut CfgBuilder, r#use: Id) {
     }
 }
 
-fn emit_expr(cmp: &mut Compiler, env: &mut Env, builder: &mut CfgBuilder, cont: Cont, expr: &anf::Expr) {
-    match *expr {
-        anf::Expr::Define(ref definiend, ref val_expr) => {
-            emit_expr(cmp, env, builder, Cont::Next, val_expr);
-            builder.push(Instr::Define(definiend.clone()));
+fn emit_expr(cmp: &mut Compiler, env: &mut Env, builder: &mut CfgBuilder, cont: Cont, expr: anf::Expr) {
+    match expr {
+        anf::Expr::Define(definiend, val_expr) => {
+            emit_expr(cmp, env, builder, Cont::Next, *val_expr);
+            builder.push(Instr::Define(definiend));
             env.pop();
             env.push();
 
             cont.goto(builder);
         },
-        anf::Expr::GlobalSet(ref definiend, ref val_expr) => {
-            emit_expr(cmp, env, builder, Cont::Next, val_expr);
-            builder.push(Instr::GlobalSet(definiend.clone()));
+        anf::Expr::GlobalSet(definiend, val_expr) => {
+            emit_expr(cmp, env, builder, Cont::Next, *val_expr);
+            builder.push(Instr::GlobalSet(definiend));
             env.pop();
             env.push();
 
             cont.goto(builder);
         },
 
-        anf::Expr::Begin(ref stmts) => {
-            for stmt in &stmts[0..(stmts.len() - 1)] {
+        anf::Expr::Begin(mut stmts) => {
+            let body = stmts.pop().unwrap();
+            let pop_count = stmts.len();
+
+            for stmt in stmts {
                 emit_expr(cmp, env, builder, Cont::Next, stmt);
             }
 
-            emit_expr(cmp, env, builder, cont, stmts.last().unwrap());
+            emit_expr(cmp, env, builder, cont, body);
 
             if let Cont::Ret = cont {
                 /* ret/tailcall will take care of popping */
             } else {
-                let pop_count = stmts.len() - 1;
                 if pop_count > 0 {
                     builder.push(Instr::PopNNT(pop_count));
                     env.popnnt(pop_count);
@@ -274,45 +276,46 @@ fn emit_expr(cmp: &mut Compiler, env: &mut Env, builder: &mut CfgBuilder, cont: 
             }
         }
 
-        anf::Expr::Let(ref bindings, ref body) => {
-            for &(id, ref val) in bindings {
+        anf::Expr::Let(bindings, body) => {
+            let bindingc = bindings.len();
+
+            for (id, val) in bindings {
                 emit_expr(cmp, env, builder, Cont::Next, val);
                 env.name_top(id);
             }
 
-            emit_expr(cmp, env, builder, cont, &**body);
+            emit_expr(cmp, env, builder, cont, *body);
 
             if let Cont::Ret = cont {
                 /* ret/tailcall will take care of popping */
             } else {
-                let nbs = bindings.len();
-                if nbs > 0 {
-                    builder.push(Instr::PopNNT(nbs));
-                    env.popnnt(nbs);
+                if bindingc > 0 {
+                    builder.push(Instr::PopNNT(bindingc));
+                    env.popnnt(bindingc);
                 }
             }
         },
 
-        anf::Expr::If(ref cond, ref conseq, ref alt, ref live_outs) => {
+        anf::Expr::If(cond, conseq, alt, live_outs) => {
             let mut conseq_label = builder.f.create_block();
             let mut alt_label = builder.f.create_block();
             let join = if let Cont::Next = cont { Cont::Label(builder.f.create_block()) } else { cont };
 
-            emit_expr(cmp, env, builder, Cont::Next, cond);
+            emit_expr(cmp, env, builder, Cont::Next, *cond);
             builder.push(Instr::If(conseq_label, alt_label));
             env.pop();
 
             let mut alt_env = env.clone();
 
             builder.current = conseq_label;
-            emit_expr(cmp, env, builder, join, conseq);
+            emit_expr(cmp, env, builder, join, *conseq);
 
             builder.current = alt_label;
-            emit_expr(cmp, &mut alt_env, builder, join, alt);
+            emit_expr(cmp, &mut alt_env, builder, join, *alt);
 
             if let Cont::Ret = cont {
             } else {
-                let (conseq_mask, alt_mask) = Env::join_prune_masks(env, &alt_env, live_outs);
+                let (conseq_mask, alt_mask) = Env::join_prune_masks(env, &alt_env, &live_outs);
                 env.prune(&conseq_mask);
                 if conseq_mask.iter().any(|&prune| prune) { builder.f.insert_prune(conseq_label, conseq_mask); }
                 if alt_mask.iter().any(|&prune| prune) { builder.f.insert_prune(alt_label, alt_mask); }
@@ -331,8 +334,8 @@ fn emit_expr(cmp: &mut Compiler, env: &mut Env, builder: &mut CfgBuilder, cont: 
             cont.goto(builder);
         },
 
-        anf::Expr::Box(ref val_expr) => {
-            emit_expr(cmp, env, builder, Cont::Next, val_expr);
+        anf::Expr::Box(val_expr) => {
+            emit_expr(cmp, env, builder, Cont::Next, *val_expr);
             builder.push(Instr::Box);
             env.pop();
             env.push();
@@ -340,9 +343,9 @@ fn emit_expr(cmp: &mut Compiler, env: &mut Env, builder: &mut CfgBuilder, cont: 
             cont.goto(builder);
         },
 
-        anf::Expr::BoxSet(r#box, ref val_expr) => {
+        anf::Expr::BoxSet(r#box, val_expr) => {
             emit_use(env, builder, r#box);
-            emit_expr(cmp, env, builder, Cont::Next, val_expr);
+            emit_expr(cmp, env, builder, Cont::Next, *val_expr);
             builder.push(Instr::BoxSet);
             env.popn(2);
             env.push();
@@ -350,10 +353,10 @@ fn emit_expr(cmp: &mut Compiler, env: &mut Env, builder: &mut CfgBuilder, cont: 
             cont.goto(builder);
         },
 
-        anf::Expr::CheckedBoxSet {guard, r#box, ref val_expr} => {
+        anf::Expr::CheckedBoxSet {guard, r#box, val_expr} => {
             emit_use(env, builder, guard);
             emit_use(env, builder, r#box);
-            emit_expr(cmp, env, builder, Cont::Next, val_expr);
+            emit_expr(cmp, env, builder, Cont::Next, *val_expr);
             builder.push(Instr::CheckedBoxSet);
             env.popn(3);
             env.push();
@@ -380,14 +383,14 @@ fn emit_expr(cmp: &mut Compiler, env: &mut Env, builder: &mut CfgBuilder, cont: 
             cont.goto(builder);
         },
 
-        anf::Expr::Fn(ref fvs, ref params, varargs, ref body) => {
+        anf::Expr::Fn(ref fvs, ref params, varargs, body) => {
             let fvs = fvs.iter().map(|&id| id).collect::<Vec<Id>>();
 
             for &fv in fvs.iter() {
                 emit_use(env, builder, fv);
             }
 
-            let code = emit_fn(cmp, &fvs, params, varargs, body);
+            let code = emit_fn(cmp, &fvs, params, varargs, *body);
             builder.push(Instr::Fn(code, fvs.len()));
             env.popn(fvs.len());
             env.push();
@@ -395,25 +398,27 @@ fn emit_expr(cmp: &mut Compiler, env: &mut Env, builder: &mut CfgBuilder, cont: 
             cont.goto(builder);
         },
 
-        anf::Expr::Call(ref cargs, ref live_outs) => {
-            for &(id, ref val) in cargs {
+        anf::Expr::Call(cargs, live_outs) => {
+            let cargc = cargs.len();
+
+            for (id, val) in cargs {
                 emit_expr(cmp, env, builder, Cont::Next, val);
                 env.name_top(id);
             }
 
             if let Cont::Ret = cont {
-                builder.push(Instr::TailCall(cargs.len()));
+                builder.push(Instr::TailCall(cargc));
             } else {
-                let prunes = env.prune_mask(cargs.len(), live_outs);
-                env.call(cargs.len(), &prunes);
-                builder.push(Instr::Call(cargs.len(), prunes));
+                let prunes = env.prune_mask(cargc, &live_outs);
+                env.call(cargc, &prunes);
+                builder.push(Instr::Call(cargc, prunes));
 
                 cont.goto(builder);
             }
         },
 
-        anf::Expr::Global(ref name) => {
-            builder.push(Instr::Global(name.clone()));
+        anf::Expr::Global(name) => {
+            builder.push(Instr::Global(name));
             env.push();
 
             cont.goto(builder);
@@ -434,8 +439,8 @@ fn emit_expr(cmp: &mut Compiler, env: &mut Env, builder: &mut CfgBuilder, cont: 
             cont.goto(builder);
         },
 
-        anf::Expr::Triv(anf::Triv::Const(ref c)) => {
-            builder.push(Instr::Const(c.clone()));
+        anf::Expr::Triv(anf::Triv::Const(c)) => {
+            builder.push(Instr::Const(c));
             env.push();
 
             cont.goto(builder);
@@ -445,7 +450,7 @@ fn emit_expr(cmp: &mut Compiler, env: &mut Env, builder: &mut CfgBuilder, cont: 
     }
 }
 
-fn emit_fn(cmp: &mut Compiler, clovers: &[Id], params: &[Id], varargs: bool, body: &anf::Expr) -> Fn {
+fn emit_fn(cmp: &mut Compiler, clovers: &[Id], params: &[Id], varargs: bool, body: anf::Expr) -> Fn {
     let mut env = Env::new(clovers, params);
     let mut f = {
         // OPTIMIZE: temp Vec:
@@ -470,10 +475,10 @@ fn emit_fn(cmp: &mut Compiler, clovers: &[Id], params: &[Id], varargs: bool, bod
 }
 
 impl Fn {
-   pub fn from_anf(cmp: &mut Compiler, expr: &anf::Expr) -> Self {
-        if let anf::Expr::Fn(ref fvs, ref params, varargs, ref body) = expr {
+   pub fn from_anf(cmp: &mut Compiler, expr: anf::Expr) -> Self {
+        if let anf::Expr::Fn(fvs, params, varargs, body) = expr {
             let fvs = fvs.iter().map(|&id| id).collect::<Vec<Id>>();
-            emit_fn(cmp, &fvs, params, *varargs, body)
+            emit_fn(cmp, &fvs, &params, varargs, *body)
         } else {
             todo!()
         }

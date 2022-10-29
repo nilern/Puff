@@ -94,7 +94,7 @@ pub fn compile(mt: &mut Mutator, expr: ORef, debug: bool) -> Gc<Bytecode> {
 
     liveness(&mut anf);
 
-    let cfg = cfg::Fn::from_anf(&mut cmp, &anf);
+    let cfg = cfg::Fn::from_anf(&mut cmp, anf);
     if debug {
         println!("{}", cfg.within(cmp.mt));
     }
