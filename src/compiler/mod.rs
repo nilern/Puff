@@ -83,9 +83,9 @@ pub fn compile(mt: &mut Mutator, expr: ORef, debug: bool) -> Gc<Bytecode> {
 
     let muts = mutables(&anf);
 
-    anf = letrec(&mut cmp, &muts, &anf);
+    anf = letrec(&mut cmp, &muts, anf);
 
-    anf = convert_mutables(&mut cmp, &muts, &anf); // `muts` should not have been invalidated by `letrec`
+    anf = convert_mutables(&mut cmp, &muts, anf); // `muts` should not have been invalidated by `letrec`
 
     if debug {
         anf.to_doc(cmp.mt, &cmp).render(80, &mut stdout());
