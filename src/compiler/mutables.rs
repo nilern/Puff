@@ -148,11 +148,13 @@ pub fn letrec(cmp: &mut Compiler, mutables: &HashSet<Id>, expr: &anf::Expr) -> a
             &Letrec(ref bindings, ref body) => {
                 let guard = Id::fresh(cmp);
 
+                // Add id:s from `bindings` to env, guarded by `guard` when required:
                 for (id, _) in bindings {
                     env.insert(guard, *id, mutables.contains(id));
                 }
 
-                let let_bindings = bindings.iter()
+                // Convert `bindings`:
+                let converted_bindings = bindings.iter()
                     .map(|(id, val_expr)| {
                         let val_expr = convert(cmp, mutables, env, val_expr);
                         
@@ -179,34 +181,41 @@ pub fn letrec(cmp: &mut Compiler, mutables: &HashSet<Id>, expr: &anf::Expr) -> a
                     })
                     .collect::<Vec<_>>();
 
+                // `guard` not required after this point, according to `letrec` semantics:
                 for (id, _) in bindings.iter() {
                     env.initialize_semantically(*id);
                 }
 
+                // Convert body:
                 let mut body = convert(cmp, mutables, env, body);
 
-                let mut impl_bindings = Vec::new();
+                // Bindings for boxes if they were used:
+                let mut final_bindings = Vec::new();
                 let mut guard_used = false;
                 for (id, _) in bindings.iter() {
                     let id_state = env.post_get(*id);
 
                     if let Some(r#box) = id_state.r#box {
-                        impl_bindings.push((r#box, UninitializedBox));
+                        final_bindings.push((r#box, UninitializedBox));
                     }
 
-                    guard_used = id_state.used_guard;
+                    guard_used = guard_used || id_state.used_guard;
                 }
+
                 if guard_used {
-                    impl_bindings.push((guard,
+                    // (guard (box #f))
+                    final_bindings.push((guard,
                         Box(boxed::Box::new(Triv(Const(cmp.mt.root(Bool::instance(cmp.mt, false).into())))))));
+
+                    // (set! guard #t)
                     body = Begin(vec![
                         BoxSet(guard, boxed::Box::new(Triv(Const(cmp.mt.root(Bool::instance(cmp.mt, true).into()))))),
                         body
                     ]);
                 }
 
-                impl_bindings.extend(let_bindings);
-                Let(impl_bindings, boxed::Box::new(body), true)
+                final_bindings.extend(converted_bindings);
+                Let(final_bindings, boxed::Box::new(body), true)
             },
 
             &If(ref cond, ref conseq, ref alt, ref live_outs) =>
