@@ -76,7 +76,7 @@ pub fn compile(mt: &mut Mutator, expr: ORef, debug: bool) -> Gc<Bytecode> {
     let mut anf = analyze(&mut cmp, expr);
     if debug {
         anf.to_doc(cmp.mt, &cmp).render(80, &mut stdout());
-        println!("");
+        println!("\n");
     }
 
     let muts = mutables(&anf);
@@ -84,6 +84,11 @@ pub fn compile(mt: &mut Mutator, expr: ORef, debug: bool) -> Gc<Bytecode> {
     anf = letrec(&mut cmp, &muts, &anf);
 
     anf = convert_mutables(&mut cmp, &muts, &anf); // `muts` should not have been invalidated by `letrec`
+
+    if debug {
+        anf.to_doc(cmp.mt, &cmp).render(80, &mut stdout());
+        println!("\n");
+    }
 
     liveness(&mut anf);
 

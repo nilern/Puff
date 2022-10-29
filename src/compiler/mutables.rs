@@ -152,7 +152,7 @@ pub fn letrec(cmp: &mut Compiler, mutables: &HashSet<Id>, expr: &anf::Expr) -> a
                     env.insert(guard, *id, mutables.contains(id));
                 }
 
-                let bindings = bindings.iter()
+                let let_bindings = bindings.iter()
                     .map(|(id, val_expr)| {
                         let val_expr = convert(cmp, mutables, env, val_expr);
                         
@@ -205,7 +205,7 @@ pub fn letrec(cmp: &mut Compiler, mutables: &HashSet<Id>, expr: &anf::Expr) -> a
                     ]);
                 }
 
-                impl_bindings.extend(bindings);
+                impl_bindings.extend(let_bindings);
                 Let(impl_bindings, boxed::Box::new(body), true)
             },
 

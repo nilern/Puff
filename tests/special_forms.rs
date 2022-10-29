@@ -135,7 +135,7 @@ fn test_set() {
     assert_eq!(eval_string(&mut mt, "(begin (define x 0) (set! x 1) x)"),
         Fixnum::try_from(1isize).unwrap().into());
 
-    assert_eq!(eval_string(&mut mt, "((lambda (x) (begin (set! x 1) x)) 0)"),
+    assert_eq!(eval_string(&mut mt, "(letrec ((x 0)) (begin (set! x 1) x))"),
         Fixnum::try_from(1isize).unwrap().into());
 }
 
@@ -145,7 +145,7 @@ fn test_begin() {
 
     assert_eq!(eval_string(&mut mt, "(begin 42)"), Fixnum::try_from(42isize).unwrap().into());
 
-    assert_eq!(eval_string(&mut mt, "((lambda (x) (begin (set! x 1) x)) 0)"),
+    assert_eq!(eval_string(&mut mt, "(letrec ((x 0)) (begin (set! x 1) x))"),
         Fixnum::try_from(1isize).unwrap().into());
 }
 
