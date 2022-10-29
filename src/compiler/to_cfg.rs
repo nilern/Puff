@@ -274,7 +274,7 @@ fn emit_expr(cmp: &mut Compiler, env: &mut Env, builder: &mut CfgBuilder, cont: 
             }
         }
 
-        anf::Expr::Let(ref bindings, ref body, popnnt) => {
+        anf::Expr::Let(ref bindings, ref body) => {
             for &(id, ref val) in bindings {
                 emit_expr(cmp, env, builder, Cont::Next, val);
                 env.name_top(id);
@@ -282,15 +282,13 @@ fn emit_expr(cmp: &mut Compiler, env: &mut Env, builder: &mut CfgBuilder, cont: 
 
             emit_expr(cmp, env, builder, cont, &**body);
 
-            if popnnt {
-                if let Cont::Ret = cont {
-                    /* ret/tailcall will take care of popping */
-                } else {
-                    let nbs = bindings.len();
-                    if nbs > 0 {
-                        builder.push(Instr::PopNNT(nbs));
-                        env.popnnt(nbs);
-                    }
+            if let Cont::Ret = cont {
+                /* ret/tailcall will take care of popping */
+            } else {
+                let nbs = bindings.len();
+                if nbs > 0 {
+                    builder.push(Instr::PopNNT(nbs));
+                    env.popnnt(nbs);
                 }
             }
         },
@@ -397,15 +395,18 @@ fn emit_expr(cmp: &mut Compiler, env: &mut Env, builder: &mut CfgBuilder, cont: 
             cont.goto(builder);
         },
 
-        anf::Expr::Call(_, ref args, ref live_outs) => {
-            // Due to `anf::Expr` construction in `analyze`, code for callee and args already emitted.
+        anf::Expr::Call(ref cargs, ref live_outs) => {
+            for &(id, ref val) in cargs {
+                emit_expr(cmp, env, builder, Cont::Next, val);
+                env.name_top(id);
+            }
 
             if let Cont::Ret = cont {
-                builder.push(Instr::TailCall(args.len()));
+                builder.push(Instr::TailCall(cargs.len() - 1));
             } else {
-                let prunes = env.prune_mask(args.len(), live_outs);
-                env.call(args.len(), &prunes);
-                builder.push(Instr::Call(args.len(), prunes));
+                let prunes = env.prune_mask(cargs.len() - 1, live_outs);
+                env.call(cargs.len() - 1, &prunes);
+                builder.push(Instr::Call(cargs.len() - 1, prunes));
 
                 cont.goto(builder);
             }

@@ -13,7 +13,7 @@ pub fn liveness(expr: &mut anf::Expr) {
                 stmts.iter_mut().rev()
                     .fold(live_outs, |live_outs, stmt| live_ins(stmt, live_outs)),
 
-            &mut Let(ref mut bindings, ref mut body, _) => {
+            &mut Let(ref mut bindings, ref mut body) => {
                 let body_live_ins = live_ins(body, live_outs);
 
                 bindings.iter_mut().rev()
@@ -76,15 +76,18 @@ pub fn liveness(expr: &mut anf::Expr) {
                 live_outs
             },
 
-            &mut Call(callee, ref args, ref mut call_live_outs) => {
+            &mut Call(ref mut cargs, ref mut call_live_outs) => {
                 *call_live_outs = live_outs.iter().copied().collect();
 
-                for &arg in args.iter().rev() {
-                    live_outs.insert(arg);
+                for (id, _) in cargs.iter() {
+                    live_outs.insert(*id);
                 }
 
-                live_outs.insert(callee);
-                live_outs
+                cargs.iter_mut().rev()
+                    .fold(live_outs, |mut live_outs, (id, val_expr)| {
+                        live_outs.remove(id);
+                        live_ins(val_expr, live_outs)
+                    })
             },
 
             &mut Global(_) => live_outs,

@@ -18,7 +18,7 @@ pub enum Expr {
     GlobalSet(HandleT<Symbol>, Box<Expr>),
 
     Begin(Vec<Expr>),
-    Let(Vec<Binding>, Box<Expr>, /* popnnt?: */ bool),
+    Let(Vec<Binding>, Box<Expr>),
     Letrec(Vec<Binding>, Box<Expr>),
 
     If(Box<Expr>, Box<Expr>, Box<Expr>, LiveVars),
@@ -32,7 +32,7 @@ pub enum Expr {
     CheckedBoxGet {guard: Id, r#box: Id},
 
     r#Fn(LiveVars, Params, bool, Box<Expr>),
-    Call(Id, Vec<Id>, LiveVars),
+    Call(Vec<Binding>, LiveVars),
 
     Global(HandleT<Symbol>),
     CheckedUse {guard: Id, id: Id},
@@ -71,14 +71,13 @@ impl Expr {
                     .append(RcDoc::text(")"))
                     .group(),
 
-            &Let(ref bindings, ref body, popnnt) =>
+            &Let(ref bindings, ref body) =>
                 RcDoc::text("(let")
                     .append(RcDoc::line().append(RcDoc::text("("))
                         .append(RcDoc::intersperse(bindings.iter().map(|b| binding_to_doc(b, mt, cmp)), RcDoc::line())
                             .nest(1))
                         .append(RcDoc::text(")")).append(RcDoc::line())
-                        .append(body.to_doc(mt, cmp).nest(2)).append(RcDoc::line())
-                        .append(RcDoc::text(if popnnt { "#t" } else { "#f" })).append(RcDoc::text(")"))
+                        .append(body.to_doc(mt, cmp).nest(2)).append(RcDoc::text(")"))
                         .nest(2)),
 
             &Letrec(ref bindings, ref body) =>
@@ -148,13 +147,11 @@ impl Expr {
                         .nest(2)).append(RcDoc::text(")"))
                     .group(),
 
-            &Call(callee, ref args, _) =>
-                RcDoc::text("(")
-                    .append(callee.to_doc(cmp))
+            &Call(ref cargs, _) =>
+                RcDoc::text("(call")
                     .append(RcDoc::line()
-                        .append(RcDoc::intersperse(args.iter().map(|arg| arg.to_doc(cmp)), RcDoc::line()))
-                        .nest(1))
-                    .append(RcDoc::text(")"))
+                        .append(RcDoc::intersperse(cargs.iter().map(|b| binding_to_doc(b, mt, cmp)), RcDoc::line()))
+                        .nest(1)).append(RcDoc::text(")"))
                     .group(),
 
             &Global(ref sym) => RcDoc::as_string(Handle::from(sym.clone()).within(mt)),

@@ -133,7 +133,7 @@ pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::Expr {
                 if unsafe { args.as_ref().cdr } == EmptyList::instance(cmp.mt).into() {
                     let (env, bindings) = analyze_bindings(cmp, env, bindings);
                     let body = analyze_expr(cmp, &env, body);
-                    Let(bindings, boxed::Box::new(body), true)
+                    Let(bindings, boxed::Box::new(body))
                 } else {
                     todo!()
                 }
@@ -365,24 +365,20 @@ pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::Expr {
 
     fn analyze_call(cmp: &mut Compiler, env: &Rc<Env>, expr: Gc<Pair>) -> anf::Expr {
         let mut bindings = Vec::new();
-        let mut arg_ids = Vec::new();
 
         let anf_callee = analyze_expr(cmp, env, unsafe { expr.as_ref().car });
-        let callee_id = Id::fresh(cmp);
-        bindings.push((callee_id, anf_callee));
+        bindings.push((Id::fresh(cmp), anf_callee));
 
         let mut args = unsafe { expr.as_ref().cdr };
         while let Some(args_pair) = args.try_cast::<Pair>(cmp.mt) {
             let anf_arg = analyze_expr(cmp, env, unsafe { args_pair.as_ref().car });
-            let arg_id = Id::fresh(cmp);
-            bindings.push((arg_id, anf_arg));
-            arg_ids.push(arg_id);
+            bindings.push((Id::fresh(cmp), anf_arg));
 
             args = unsafe { args_pair.as_ref().cdr };
         }
 
         if args == EmptyList::instance(cmp.mt).into() {
-            Let(bindings, boxed::Box::new(Call(callee_id, arg_ids, HashSet::new())), false)
+            Call(bindings, HashSet::new())
         } else {
             todo!()
         }

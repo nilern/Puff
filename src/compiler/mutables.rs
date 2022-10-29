@@ -16,7 +16,7 @@ pub fn mutables(expr: &anf::Expr) -> HashSet<Id> {
 
             &Begin(ref stmts) => for stmt in stmts { expr_mutables(mutables, stmt) },
 
-            &Let(ref bindings, ref body, _) | &Letrec(ref bindings, ref body) => {
+            &Let(ref bindings, ref body) | &Letrec(ref bindings, ref body) => {
                 for (_, val_expr) in bindings { expr_mutables(mutables, val_expr); }
                 expr_mutables(mutables, body);
             },
@@ -34,7 +34,8 @@ pub fn mutables(expr: &anf::Expr) -> HashSet<Id> {
 
             &Fn(_, _, _, ref body) => expr_mutables(mutables, body),
 
-            &Call(_, _, _) => (),
+            &Call(ref cargs, _) =>
+                for (_, val_expr) in cargs { expr_mutables(mutables, val_expr); }
 
             &Global(_) => (),
             &Triv(_) => (),
@@ -139,10 +140,9 @@ pub fn letrec(cmp: &mut Compiler, mutables: &HashSet<Id>, expr: &anf::Expr) -> a
 
             &Begin(ref stmts) => Begin(stmts.iter().map(|stmt| convert(cmp, mutables, env, stmt)).collect()),
 
-            &Let(ref bindings, ref body, popnnt) =>
+            &Let(ref bindings, ref body) =>
                 Let(bindings.iter().map(|(id, val_expr)| (*id, convert(cmp, mutables, env, val_expr))).collect(),
-                    boxed::Box::new(convert(cmp, mutables, env, body)),
-                    popnnt),
+                    boxed::Box::new(convert(cmp, mutables, env, body))),
 
             // OPTIMIZE: If all `lambda`:s, emit `fix` instead:
             &Letrec(ref bindings, ref body) => {
@@ -169,8 +169,7 @@ pub fn letrec(cmp: &mut Compiler, mutables: &HashSet<Id>, expr: &anf::Expr) -> a
                                     boxed::Box::new(Begin(vec![
                                         BoxSet(r#box, boxed::Box::new(Triv(Use(tmp)))),
                                         Triv(Use(tmp))
-                                    ])),
-                                    true))
+                                    ]))))
                             }
 
                             Some(_) => {
@@ -215,7 +214,7 @@ pub fn letrec(cmp: &mut Compiler, mutables: &HashSet<Id>, expr: &anf::Expr) -> a
                 }
 
                 final_bindings.extend(converted_bindings);
-                Let(final_bindings, boxed::Box::new(body), true)
+                Let(final_bindings, boxed::Box::new(body))
             },
 
             &If(ref cond, ref conseq, ref alt, ref live_outs) =>
@@ -241,9 +240,10 @@ pub fn letrec(cmp: &mut Compiler, mutables: &HashSet<Id>, expr: &anf::Expr) -> a
             &Fn(ref fvs, ref params, varargs, ref body) =>
                 Fn(fvs.clone(), params.clone(), varargs, boxed::Box::new(convert(cmp, mutables, env, body))),
 
-            &Call(callee, ref args, ref live_outs) =>
+            &Call(ref cargs, ref live_outs) =>
                 // Callee and args ids are not from source code and so cannot be recursively bound:
-                Call(callee, args.clone(), live_outs.clone()),
+                Call(cargs.iter().map(|(id, val_expr)| (*id, convert(cmp, mutables, env, val_expr))).collect(),
+                    live_outs.clone()),
 
             &Global(ref name) => Global(name.clone()),
 
@@ -282,7 +282,7 @@ pub fn convert_mutables(cmp: &mut Compiler, mutables: &HashSet<Id>, expr: &anf::
 
         &Begin(ref stmts) => Begin(stmts.iter().map(|stmt| convert_mutables(cmp, mutables, stmt)).collect()),
 
-        &Let(ref bindings, ref body, popnnt) => {
+        &Let(ref bindings, ref body) => {
             let bindings = bindings.iter()
                 .map(|(id, val_expr)| {
                     let val_expr = convert_mutables(cmp, mutables, val_expr);
@@ -297,7 +297,7 @@ pub fn convert_mutables(cmp: &mut Compiler, mutables: &HashSet<Id>, expr: &anf::
 
             let body = convert_mutables(cmp, mutables, body);
 
-            Let(bindings, boxed::Box::new(body), popnnt)
+            Let(bindings, boxed::Box::new(body))
         },
 
         &If(ref cond, ref conseq, ref alt, ref live_outs) =>
@@ -342,13 +342,14 @@ pub fn convert_mutables(cmp: &mut Compiler, mutables: &HashSet<Id>, expr: &anf::
                 if bindings.len() == 0 {
                     body
                 } else {
-                    Let(bindings, boxed::Box::new(body), true)
+                    Let(bindings, boxed::Box::new(body))
                 }))
         },
 
-        &Call(callee, ref args, ref live_outs) =>
+        &Call(ref cargs, ref live_outs) =>
             // Callee and args ids are not from source code and so cannot be mutable:
-            Call(callee, args.clone(), live_outs.clone()),
+            Call(cargs.iter().map(|(id, val_expr)| (*id, convert_mutables(cmp, mutables, val_expr))).collect(),
+                live_outs.clone()),
 
         &Global(ref name) => Global(name.clone()),
 
