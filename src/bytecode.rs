@@ -500,15 +500,15 @@ impl Builder {
         self.instrs.push(u8::try_from(len).unwrap());
     }
 
-    pub fn call(&mut self, argc: usize, prune_mask: &[bool]) {
+    pub fn call(&mut self, cargc: usize, prune_mask: &[bool]) {
         self.instrs.push(Opcode::Call as u8);
-        self.instrs.push(u8::try_from(argc.checked_add(1).unwrap()).unwrap());
+        self.instrs.push(u8::try_from(cargc).unwrap());
         encode_prune_mask(&mut self.instrs, prune_mask);
     }
 
-    pub fn tailcall(&mut self, argc: usize) {
+    pub fn tailcall(&mut self, cargc: usize) {
         self.instrs.push(Opcode::TailCall as u8);
-        self.instrs.push(u8::try_from(argc.checked_add(1).unwrap()).unwrap());
+        self.instrs.push(u8::try_from(cargc).unwrap());
     }
 
     pub fn ret(&mut self) { self.instrs.push(Opcode::Ret as u8); }

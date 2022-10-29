@@ -117,9 +117,9 @@ impl Env {
         }
     }
 
-    fn call(&mut self, argc: usize, prunes: &[bool]) {
+    fn call(&mut self, cargc: usize, prunes: &[bool]) {
         self.prune(prunes);
-        self.popn(argc + 1);
+        self.popn(cargc);
         self.reg_ids.push(None);
     }
 
@@ -129,8 +129,8 @@ impl Env {
             .unwrap_or_else(|| panic!("Unbound {:?}", id))
     }
 
-    fn prune_mask(&self, argc: usize, live_outs: &anf::LiveVars) -> Vec<bool> {
-        let mut mask = vec![true; self.reg_ids.len() - argc - 1];
+    fn prune_mask(&self, cargc: usize, live_outs: &anf::LiveVars) -> Vec<bool> {
+        let mut mask = vec![true; self.reg_ids.len() - cargc];
 
         for id in live_outs {
             if let Some(&reg) = self.id_regs.get(id) {
@@ -402,11 +402,11 @@ fn emit_expr(cmp: &mut Compiler, env: &mut Env, builder: &mut CfgBuilder, cont: 
             }
 
             if let Cont::Ret = cont {
-                builder.push(Instr::TailCall(cargs.len() - 1));
+                builder.push(Instr::TailCall(cargs.len()));
             } else {
-                let prunes = env.prune_mask(cargs.len() - 1, live_outs);
-                env.call(cargs.len() - 1, &prunes);
-                builder.push(Instr::Call(cargs.len() - 1, prunes));
+                let prunes = env.prune_mask(cargs.len(), live_outs);
+                env.call(cargs.len(), &prunes);
+                builder.push(Instr::Call(cargs.len(), prunes));
 
                 cont.goto(builder);
             }

@@ -35,8 +35,8 @@ pub fn emit(cmp: &mut Compiler, f: &cfg::Fn) -> Gc<Bytecode> {
                 builder.r#fn(cmp.mt.root_t(code), len);
             },
 
-            &Call(argc, ref prunes) => builder.call(argc, prunes),
-            &TailCall(argc) => builder.tailcall(argc),
+            &Call(cargc, ref prunes) => builder.call(cargc, prunes),
+            &TailCall(cargc) => builder.tailcall(cargc),
             &Ret => builder.ret()
         }
     }
