@@ -1,9 +1,13 @@
 use std::rc::Rc;
 use std::collections::hash_map::HashMap;
 
+use crate::oref::ORef;
+use crate::vector::Vector;
+use crate::bool::Bool;
+use crate::handle::Handle;
 use crate::compiler::cfg::{Fn, Instr, Label};
 use crate::compiler::anf;
-use crate::compiler::Id;
+use crate::compiler::{Compiler, Id};
 
 struct CfgBuilder {
     f: Fn,
@@ -233,10 +237,10 @@ fn emit_use(env: &mut Env, builder: &mut CfgBuilder, r#use: Id) {
     }
 }
 
-fn emit_expr(env: &mut Env, builder: &mut CfgBuilder, cont: Cont, expr: &anf::Expr) {
+fn emit_expr(cmp: &mut Compiler, env: &mut Env, builder: &mut CfgBuilder, cont: Cont, expr: &anf::Expr) {
     match *expr {
         anf::Expr::Define(ref definiend, ref val_expr) => {
-            emit_expr(env, builder, Cont::Next, val_expr);
+            emit_expr(cmp, env, builder, Cont::Next, val_expr);
             builder.push(Instr::Define(definiend.clone()));
             env.pop();
             env.push();
@@ -244,7 +248,7 @@ fn emit_expr(env: &mut Env, builder: &mut CfgBuilder, cont: Cont, expr: &anf::Ex
             cont.goto(builder);
         },
         anf::Expr::GlobalSet(ref definiend, ref val_expr) => {
-            emit_expr(env, builder, Cont::Next, val_expr);
+            emit_expr(cmp, env, builder, Cont::Next, val_expr);
             builder.push(Instr::GlobalSet(definiend.clone()));
             env.pop();
             env.push();
@@ -254,10 +258,10 @@ fn emit_expr(env: &mut Env, builder: &mut CfgBuilder, cont: Cont, expr: &anf::Ex
 
         anf::Expr::Begin(ref stmts) => {
             for stmt in &stmts[0..(stmts.len() - 1)] {
-                emit_expr(env, builder, Cont::Next, stmt);
+                emit_expr(cmp, env, builder, Cont::Next, stmt);
             }
 
-            emit_expr(env, builder, cont, stmts.last().unwrap());
+            emit_expr(cmp, env, builder, cont, stmts.last().unwrap());
 
             if let Cont::Ret = cont {
                 /* ret/tailcall will take care of popping */
@@ -272,11 +276,11 @@ fn emit_expr(env: &mut Env, builder: &mut CfgBuilder, cont: Cont, expr: &anf::Ex
 
         anf::Expr::Let(ref bindings, ref body, popnnt) => {
             for &(id, ref val) in bindings {
-                emit_expr(env, builder, Cont::Next, val);
+                emit_expr(cmp, env, builder, Cont::Next, val);
                 env.name_top(id);
             }
 
-            emit_expr(env, builder, cont, &**body);
+            emit_expr(cmp, env, builder, cont, &**body);
 
             if popnnt {
                 if let Cont::Ret = cont {
@@ -296,17 +300,17 @@ fn emit_expr(env: &mut Env, builder: &mut CfgBuilder, cont: Cont, expr: &anf::Ex
             let mut alt_label = builder.f.create_block();
             let join = if let Cont::Next = cont { Cont::Label(builder.f.create_block()) } else { cont };
 
-            emit_expr(env, builder, Cont::Next, cond);
+            emit_expr(cmp, env, builder, Cont::Next, cond);
             builder.push(Instr::If(conseq_label, alt_label));
             env.pop();
 
             let mut alt_env = env.clone();
 
             builder.current = conseq_label;
-            emit_expr(env, builder, join, conseq);
+            emit_expr(cmp, env, builder, join, conseq);
 
             builder.current = alt_label;
-            emit_expr(&mut alt_env, builder, join, alt);
+            emit_expr(cmp, &mut alt_env, builder, join, alt);
 
             if let Cont::Ret = cont {
             } else {
@@ -330,7 +334,7 @@ fn emit_expr(env: &mut Env, builder: &mut CfgBuilder, cont: Cont, expr: &anf::Ex
         },
 
         anf::Expr::Box(ref val_expr) => {
-            emit_expr(env, builder, Cont::Next, val_expr);
+            emit_expr(cmp, env, builder, Cont::Next, val_expr);
             builder.push(Instr::Box);
             env.pop();
             env.push();
@@ -340,7 +344,7 @@ fn emit_expr(env: &mut Env, builder: &mut CfgBuilder, cont: Cont, expr: &anf::Ex
 
         anf::Expr::BoxSet(r#box, ref val_expr) => {
             emit_use(env, builder, r#box);
-            emit_expr(env, builder, Cont::Next, val_expr);
+            emit_expr(cmp, env, builder, Cont::Next, val_expr);
             builder.push(Instr::BoxSet);
             env.popn(2);
             env.push();
@@ -351,7 +355,7 @@ fn emit_expr(env: &mut Env, builder: &mut CfgBuilder, cont: Cont, expr: &anf::Ex
         anf::Expr::CheckedBoxSet {guard, r#box, ref val_expr} => {
             emit_use(env, builder, guard);
             emit_use(env, builder, r#box);
-            emit_expr(env, builder, Cont::Next, val_expr);
+            emit_expr(cmp, env, builder, Cont::Next, val_expr);
             builder.push(Instr::CheckedBoxSet);
             env.popn(3);
             env.push();
@@ -385,7 +389,7 @@ fn emit_expr(env: &mut Env, builder: &mut CfgBuilder, cont: Cont, expr: &anf::Ex
                 emit_use(env, builder, fv);
             }
 
-            let code = emit_fn(&fvs, params, varargs, body);
+            let code = emit_fn(cmp, &fvs, params, varargs, body);
             builder.push(Instr::Fn(code, fvs.len()));
             env.popn(fvs.len());
             env.push();
@@ -440,24 +444,35 @@ fn emit_expr(env: &mut Env, builder: &mut CfgBuilder, cont: Cont, expr: &anf::Ex
     }
 }
 
-fn emit_fn(clovers: &[Id], params: &[Id], varargs: bool, body: &anf::Expr) -> Fn {
+fn emit_fn(cmp: &mut Compiler, clovers: &[Id], params: &[Id], varargs: bool, body: &anf::Expr) -> Fn {
     let mut env = Env::new(clovers, params);
-    let mut f = Fn::new(params.len() - varargs as usize, varargs, 0, clovers.len());
+    let mut f = {
+        // OPTIMIZE: temp Vec:
+        let clover_names: Vec<Handle> = clovers.iter()
+            .map(|id| id.name(cmp).map(Handle::from)
+                .unwrap_or_else(|| cmp.mt.root(Bool::instance(cmp.mt, false).into())))
+            .collect();
+        let clover_names = {
+            let clover_names = Vector::<ORef>::from_handles(cmp.mt, &clover_names);
+            cmp.mt.root_t(clover_names)
+        };
+        Fn::new(params.len() - varargs as usize, varargs, 0, clover_names)
+    };
     let current = f.create_block();
     let mut builder = CfgBuilder {f, current};
 
-    emit_expr(&mut env, &mut builder, Cont::Ret, body);
+    emit_expr(cmp, &mut env, &mut builder, Cont::Ret, body);
 
     let mut f = builder.f;
     f.max_regs = env.max_regs;
     f
 }
 
-impl From<&anf::Expr> for Fn {
-   fn from(expr: &anf::Expr) -> Self {
+impl Fn {
+   pub fn from_anf(cmp: &mut Compiler, expr: &anf::Expr) -> Self {
         if let anf::Expr::Fn(ref fvs, ref params, varargs, ref body) = expr {
             let fvs = fvs.iter().map(|&id| id).collect::<Vec<Id>>();
-            emit_fn(&fvs, params, *varargs, body)
+            emit_fn(cmp, &fvs, params, *varargs, body)
         } else {
             todo!()
         }

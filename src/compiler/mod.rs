@@ -31,8 +31,8 @@ impl Id {
     }
 
     pub fn fresh(cmp: &mut Compiler) -> Self {
-        let i = cmp.name_counter;
-        cmp.name_counter = i + 1;
+        let i = cmp.id_counter;
+        cmp.id_counter = i + 1;
         Self(i)
     }
 
@@ -46,6 +46,8 @@ impl Id {
         id
     }
 
+    pub fn name(self, cmp: &Compiler) -> Option<HandleT<Symbol>> { cmp.names.get(&self).map(Clone::clone) }
+
     pub fn to_doc<'a>(self, cmp: &Compiler) -> RcDoc<'a, ()> {
         RcDoc::text(match cmp.names.get(&self) {
             Some(sym) => unsafe { format!("{}${}", sym.as_ref().name(), self.0) },
@@ -56,7 +58,7 @@ impl Id {
 
 pub struct Compiler<'a> {
     pub mt: &'a mut Mutator,
-    name_counter: usize,
+    id_counter: usize,
     names: HashMap<Id, HandleT<Symbol>>
 }
 
@@ -64,7 +66,7 @@ impl<'a> Compiler<'a> {
     fn new(mt: &'a mut Mutator) -> Self {
         Self {
             mt,
-            name_counter: 0,
+            id_counter: 0,
             names: HashMap::new()
         }
     }
@@ -92,7 +94,7 @@ pub fn compile(mt: &mut Mutator, expr: ORef, debug: bool) -> Gc<Bytecode> {
 
     liveness(&mut anf);
 
-    let cfg = cfg::Fn::from(&anf);
+    let cfg = cfg::Fn::from_anf(&mut cmp, &anf);
     if debug {
         println!("{}", cfg.within(cmp.mt));
     }

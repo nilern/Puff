@@ -8,7 +8,6 @@ use crate::vector::Vector;
 use crate::mutator::Mutator;
 use crate::handle::{Handle, HandleT};
 use crate::r#type::IndexedType;
-use crate::compiler::Compiler;
 use crate::compiler::cfg;
 use crate::symbol::Symbol;
 
@@ -144,6 +143,7 @@ pub struct Bytecode {
     pub varargs: bool,
     pub max_regs: usize,
     pub clovers_len: usize,
+    pub clover_names: Gc<Vector<ORef>>,
     pub consts: Gc<Vector<ORef>>
 }
 
@@ -169,7 +169,7 @@ impl Bytecode {
     pub const TYPE_LEN: usize = 6;
 
     pub fn new(mt: &mut Mutator, min_arity: usize, varargs: bool, max_regs: usize, clovers_len: usize,
-        consts: HandleT<Vector<ORef>>, instrs: &[u8]
+        clover_names: HandleT<Vector<ORef>>, consts: HandleT<Vector<ORef>>, instrs: &[u8]
     ) -> Gc<Self> {
         unsafe {
             let r#type = Self::reify(mt).unchecked_cast::<IndexedType>();
@@ -180,6 +180,7 @@ impl Bytecode {
                 varargs,
                 max_regs,
                 clovers_len,
+                clover_names: *clover_names,
                 consts: *consts
             });
             nptr.as_mut().indexed_field_mut().copy_from_slice(instrs);
@@ -220,9 +221,7 @@ impl Bytecode {
                     match op {
                         Opcode::Define =>
                             if let Some((_, ci)) = instrs.next() {
-                                let c = self
-                                    .consts.as_ref()
-                                    .indexed_field()[*ci as usize];
+                                let c = self.consts.as_ref().indexed_field()[*ci as usize];
                                 writeln!(fmt, "{}{}: define {} ; {}", indent, i, ci, c.within(mt))?;
                             } else {
                                 todo!()
@@ -230,9 +229,7 @@ impl Bytecode {
 
                         Opcode::GlobalSet =>
                             if let Some((_, ci)) = instrs.next() {
-                                let c = self
-                                    .consts.as_ref()
-                                    .indexed_field()[*ci as usize];
+                                let c = self.consts.as_ref().indexed_field()[*ci as usize];
                                 writeln!(fmt, "{}{}: global-set! {} ; {}", indent, i, ci, c.within(mt))?;
                             } else {
                                 todo!()
@@ -240,9 +237,7 @@ impl Bytecode {
 
                         Opcode::Global =>
                             if let Some((_, ci)) = instrs.next() {
-                                let c = self
-                                    .consts.as_ref()
-                                    .indexed_field()[*ci as usize];
+                                let c = self.consts.as_ref().indexed_field()[*ci as usize];
                                 writeln!(fmt, "{}{}: global {} ; {}", indent, i, ci, c.within(mt))?;
                             } else {
                                 todo!()
@@ -250,9 +245,7 @@ impl Bytecode {
 
                         Opcode::Const =>
                             if let Some((_, ci)) = instrs.next() {
-                                let c = self
-                                    .consts.as_ref()
-                                    .indexed_field()[*ci as usize];
+                                let c = self.consts.as_ref().indexed_field()[*ci as usize];
                                 writeln!(fmt, "{}{}: const {} ; {}", indent, i, ci, c.within(mt))?;
                             } else {
                                 todo!()
@@ -267,7 +260,14 @@ impl Bytecode {
 
                         Opcode::Clover =>
                             if let Some((_, j)) = instrs.next() {
-                                writeln!(fmt, "{}{}: clover {}", indent, i, j)?;
+                                let name = self.clover_names.as_ref().indexed_field()[*j as usize];
+
+                                write!(fmt, "{}{}: clover {}", indent, i, j)?;
+                                if let Some(name) = name.try_cast::<Symbol>(mt) {
+                                    writeln!(fmt, "; {}", name.as_ref().name())?;
+                                } else {
+                                    writeln!(fmt, "")?;
+                                }
                             } else {
                                 todo!()
                             },
@@ -382,6 +382,7 @@ pub struct Builder {
     varargs: bool,
     max_regs: usize,
     clovers_len: usize,
+    clover_names: HandleT<Vector<ORef>>,
     consts: Vec<Handle>,
     instrs: Vec<u8>,
     label_indices: HashMap<cfg::Label, usize>,
@@ -389,12 +390,13 @@ pub struct Builder {
 }
 
 impl Builder {
-    pub fn new(min_arity: usize, varargs: bool, max_regs: usize, clovers_len: usize) -> Self {
+    pub fn new(min_arity: usize, varargs: bool, max_regs: usize, clover_names: HandleT<Vector<ORef>>) -> Self {
         Self {
             min_arity,
             varargs,
             max_regs,
-            clovers_len,
+            clovers_len: unsafe { clover_names.as_ref().indexed_field().len() },
+            clover_names,
             consts: Vec::new(),
             instrs: Vec::new(),
             label_indices: HashMap::new(),
@@ -528,6 +530,7 @@ impl Builder {
             let consts = Vector::<ORef>::from_handles(mt, &self.consts);
             mt.root_t(consts)
         };
-        Bytecode::new(mt, self.min_arity, self.varargs, self.max_regs, self.clovers_len, consts, &self.instrs)
+        Bytecode::new(mt, self.min_arity, self.varargs, self.max_regs, self.clovers_len, self.clover_names, consts,
+            &self.instrs)
     }
 }

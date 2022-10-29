@@ -53,7 +53,7 @@ pub fn emit(cmp: &mut Compiler, f: &cfg::Fn) -> Gc<Bytecode> {
 
     let po = f.post_order();
 
-    let mut builder = Builder::new(f.min_arity, f.varargs, f.max_regs, f.clovers_len);
+    let mut builder = Builder::new(f.min_arity, f.varargs, f.max_regs, f.clover_names.clone());
 
     let mut rpo = po.iter().rev().peekable();
     while let Some(&label) = rpo.next() {

@@ -1,10 +1,12 @@
 use std::fmt;
 use std::collections::hash_set::HashSet;
 
-use crate::oref::{WithinMt, DisplayWithin};
+use crate::oref::{WithinMt, DisplayWithin, ORef};
 use crate::handle::{Handle, HandleT};
 use crate::mutator::Mutator;
 use crate::symbol::Symbol;
+use crate::vector::Vector;
+use crate::heap_obj::Indexed;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Label(usize);
@@ -99,7 +101,7 @@ pub struct Fn {
     pub min_arity: usize,
     pub varargs: bool,
     pub max_regs: usize,
-    pub clovers_len: usize,
+    pub clover_names: HandleT<Vector<ORef>>,
     pub blocks: Vec<Block>
 }
 
@@ -108,8 +110,8 @@ impl DisplayWithin for &Fn {
 }
 
 impl Fn {
-    pub fn new(min_arity: usize, varargs: bool, max_regs: usize, clovers_len: usize) -> Self {
-        Fn { min_arity, varargs, max_regs, clovers_len, blocks: Vec::new() }
+    pub fn new(min_arity: usize, varargs: bool, max_regs: usize, clover_names: HandleT<Vector<ORef>>) -> Self {
+        Fn { min_arity, varargs, max_regs, clover_names, blocks: Vec::new() }
     }
 
     pub fn block(&self, i: Label) -> &Block { &self.blocks[i.0] }
@@ -155,7 +157,7 @@ impl Fn {
     }
 
     pub fn fmt(&self, mt: &Mutator, fmt: &mut fmt::Formatter, indent: &str) -> fmt::Result {
-        write!(fmt, "{}(clovers {}) ", indent, self.clovers_len)?;
+        write!(fmt, "{}(clovers {}) ", indent, unsafe { self.clover_names.as_ref().indexed_field().len() })?;
         if self.min_arity > 0 {
             write!(fmt, "(_")?;
 
