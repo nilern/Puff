@@ -9,6 +9,7 @@ use crate::mutator::Mutator;
 use crate::symbol::Symbol;
 use crate::list::{Pair, EmptyList};
 use crate::closure::Closure;
+use crate::native_fn::NativeFn;
 use crate::bytecode::Bytecode;
 use crate::bool::Bool;
 use crate::r#box::Box;
@@ -316,6 +317,8 @@ impl DisplayWithin for Gc<()> {
                 write!(fmt, ")")
             } else if let Some(_) = self.try_cast::<Closure>(mt) {
                 write!(fmt, "#<fn @ {:p}>", self.0)
+            } else if let Some(_) = self.try_cast::<NativeFn>(mt) {
+                write!(fmt, "#<fn native @ {:p}>", self.0)
             } else if let Some(_) = self.try_cast::<Syntax>(mt) {
                 write!(fmt, "#<syntax>") // TODO: show unwrapped .expr
             } else if let Some(pos) = self.try_cast::<Pos>(mt) {

@@ -475,7 +475,7 @@ impl Mutator {
             // TODO: Varargs
             if argc != unsafe { callee.as_ref().arity } {
                 unsafe {
-                    println!("ArgcError: {} != {} at {}", argc, callee.as_ref().arity,
+                    println!("[{}]: ArgcError: {} != {} at {}", self.pc, argc, callee.as_ref().arity,
                         self.code().as_ref().pc_pos(self.pc).unwrap().within(self));
                 }
                 todo!()
@@ -611,11 +611,11 @@ impl Mutator {
 
                     Opcode::Prune => {
                         let regs_len = self.regs.len();
+                        let mut reg = 0;
                         let mut mask_len = 0;
                         let mut free_reg = 0;
                         unsafe {
-                            for (reg, prune) in decode_prune_mask(&self.code().as_ref().instrs()[self.pc..]).enumerate()
-                            {
+                            for prune in decode_prune_mask(&self.code().as_ref().instrs()[self.pc..]) {
                                 if !prune && reg < regs_len {
                                     self.regs[free_reg] = self.regs[reg];
                                     free_reg += 1;
@@ -624,6 +624,13 @@ impl Mutator {
                                 if reg % 7 == 0 {
                                     mask_len += 1;
                                 }
+
+                                reg += 1;
+                            }
+
+                            for reg in reg..regs_len {
+                                self.regs[free_reg] = self.regs[reg];
+                                free_reg += 1;
                             }
                         }
                         self.regs.truncate(free_reg);
@@ -726,11 +733,11 @@ impl Mutator {
                         let argc = self.next_oparg();
 
                         let max_frame_len = self.regs.len() - argc;
+                        let mut reg = 0;
                         let mut frame_len = 0;
                         let mut mask_len = 0;
                         unsafe {
-                            for (reg, prune) in decode_prune_mask(&self.code().as_ref().instrs()[self.pc..]).enumerate()
-                            {
+                            for prune in decode_prune_mask(&self.code().as_ref().instrs()[self.pc..]) {
                                 if !prune && reg < max_frame_len {
                                     self.stack.push(self.regs[reg]);
                                     frame_len += 1;
@@ -739,6 +746,13 @@ impl Mutator {
                                 if reg % 7 == 0 {
                                     mask_len += 1;
                                 }
+
+                                reg += 1;
+                            }
+
+                            for reg in reg..max_frame_len {
+                                self.stack.push(self.regs[reg]);
+                                frame_len += 1;
                             }
                         }
 
