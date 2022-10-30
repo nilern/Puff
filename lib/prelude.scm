@@ -2,6 +2,16 @@
 
 (define list (lambda ls ls))
 
+(define fold
+  (lambda (proc acc list1)
+    (letrec ((fold (lambda (acc ls)
+                     (if (pair? ls)
+                       (fold (proc (car ls) acc) (cdr ls))
+                       (if (null? ls)
+                         acc
+                         (error "fold: improper list" list1))))))
+      (fold acc list1))))
+
 (define fold-right
   (lambda (proc acc list1)
     (letrec ((fold-right (lambda (ls)
@@ -45,3 +55,7 @@
 (define append
   (lambda (list1 list2)
     (fold-right cons list2 list1)))
+
+(define reverse
+  (lambda (list1)
+    (fold cons '() list1)))
