@@ -2,46 +2,47 @@ use std::boxed;
 use std::collections::hash_set::HashSet;
 use std::collections::hash_map::HashMap;
 
-use crate::compiler::anf;
+use crate::compiler::anf::{self, PosExpr};
 use crate::compiler::{Compiler, Id};
+use crate::handle::Handle;
 use crate::bool::Bool;
 
-pub fn mutables(expr: &anf::Expr) -> HashSet<Id> {
+pub fn mutables(expr: &anf::PosExpr) -> HashSet<Id> {
     use anf::Expr::*;
 
-    fn expr_mutables(mutables: &mut HashSet<Id>, expr: &anf::Expr) {
-        match expr {
-            &Define(_, ref val_expr) => expr_mutables(mutables, val_expr),
-            &GlobalSet(_, ref val_expr) => expr_mutables(mutables, val_expr),
+    fn expr_mutables(mutables: &mut HashSet<Id>, expr: &anf::PosExpr) {
+        match expr.expr {
+            Define(_, ref val_expr) => expr_mutables(mutables, val_expr),
+            GlobalSet(_, ref val_expr) => expr_mutables(mutables, val_expr),
 
-            &Begin(ref stmts) => for stmt in stmts { expr_mutables(mutables, stmt) },
+            Begin(ref stmts) => for stmt in stmts { expr_mutables(mutables, stmt) },
 
-            &Let(ref bindings, ref body) | &Letrec(ref bindings, ref body) => {
+            Let(ref bindings, ref body) | Letrec(ref bindings, ref body) => {
                 for (_, val_expr) in bindings { expr_mutables(mutables, val_expr); }
                 expr_mutables(mutables, body);
             },
 
-            &If(ref cond, ref conseq, ref alt, _) => {
+            If(ref cond, ref conseq, ref alt, _) => {
                 expr_mutables(mutables, cond);
                 expr_mutables(mutables, conseq);
                 expr_mutables(mutables, alt);
             },
 
-            &Set(id, ref val_expr) => {
+            Set(id, ref val_expr) => {
                 mutables.insert(id);
                 expr_mutables(mutables, val_expr);
             },
 
-            &Fn(_, _, _, ref body) => expr_mutables(mutables, body),
+            Fn(_, _, _, ref body) => expr_mutables(mutables, body),
 
-            &Call(ref cargs, _) =>
+            Call(ref cargs, _) =>
                 for (_, val_expr) in cargs { expr_mutables(mutables, val_expr); }
 
-            &Global(_) => (),
-            &Triv(_) => (),
+            Global(_) => (),
+            Triv(_) => (),
 
-            &CheckedUse{..} | &UninitializedBox
-            | &Box(..) | &BoxSet(..) | &CheckedBoxSet{..} | &BoxGet(..) | &CheckedBoxGet{..} => unreachable!()
+            CheckedUse{..} | UninitializedBox
+            | Box(..) | BoxSet(..) | CheckedBoxSet{..} | BoxGet(..) | CheckedBoxGet{..} => unreachable!()
         }
     }
 
@@ -51,7 +52,7 @@ pub fn mutables(expr: &anf::Expr) -> HashSet<Id> {
 }
 
 // OPTIMIZE: Fixing Letrec (Reloaded)
-pub fn letrec(cmp: &mut Compiler, mutables: &HashSet<Id>, expr: anf::Expr) -> anf::Expr {
+pub fn letrec(cmp: &mut Compiler, mutables: &HashSet<Id>, expr: anf::PosExpr) -> anf::PosExpr {
     use anf::Expr::*;
     use anf::Triv::*;
 
@@ -130,8 +131,10 @@ pub fn letrec(cmp: &mut Compiler, mutables: &HashSet<Id>, expr: anf::Expr) -> an
         fn post_get(&self, id: Id) -> IdState { *self.0.get(&id).unwrap() }
     }
 
-    fn convert(cmp: &mut Compiler, mutables: &HashSet<Id>, env: &mut Env, expr: anf::Expr) -> anf::Expr {
-        match expr {
+    fn convert(cmp: &mut Compiler, mutables: &HashSet<Id>, env: &mut Env, expr: anf::PosExpr) -> anf::PosExpr {
+        let PosExpr {expr, pos} = expr;
+        
+        let expr = match expr {
             Define(definiend, val_expr) =>
                 Define(definiend, boxed::Box::new(convert(cmp, mutables, env, *val_expr))),
 
@@ -146,18 +149,21 @@ pub fn letrec(cmp: &mut Compiler, mutables: &HashSet<Id>, expr: anf::Expr) -> an
 
             // OPTIMIZE: If all `lambda`:s, emit `fix` instead:
             Letrec(bindings, body) => {
-                let original_binders: Vec<Id> = bindings.iter().map(|(id, _)| *id).collect();
+                let original_binders: Vec<(Id, Handle)> = bindings.iter()
+                    .map(|(id, val_expr)| (*id, val_expr.pos.clone()))
+                    .collect();
 
                 let guard = Id::fresh(cmp);
 
                 // Add id:s from `bindings` to env, guarded by `guard` when required:
-                for id in original_binders.iter() {
+                for (id, _) in original_binders.iter() {
                     env.insert(guard, *id, mutables.contains(id));
                 }
 
                 // Convert `bindings`:
                 let converted_bindings = bindings.into_iter()
                     .map(|(id, val_expr)| {
+                        let pos = val_expr.pos.clone();
                         let val_expr = convert(cmp, mutables, env, val_expr);
                         
                         env.initialize_statically(id);
@@ -167,37 +173,42 @@ pub fn letrec(cmp: &mut Compiler, mutables: &HashSet<Id>, expr: anf::Expr) -> an
 
                             Some(r#box) if r#box != id => { // `id` was not in `mutables`
                                 let tmp = Id::freshen(cmp, id);
-                                (id, Let(vec![(tmp, val_expr)],
-                                    boxed::Box::new(Begin(vec![
-                                        BoxSet(r#box, boxed::Box::new(Triv(Use(tmp)))),
-                                        Triv(Use(tmp))
-                                    ]))))
+                                let tmp_use = PosExpr {expr: Triv(Use(tmp)), pos: pos.clone()};
+                                (id, PosExpr {
+                                    expr: Let(vec![(tmp, val_expr)],
+                                        boxed::Box::new(PosExpr {expr: Begin(vec![
+                                            PosExpr {expr: BoxSet(r#box, boxed::Box::new(tmp_use)), pos: pos.clone()},
+                                            PosExpr {expr: Triv(Use(tmp)), pos: pos.clone()}
+                                        ]), pos: pos.clone()})),
+                                    pos
+                                })
                             }
 
                             Some(_) => {
                                 let ignore = Id::freshen(cmp, id);
-                                (ignore, BoxSet(id, boxed::Box::new(val_expr)))
+                                (ignore, PosExpr {expr: BoxSet(id, boxed::Box::new(val_expr)), pos})
                             }
                         }
                     })
                     .collect::<Vec<_>>();
 
                 // `guard` not required after this point, according to `letrec` semantics:
-                for id in original_binders.iter() {
+                for (id, _) in original_binders.iter() {
                     env.initialize_semantically(*id);
                 }
 
                 // Convert body:
+                let body_pos = body.pos.clone();
                 let mut body = convert(cmp, mutables, env, *body);
 
                 // Bindings for boxes if they were used:
                 let mut final_bindings = Vec::new();
                 let mut guard_used = false;
-                for id in original_binders.iter() {
-                    let id_state = env.post_get(*id);
+                for (id, pos) in original_binders {
+                    let id_state = env.post_get(id);
 
                     if let Some(r#box) = id_state.r#box {
-                        final_bindings.push((r#box, UninitializedBox));
+                        final_bindings.push((r#box, PosExpr {expr: UninitializedBox, pos}));
                     }
 
                     guard_used = guard_used || id_state.used_guard;
@@ -205,14 +216,24 @@ pub fn letrec(cmp: &mut Compiler, mutables: &HashSet<Id>, expr: anf::Expr) -> an
 
                 if guard_used {
                     // (guard (box #f))
-                    final_bindings.push((guard,
-                        Box(boxed::Box::new(Triv(Const(cmp.mt.root(Bool::instance(cmp.mt, false).into())))))));
+                    let fals = PosExpr {
+                        expr: Triv(Const(cmp.mt.root(Bool::instance(cmp.mt, false).into()))),
+                        pos: pos.clone()
+                    };
+                    final_bindings.push((guard, PosExpr {expr: Box(boxed::Box::new(fals)), pos: pos.clone()}));
 
                     // (set! guard #t)
-                    body = Begin(vec![
-                        BoxSet(guard, boxed::Box::new(Triv(Const(cmp.mt.root(Bool::instance(cmp.mt, true).into()))))),
-                        body
-                    ]);
+                    let tru = PosExpr {
+                        expr: Triv(Const(cmp.mt.root(Bool::instance(cmp.mt, true).into()))),
+                        pos: pos.clone()
+                    };
+                    body = PosExpr {
+                        expr: Begin(vec![
+                            PosExpr {expr: BoxSet(guard, boxed::Box::new(tru)), pos: body_pos.clone()},
+                            body
+                        ]),
+                        pos: body_pos
+                    }
                 }
 
                 final_bindings.extend(converted_bindings);
@@ -262,7 +283,9 @@ pub fn letrec(cmp: &mut Compiler, mutables: &HashSet<Id>, expr: anf::Expr) -> an
             CheckedUse{..}
             | Box(..) | UninitializedBox | BoxSet(..) | CheckedBoxSet{..} | BoxGet(..) | CheckedBoxGet{..} =>
                 unreachable!()
-        }
+        };
+
+        PosExpr {expr, pos}
     }
 
     convert(cmp, mutables, &mut Env::new(), expr)
@@ -270,11 +293,12 @@ pub fn letrec(cmp: &mut Compiler, mutables: &HashSet<Id>, expr: anf::Expr) -> an
 
 
 // TODO: Combine with `letrec` pass since that already emits boxes?
-pub fn convert_mutables(cmp: &mut Compiler, mutables: &HashSet<Id>, expr: anf::Expr) -> anf::Expr {
+pub fn convert_mutables(cmp: &mut Compiler, mutables: &HashSet<Id>, expr: anf::PosExpr) -> anf::PosExpr {
     use anf::Expr::*;
     use anf::Triv::*;
 
-    match expr {
+    let PosExpr {expr, pos} = expr;
+    let expr = match expr {
         Define(definiend, val_expr) =>
             Define(definiend, boxed::Box::new(convert_mutables(cmp, mutables, *val_expr))),
 
@@ -290,7 +314,7 @@ pub fn convert_mutables(cmp: &mut Compiler, mutables: &HashSet<Id>, expr: anf::E
                     let val_expr = convert_mutables(cmp, mutables, val_expr);
 
                     if mutables.contains(&id) {
-                        (id, Box(boxed::Box::new(val_expr)))
+                        (id, PosExpr {expr: Box(boxed::Box::new(val_expr)), pos: pos.clone()})
                     } else {
                         (id, val_expr)
                     }
@@ -330,7 +354,10 @@ pub fn convert_mutables(cmp: &mut Compiler, mutables: &HashSet<Id>, expr: anf::E
                 .map(|id|
                     if mutables.contains(&id) {
                         let new_id = Id::freshen(cmp, id);
-                        bindings.push((id, Box(boxed::Box::new(Triv(Use(new_id))))));
+                        bindings.push((id, PosExpr {
+                            expr: Box(boxed::Box::new(PosExpr {expr: Triv(Use(new_id)), pos: pos.clone()})),
+                            pos: pos.clone()
+                        }));
                         new_id
                     } else {
                         id
@@ -344,7 +371,7 @@ pub fn convert_mutables(cmp: &mut Compiler, mutables: &HashSet<Id>, expr: anf::E
                 if bindings.len() == 0 {
                     body
                 } else {
-                    Let(bindings, boxed::Box::new(body))
+                    PosExpr {expr: Let(bindings, boxed::Box::new(body)), pos: pos.clone()}
                 }))
         },
 
@@ -367,5 +394,7 @@ pub fn convert_mutables(cmp: &mut Compiler, mutables: &HashSet<Id>, expr: anf::E
         Triv(Const(c)) => Triv(Const(c)),
 
         Letrec(..) => unreachable!()
-    }
+    };
+
+    PosExpr {pos, expr}
 }

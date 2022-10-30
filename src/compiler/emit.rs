@@ -1,43 +1,44 @@
 use crate::bytecode::{Bytecode, Builder};
 use crate::compiler::Compiler;
-use crate::compiler::cfg;
+use crate::compiler::cfg::{self, PosInstr};
 use crate::oref::Gc;
 
 pub fn emit(cmp: &mut Compiler, f: &cfg::Fn) -> Gc<Bytecode> {
-    fn emit_instr(cmp: &mut Compiler, builder: &mut Builder, instr: &cfg::Instr, rpo_next: Option<cfg::Label>) {
+    fn emit_instr(cmp: &mut Compiler, builder: &mut Builder, instr: &cfg::PosInstr, rpo_next: Option<cfg::Label>) {
         use cfg::Instr::*;
 
+        let PosInstr {pos, instr} = instr;
         match instr {
-            &Define(ref name) => builder.define(name.clone()),
-            &GlobalSet(ref name) => builder.global_set(name.clone()),
-            &Global(ref name) => builder.global(name.clone()),
+            &Define(ref name) => builder.define(name.clone(), pos.clone()),
+            &GlobalSet(ref name) => builder.global_set(name.clone(), pos.clone()),
+            &Global(ref name) => builder.global(name.clone(), pos.clone()),
 
-            &Const(ref c) => builder.r#const(c.clone()),
-            &Local(reg) => builder.local(reg),
-            &Clover(i) => builder.clover(i),
+            &Const(ref c) => builder.r#const(c.clone(), pos.clone()),
+            &Local(reg) => builder.local(reg, pos.clone()),
+            &Clover(i) => builder.clover(i, pos.clone()),
 
-            &PopNNT(n) => builder.popnnt(n),
-            &Prune(ref prunes) => builder.prune(prunes),
+            &PopNNT(n) => builder.popnnt(n, pos.clone()),
+            &Prune(ref prunes) => builder.prune(prunes, pos.clone()),
 
-            &Box => builder.r#box(),
-            &UninitializedBox => builder.uninitialized_box(),
-            &BoxSet => builder.box_set(),
-            &CheckedBoxSet => builder.checked_box_set(),
-            &BoxGet => builder.box_get(),
-            &CheckedBoxGet => builder.checked_box_get(),
-            &CheckUse => builder.check_use(),
+            &Box => builder.r#box(pos.clone()),
+            &UninitializedBox => builder.uninitialized_box(pos.clone()),
+            &BoxSet => builder.box_set(pos.clone()),
+            &CheckedBoxSet => builder.checked_box_set(pos.clone()),
+            &BoxGet => builder.box_get(pos.clone()),
+            &CheckedBoxGet => builder.checked_box_get(pos.clone()),
+            &CheckUse => builder.check_use(pos.clone()),
 
-            &If(_, alt) => builder.brf(alt),
-            &Goto(dest) => if dest != rpo_next.unwrap() { builder.br(dest) },
+            &If(_, alt) => builder.brf(alt, pos.clone()),
+            &Goto(dest) => if dest != rpo_next.unwrap() { builder.br(dest, pos.clone()) },
 
             &Fn(ref code, len) => {
                 let code = emit(cmp, code);
-                builder.r#fn(cmp.mt.root_t(code), len);
+                builder.r#fn(cmp.mt.root_t(code), len, pos.clone());
             },
 
-            &Call(cargc, ref prunes) => builder.call(cargc, prunes),
-            &TailCall(cargc) => builder.tailcall(cargc),
-            &Ret => builder.ret()
+            &Call(cargc, ref prunes) => builder.call(cargc, prunes, pos.clone()),
+            &TailCall(cargc) => builder.tailcall(cargc, pos.clone()),
+            &Ret => builder.ret(pos.clone())
         }
     }
 

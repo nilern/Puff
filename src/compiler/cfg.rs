@@ -95,7 +95,18 @@ impl Instr {
     }
 }
 
-pub type Block = Vec<Instr>;
+pub struct PosInstr {
+    pub pos: Handle,
+    pub instr: Instr
+}
+
+impl PosInstr {
+    pub fn fmt(&self, mt: &Mutator, fmt: &mut fmt::Formatter, indent: &str) -> fmt::Result {
+        self.instr.fmt(mt, fmt, indent)
+    }
+}
+
+pub type Block = Vec<PosInstr>;
 
 pub struct Fn {
     pub min_arity: usize,
@@ -124,15 +135,15 @@ impl Fn {
         label
     }
 
-    pub fn insert_prune(&mut self, label: Label, prunes: Vec<bool>) {
+    pub fn insert_prune(&mut self, label: Label, prunes: Vec<bool>, pos: Handle) {
         let block = self.block_mut(label);
-        block.insert(block.len() - 1, Instr::Prune(prunes));
+        block.insert(block.len() - 1, PosInstr {instr: Instr::Prune(prunes), pos});
     }
 
     pub fn successors(&self, label: Label) -> Successors {
-        match self.block(label).last().unwrap() {
-            &Instr::If(conseq, alt) => Successors::new([conseq, alt], 2),
-            &Instr::Goto(succ) => Successors::new([succ, Label::ENTRY], 1),
+        match self.block(label).last().unwrap().instr {
+            Instr::If(conseq, alt) => Successors::new([conseq, alt], 2),
+            Instr::Goto(succ) => Successors::new([succ, Label::ENTRY], 1),
             _ => Successors::new([Label::ENTRY, Label::ENTRY], 0)
         }
     }

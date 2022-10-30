@@ -14,24 +14,24 @@ pub enum Triv {
 }
 
 pub enum Expr {
-    Define(HandleT<Symbol>, Box<Expr>),
-    GlobalSet(HandleT<Symbol>, Box<Expr>),
+    Define(HandleT<Symbol>, Box<PosExpr>),
+    GlobalSet(HandleT<Symbol>, Box<PosExpr>),
 
-    Begin(Vec<Expr>),
-    Let(Vec<Binding>, Box<Expr>),
-    Letrec(Vec<Binding>, Box<Expr>),
+    Begin(Vec<PosExpr>),
+    Let(Vec<Binding>, Box<PosExpr>),
+    Letrec(Vec<Binding>, Box<PosExpr>),
 
-    If(Box<Expr>, Box<Expr>, Box<Expr>, LiveVars),
+    If(Box<PosExpr>, Box<PosExpr>, Box<PosExpr>, LiveVars),
 
-    Set(Id, Box<Expr>),
-    Box(Box<Expr>),
+    Set(Id, Box<PosExpr>),
+    Box(Box<PosExpr>),
     UninitializedBox,
-    BoxSet(Id, Box<Expr>),
-    CheckedBoxSet {guard: Id, r#box: Id, val_expr: Box<Expr>},
+    BoxSet(Id, Box<PosExpr>),
+    CheckedBoxSet {guard: Id, r#box: Id, val_expr: Box<PosExpr>},
     BoxGet(Id),
     CheckedBoxGet {guard: Id, r#box: Id},
 
-    r#Fn(LiveVars, Params, bool, Box<Expr>),
+    r#Fn(LiveVars, Params, bool, Box<PosExpr>),
     Call(Vec<Binding>, LiveVars),
 
     Global(HandleT<Symbol>),
@@ -39,9 +39,18 @@ pub enum Expr {
     Triv(Triv)
 }
 
-pub type Binding = (Id, Expr);
+pub struct PosExpr {
+    pub pos: Handle,
+    pub expr: Expr
+}
+
+pub type Binding = (Id, PosExpr);
 
 pub type Params = Vec<Id>;
+
+impl PosExpr {
+    pub fn to_doc<'a>(&'a self, mt: &'a Mutator, cmp: &Compiler) -> RcDoc<()> { self.expr.to_doc(mt, cmp) }
+}
 
 impl Expr {
     pub fn to_doc<'a>(&'a self, mt: &'a Mutator, cmp: &Compiler) -> RcDoc<()> {

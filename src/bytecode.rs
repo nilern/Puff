@@ -144,7 +144,8 @@ pub struct Bytecode {
     pub max_regs: usize,
     pub clovers_len: usize,
     pub clover_names: Gc<Vector<ORef>>,
-    pub consts: Gc<Vector<ORef>>
+    pub consts: Gc<Vector<ORef>>,
+    pub positions: Gc<Vector<ORef>> // OPTIMIZE: Compress with e.g. run-length encoding or even DWARF style
 }
 
 unsafe impl Indexed for Bytecode {
@@ -166,10 +167,11 @@ impl DisplayWithin for Gc<Bytecode> {
 }
 
 impl Bytecode {
-    pub const TYPE_LEN: usize = 6;
+    pub const TYPE_LEN: usize = 8;
 
     pub fn new(mt: &mut Mutator, min_arity: usize, varargs: bool, max_regs: usize, clovers_len: usize,
-        clover_names: HandleT<Vector<ORef>>, consts: HandleT<Vector<ORef>>, instrs: &[u8]
+        clover_names: HandleT<Vector<ORef>>, consts: HandleT<Vector<ORef>>, positions: HandleT<Vector<ORef>>,
+        instrs: &[u8]
     ) -> Gc<Self> {
         unsafe {
             let r#type = Self::reify(mt).unchecked_cast::<IndexedType>();
@@ -181,7 +183,8 @@ impl Bytecode {
                 max_regs,
                 clovers_len,
                 clover_names: *clover_names,
-                consts: *consts
+                consts: *consts,
+                positions: *positions
             });
             nptr.as_mut().indexed_field_mut().copy_from_slice(instrs);
 
@@ -386,7 +389,8 @@ pub struct Builder {
     consts: Vec<Handle>,
     instrs: Vec<u8>,
     label_indices: HashMap<cfg::Label, usize>,
-    br_dests: HashMap<usize, cfg::Label>
+    br_dests: HashMap<usize, cfg::Label>,
+    positions: Vec<Handle>
 }
 
 impl Builder {
@@ -400,97 +404,129 @@ impl Builder {
             consts: Vec::new(),
             instrs: Vec::new(),
             label_indices: HashMap::new(),
-            br_dests: HashMap::new()
+            br_dests: HashMap::new(),
+            positions: Vec::new()
         }
     }
 
     // TODO: Deduplicate constants
-    pub fn define(&mut self, name: HandleT<Symbol>) {
+    pub fn define(&mut self, name: HandleT<Symbol>, pos: Handle) {
         self.instrs.push(Opcode::Define as u8);
 
         let i = u8::try_from(self.consts.len()).unwrap();
         self.consts.push(name.into());
         self.instrs.push(i);
+        self.positions.push(pos);
     }
 
     // TODO: Deduplicate constants
-    pub fn global_set(&mut self, name: HandleT<Symbol>) {
+    pub fn global_set(&mut self, name: HandleT<Symbol>, pos: Handle) {
         self.instrs.push(Opcode::GlobalSet as u8);
 
         let i = u8::try_from(self.consts.len()).unwrap();
         self.consts.push(name.into());
         self.instrs.push(i);
+        self.positions.push(pos);
     }
 
     // TODO: Deduplicate constants
-    pub fn global(&mut self, name: HandleT<Symbol>) {
+    pub fn global(&mut self, name: HandleT<Symbol>, pos: Handle) {
         self.instrs.push(Opcode::Global as u8);
 
         let i = u8::try_from(self.consts.len()).unwrap();
         self.consts.push(name.into());
         self.instrs.push(i);
+        self.positions.push(pos);
     }
 
     // TODO: Deduplicate constants
-    pub fn r#const(&mut self, v: Handle) {
+    pub fn r#const(&mut self, v: Handle, pos: Handle) {
         self.instrs.push(Opcode::Const as u8);
 
         let i = u8::try_from(self.consts.len()).unwrap();
         self.consts.push(v);
         self.instrs.push(i);
+        self.positions.push(pos);
     }
 
-    pub fn local(&mut self, reg: usize) {
+    pub fn local(&mut self, reg: usize, pos: Handle) {
         self.instrs.push(Opcode::Local as u8);
         self.instrs.push(u8::try_from(reg).unwrap());
+        self.positions.push(pos);
     }
 
-    pub fn clover(&mut self, i: usize) {
+    pub fn clover(&mut self, i: usize, pos: Handle) {
         self.instrs.push(Opcode::Clover as u8);
         self.instrs.push(u8::try_from(i).unwrap());
+        self.positions.push(pos);
     }
 
-    pub fn popnnt(&mut self, n: usize) {
+    pub fn popnnt(&mut self, n: usize, pos: Handle) {
         self.instrs.push(Opcode::PopNNT as u8);
         self.instrs.push(u8::try_from(n).unwrap());
+        self.positions.push(pos);
     }
 
-    pub fn prune(&mut self, prunes: &[bool]) {
+    pub fn prune(&mut self, prunes: &[bool], pos: Handle) {
         self.instrs.push(Opcode::Prune as u8);
         encode_prune_mask(&mut self.instrs, prunes);
+        self.positions.push(pos);
     }
 
-    pub fn r#box(&mut self) { self.instrs.push(Opcode::Box as u8); }
+    pub fn r#box(&mut self, pos: Handle) {
+        self.instrs.push(Opcode::Box as u8);
+        self.positions.push(pos);
+    }
 
-    pub fn uninitialized_box(&mut self) { self.instrs.push(Opcode::UninitializedBox as u8); }
+    pub fn uninitialized_box(&mut self, pos: Handle) {
+        self.instrs.push(Opcode::UninitializedBox as u8);
+        self.positions.push(pos);
+    }
 
-    pub fn box_set(&mut self) { self.instrs.push(Opcode::BoxSet as u8); }
+    pub fn box_set(&mut self, pos: Handle) {
+        self.instrs.push(Opcode::BoxSet as u8);
+        self.positions.push(pos);
+    }
 
-    pub fn checked_box_set(&mut self) { self.instrs.push(Opcode::CheckedBoxSet as u8); }
+    pub fn checked_box_set(&mut self, pos: Handle) {
+        self.instrs.push(Opcode::CheckedBoxSet as u8);
+        self.positions.push(pos);
+    }
 
-    pub fn box_get(&mut self) { self.instrs.push(Opcode::BoxGet as u8); }
+    pub fn box_get(&mut self, pos: Handle) {
+        self.instrs.push(Opcode::BoxGet as u8);
+        self.positions.push(pos);
+    }
 
-    pub fn checked_box_get(&mut self) { self.instrs.push(Opcode::CheckedBoxGet as u8); }
+    pub fn checked_box_get(&mut self, pos: Handle) {
+        self.instrs.push(Opcode::CheckedBoxGet as u8);
+        self.positions.push(pos);
+    }
 
-    pub fn check_use(&mut self) { self.instrs.push(Opcode::CheckUse as u8); }
+    pub fn check_use(&mut self, pos: Handle) {
+        self.instrs.push(Opcode::CheckUse as u8);
+        self.positions.push(pos);
+    }
 
     pub fn label(&mut self, label: cfg::Label) {
         self.label_indices.insert(label, self.instrs.len());
     }
 
-    pub fn brf(&mut self, label: cfg::Label) {
+    pub fn brf(&mut self, label: cfg::Label, pos: Handle) {
         self.instrs.push(Opcode::Brf as u8);
         self.br_dests.insert(self.instrs.len(), label);
         self.instrs.push(0);
+        self.positions.push(pos);
     }
 
-    pub fn br(&mut self, label: cfg::Label) {
+    pub fn br(&mut self, label: cfg::Label, pos: Handle) {
         self.instrs.push(Opcode::Br as u8);
         self.br_dests.insert(self.instrs.len(), label);
         self.instrs.push(0);
+        self.positions.push(pos);
     }
 
-    pub fn r#fn(&mut self, code: HandleT<Bytecode>, len: usize) {
+    pub fn r#fn(&mut self, code: HandleT<Bytecode>, len: usize, pos: Handle) {
         self.instrs.push(Opcode::r#Fn as u8);
 
         let i = u8::try_from(self.consts.len()).unwrap();
@@ -498,20 +534,26 @@ impl Builder {
         self.instrs.push(i);
 
         self.instrs.push(u8::try_from(len).unwrap());
+        self.positions.push(pos);
     }
 
-    pub fn call(&mut self, cargc: usize, prune_mask: &[bool]) {
+    pub fn call(&mut self, cargc: usize, prune_mask: &[bool], pos: Handle) {
         self.instrs.push(Opcode::Call as u8);
         self.instrs.push(u8::try_from(cargc).unwrap());
         encode_prune_mask(&mut self.instrs, prune_mask);
+        self.positions.push(pos);
     }
 
-    pub fn tailcall(&mut self, cargc: usize) {
+    pub fn tailcall(&mut self, cargc: usize, pos: Handle) {
         self.instrs.push(Opcode::TailCall as u8);
         self.instrs.push(u8::try_from(cargc).unwrap());
+        self.positions.push(pos);
     }
 
-    pub fn ret(&mut self) { self.instrs.push(Opcode::Ret as u8); }
+    pub fn ret(&mut self, pos: Handle) {
+        self.instrs.push(Opcode::Ret as u8);
+        self.positions.push(pos);
+    }
 
     fn backpatch(&mut self) {
         for (&i, dest) in self.br_dests.iter() {
@@ -530,7 +572,11 @@ impl Builder {
             let consts = Vector::<ORef>::from_handles(mt, &self.consts);
             mt.root_t(consts)
         };
+        let positions = {
+            let positions = Vector::<ORef>::from_handles(mt, &self.positions);
+            mt.root_t(positions)
+        };
         Bytecode::new(mt, self.min_arity, self.varargs, self.max_regs, self.clovers_len, self.clover_names, consts,
-            &self.instrs)
+            positions, &self.instrs)
     }
 }

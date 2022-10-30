@@ -239,6 +239,8 @@ impl Mutator {
                 Field { r#type: usize_type.as_type(), offset: 2 * size_of::<usize>() },
                 Field { r#type: usize_type.as_type(), offset: 3 * size_of::<usize>() },
                 Field { r#type: vector_of_any.as_type(), offset: 4 * size_of::<usize>() },
+                Field { r#type: vector_of_any.as_type(), offset: 5 * size_of::<usize>() },
+                Field { r#type: vector_of_any.as_type(), offset: 6 * size_of::<usize>() },
                 Field {
                     r#type: u8_type.as_type(),
                     offset: min_size_of_indexed::<Bytecode>()
