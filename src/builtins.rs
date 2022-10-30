@@ -153,6 +153,42 @@ pub const CDR: NativeFn = NativeFn {
     code: cdr
 };
 
+fn set_car(mt: &mut Mutator) -> Answer {
+    let last_index = mt.regs().len() - 1;
+
+    let mut pair = mt.regs()[last_index - 1].try_cast::<Pair>(mt).unwrap_or_else(||
+        todo!()
+    );
+    let v = mt.regs()[last_index];
+
+    unsafe { pair.as_mut().car = v; }
+
+    Answer::Ret // HACK: Happens to return `v`
+}
+
+pub const SET_CAR: NativeFn = NativeFn {
+    arity: 3,
+    code: set_car
+};
+
+fn set_cdr(mt: &mut Mutator) -> Answer {
+    let last_index = mt.regs().len() - 1;
+
+    let mut pair = mt.regs()[last_index - 1].try_cast::<Pair>(mt).unwrap_or_else(||
+        todo!()
+    );
+    let v = mt.regs()[last_index];
+
+    unsafe { pair.as_mut().cdr = v; }
+
+    Answer::Ret // HACK: Happens to return `v`
+}
+
+pub const SET_CDR: NativeFn = NativeFn {
+    arity: 3,
+    code: set_cdr
+};
+
 fn eval_syntax(mt: &mut Mutator) -> Answer {
     let expr = mt.regs()[mt.regs().len() - 1];
 
