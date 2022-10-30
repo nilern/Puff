@@ -1,3 +1,5 @@
+(define + fx+)
+
 (define not (lambda (obj) (eq? obj #f)))
 
 (define list (lambda ls ls))
@@ -51,6 +53,10 @@
                              ls
                              (error "for-each: improper list" list1))))))
       (for-each list1))))
+
+(define length
+  (lambda (list)
+    (fold (lambda (_ len) (+ len 1)) 0 list)))
 
 (define append
   (lambda (list1 list2)

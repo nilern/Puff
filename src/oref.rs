@@ -120,6 +120,11 @@ impl Fixnum {
 
     pub unsafe fn from_oref_unchecked(oref: ORef) -> Self { Self(oref.0) }
 
+    pub fn checked_add(self, other: Self) -> Option<Self> {
+        self.0.checked_add(other.0)
+            .map(|n| Self(n - 1))
+    }
+
     pub fn checked_sub(self, other: Self) -> Option<Self> {
         self.0.checked_sub(other.0)
             .map(|n| Self(n | Self::TAG))

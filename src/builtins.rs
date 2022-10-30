@@ -27,6 +27,28 @@ pub const EQ: NativeFn = NativeFn {
     code: eq
 };
 
+fn fx_add(mt: &mut Mutator) -> Answer {
+    if let Ok(b) = Fixnum::try_from(mt.regs()[mt.regs().len() - 1]) {
+        if let Ok(a) = Fixnum::try_from(mt.regs()[mt.regs().len() - 2]) {
+            if let Some(v) = a.checked_add(b) {
+                mt.push(v.into());
+                Answer::Ret
+            } else {
+                todo!()
+            }
+        } else {
+            todo!()
+        }
+    } else {
+        todo!()
+    }
+}
+
+pub const FX_ADD: NativeFn = NativeFn {
+    arity: 3,
+    code: fx_add
+};
+
 fn fx_sub(mt: &mut Mutator) -> Answer {
     if let Ok(b) = Fixnum::try_from(mt.regs()[mt.regs().len() - 1]) {
         if let Ok(a) = Fixnum::try_from(mt.regs()[mt.regs().len() - 2]) {
