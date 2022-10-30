@@ -33,7 +33,7 @@ struct Env {
 
 impl Env {
     fn new(clover_ids: &[Id], param_ids: &[Id]) -> Self {
-        let mut clovers: HashMap<Id, usize> = clover_ids.iter()
+        let clovers: HashMap<Id, usize> = clover_ids.iter()
             .enumerate()
             .map(|(i, &id)| (id, i))
             .collect();
@@ -297,8 +297,8 @@ fn emit_expr(cmp: &mut Compiler, env: &mut Env, builder: &mut CfgBuilder, cont: 
         },
 
         anf::Expr::If(cond, conseq, alt, live_outs) => {
-            let mut conseq_label = builder.f.create_block();
-            let mut alt_label = builder.f.create_block();
+            let conseq_label = builder.f.create_block();
+            let alt_label = builder.f.create_block();
             let join = if let Cont::Next = cont { Cont::Label(builder.f.create_block()) } else { cont };
 
             emit_expr(cmp, env, builder, Cont::Next, *cond);

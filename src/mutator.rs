@@ -20,6 +20,7 @@ use crate::native_fn::{self, NativeFn, Answer};
 use crate::builtins;
 use crate::bool::Bool;
 use crate::string::String;
+use crate::syntax::{Syntax, Pos};
 
 const USIZE_TYPE_SIZE: usize = min_size_of_indexed::<Type>();
 
@@ -41,6 +42,8 @@ pub struct Types {
     pub pair: Gc<NonIndexedType>,
     pub empty_list: Gc<NonIndexedType>,
     pub vector_of_any: Gc<IndexedType>,
+    pub pos: Gc<NonIndexedType>,
+    pub syntax: Gc<NonIndexedType>,
     pub bytecode: Gc<IndexedType>,
     pub closure: Gc<IndexedType>,
     pub native_fn: Gc<NonIndexedType>,
@@ -204,6 +207,25 @@ impl Mutator {
                     Field { r#type: any, offset: 0 }
                 ]);
 
+            let mut pos = Gc::new_unchecked(Type::bootstrap_new(
+                &mut heap, r#type, Pos::TYPE_LEN
+            )?);
+            *pos.as_mut() = NonIndexedType::from_static::<Pos>();
+            pos.as_type().as_mut().indexed_field_mut().copy_from_slice(&[
+                Field { r#type: any, offset: 0 },
+                Field { r#type: any, offset: size_of::<ORef>() },
+                Field { r#type: any, offset: 2 * size_of::<ORef>() }
+            ]);
+
+            let mut syntax = Gc::new_unchecked(Type::bootstrap_new(
+                &mut heap, r#type, Syntax::TYPE_LEN
+            )?);
+            *syntax.as_mut() = NonIndexedType::from_static::<Syntax>();
+            syntax.as_type().as_mut().indexed_field_mut().copy_from_slice(&[
+                Field { r#type: any, offset: 0 },
+                Field { r#type: any, offset: size_of::<ORef>() }
+            ]);
+
             let mut bytecode = Gc::new_unchecked(Type::bootstrap_new(
                 &mut heap, r#type, Bytecode::TYPE_LEN
             )?);
@@ -285,8 +307,8 @@ impl Mutator {
                 heap,
                 handles: HandlePool::new(),
 
-                types: Types { r#type, bool, symbol, string, pair, empty_list,  bytecode, vector_of_any, closure,
-                    native_fn, r#box, var },
+                types: Types { r#type, bool, symbol, string, pair, empty_list, pos, syntax, bytecode, vector_of_any,
+                    closure, native_fn, r#box, var },
                 singletons: Singletons { r#true, r#false, empty_list: empty_list_inst },
                 symbols: SymbolTable::new(),
                 ns: Namespace::new(),
@@ -304,7 +326,7 @@ impl Mutator {
             for (name, f) in [("eq?", builtins::EQ), ("fx-", builtins::FX_SUB), ("fx*", builtins::FX_MUL),
                 ("pair?", builtins::IS_PAIR), ("null?", builtins::IS_NULL), ("cons", builtins::CONS),
                 ("car", builtins::CAR), ("cdr", builtins::CDR),
-                ("eval", builtins::EVAL), ("load", builtins::LOAD)
+                ("eval-syntax", builtins::EVAL_SYNTAX), ("load", builtins::LOAD)
             ] {
                 let name = Symbol::new(&mut mt, name);
                 let f = NativeFn::new(&mut mt, f);

@@ -13,6 +13,7 @@ use crate::symbol::Symbol;
 use crate::compiler::compile;
 use crate::closure::Closure;
 use crate::verifier::verify;
+use crate::syntax::{Pos, Syntax};
 
 fn eq(mt: &mut Mutator) -> Answer {
     let res = mt.regs()[mt.regs().len() - 1] == mt.regs()[mt.regs().len() - 2];
@@ -152,15 +153,15 @@ pub const CDR: NativeFn = NativeFn {
     code: cdr
 };
 
-fn eval(mt: &mut Mutator) -> Answer {
-    let sexpr = mt.regs()[mt.regs().len() - 1];
+fn eval_syntax(mt: &mut Mutator) -> Answer {
+    let expr = mt.regs()[mt.regs().len() - 1];
 
     if mt.cfg().debug {
-        println!("{}", sexpr.within(&mt));
+        println!("{}", expr.within(&mt));
         println!("");
     }
 
-    let code = compile(mt, sexpr, mt.cfg().debug);
+    let code = compile(mt, expr, mt.cfg().debug);
 
     if mt.cfg().debug {
         println!("{}", code.within(&mt));
@@ -182,34 +183,35 @@ fn eval(mt: &mut Mutator) -> Answer {
     Answer::TailCall {argc: 1}
 }
 
-pub const EVAL: NativeFn = NativeFn {
+pub const EVAL_SYNTAX: NativeFn = NativeFn {
     arity: 2,
-    code: eval
+    code: eval_syntax
 };
 
 fn load(mt: &mut Mutator) -> Answer {
-    let s = if let Some(filename) = mt.regs()[mt.regs().len() - 1].try_cast::<String>(mt) {
-        unsafe { fs::read_to_string(filename.as_ref().as_str()).unwrap_or_else(|err|
-            todo!()
-        ) }
+    let (s, filename) = if let Some(filename) = mt.regs()[mt.regs().len() - 1].try_cast::<String>(mt) {
+        (unsafe { fs::read_to_string(filename.as_ref().as_str()).unwrap_or_else(|_|
+             todo!()
+         ) },
+         mt.root_t(filename))
     } else {
         todo!()
     };
 
-    let mut reader = Reader::new(&s);
+    let mut reader = Reader::new(&s, Some(filename.clone()));
     let mut builder: Option<(HandleT<Pair>, HandleT<Pair>)> = None;
     while let Some(res) = reader.next(mt) {
         match res {
-            Ok(ssexpr) =>
+            Ok(stx) =>
                 if let Some((_, ref mut last_pair)) = builder {
                     let nil = mt.root(EmptyList::instance(mt).into());
-                    let pair = Pair::new(mt, ssexpr.v, nil);
+                    let pair = Pair::new(mt, stx.into(), nil);
                     unsafe { last_pair.as_mut().cdr = pair.into(); }
                     *last_pair = mt.root_t(pair);
                 } else {
                     let nil = mt.root(EmptyList::instance(mt).into());
                     let pair = {
-                        let pair = Pair::new(mt, ssexpr.v, nil);
+                        let pair = Pair::new(mt, stx.into(), nil);
                         mt.root_t(pair)
                     };
                     builder = Some((pair.clone(), pair));
@@ -222,17 +224,27 @@ fn load(mt: &mut Mutator) -> Answer {
         None => mt.root(EmptyList::instance(mt).into())
     };
 
+    let start = {
+        let start = Pos::new(mt, Some(filename), Fixnum::from(1u8), Fixnum::from(1u8));
+        mt.root_t(start)
+    };
     let sexpr = { // `(begin ,@sexprs)
         let begin = {
             let begin = Symbol::new(mt, "begin");
+            let begin = mt.root(begin.into());
+            let begin = Syntax::new(mt, begin, Some(start.clone()));
             mt.root(begin.into())
         };
         let sexprs = Pair::new(mt, begin, sexprs);
         mt.root(sexprs.into())
     };
+    let stx = {
+        let stx = Syntax::new(mt, sexpr, Some(start));
+        mt.root_t(stx)
+    };
 
-    mt.push_global("eval");
-    mt.push(*sexpr);
+    mt.push_global("eval-syntax");
+    mt.push((*stx).into());
     Answer::TailCall {argc: 2}
 }
 

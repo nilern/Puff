@@ -2,8 +2,8 @@ mod oref;
 mod handle;
 mod r#type;
 mod heap;
+mod syntax;
 mod reader;
-mod pos;
 mod symbol;
 mod string;
 mod regs;
@@ -26,6 +26,7 @@ use clap::Parser;
 use rustyline::error::ReadlineError;
 use rustyline;
 
+use handle::Handle;
 use reader::Reader;
 use mutator::Mutator;
 use compiler::compile;
@@ -58,17 +59,17 @@ fn main() {
             Ok(line) => {
                 rl.add_history_entry(line.as_str());
 
-                let mut reader = Reader::new(line.as_str());
+                let mut reader = Reader::new(line.as_str(), None);
 
                 while let Some(res) = reader.next(&mut mt) {
                     match res {
                         Ok(sv) => {
                             if debug {
-                                println!("{}", sv.v.within(&mt));
+                                println!("{}", Handle::from(sv.clone()).within(&mt));
                                 println!("");
                             }
 
-                            let code = compile(&mut mt, *sv.v, debug);
+                            let code = compile(&mut mt, (*sv).into(), debug);
 
                             if debug {
                                 println!("{}", code.within(&mt));

@@ -14,6 +14,7 @@ use crate::bool::Bool;
 use crate::r#box::Box;
 use crate::string::String;
 use crate::vector::Vector;
+use crate::syntax::Syntax;
 
 trait Tagged {
     const TAG: usize;
@@ -162,6 +163,22 @@ impl From<Fixnum> for isize {
     fn from(n: Fixnum) -> Self { (n.0 as isize) >> ORef::SHIFT }
 }
 
+impl TryFrom<usize> for Fixnum {
+    type Error = ();
+
+    fn try_from(n: usize) -> Result<Self, Self::Error> {
+        if n <= Fixnum::MAX as usize {
+            Ok(Fixnum((n << ORef::SHIFT) | Fixnum::TAG))
+        } else {
+            Err(())
+        }
+    }
+}
+
+impl From<u8> for Fixnum {
+    fn from(n: u8) -> Self { Self((n as usize) << ORef::SHIFT | Fixnum::TAG) }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct Flonum(usize);
 
@@ -299,6 +316,8 @@ impl DisplayWithin for Gc<()> {
                 write!(fmt, ")")
             } else if let Some(_) = self.try_cast::<Closure>(mt) {
                 write!(fmt, "#<fn @ {:p}>", self.0)
+            } else if let Some(_) = self.try_cast::<Syntax>(mt) {
+                write!(fmt, "#<syntax>") // TODO: show unwrapped .expr
             } else if let Some(_) = self.try_cast::<Box>(mt) {
                 write!(fmt, "#<box>")
             } else if let Some(code) = self.try_cast::<Bytecode>(mt) {
