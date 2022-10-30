@@ -4,7 +4,7 @@ use std::slice;
 use std::mem;
 use std::iter;
 
-use crate::bytecode::{Bytecode, Opcode, decode_prune_mask, prune_mask_len};
+use crate::bytecode::{Bytecode, Opcode, DecodedInstr, decode_prune_mask, prune_mask_len};
 use crate::oref::{Gc, ORef};
 use crate::vector::Vector;
 use crate::regs::Regs;
@@ -51,11 +51,11 @@ pub fn verify(mt: &Mutator, code: &Bytecode) -> Result<(), IndexedErr<Vec<usize>
         -> Result<(), IndexedErr<Vec<usize>>>
     {
         fn verify_stmt(mt: &Mutator, code: &Bytecode, bp: &[usize], clovers: &[AbstractType], cfg: &CFG,
-            amt: &mut AbstractMutator, stmt: &Instr
+            amt: &mut AbstractMutator, stmt: &DecodedInstr
         ) -> Result<(), IndexedErr<Vec<usize>>>
         {
             match stmt {
-                &Instr::Define {sym_index} => {
+                &DecodedInstr::Define {sym_index} => {
                     if AbstractType::of(mt, amt.get_const(&cfg, sym_index)?) != AbstractType::Symbol {
                         return Err(IndexedErr {err: Err::TypeError, byte_index: byte_path(bp, amt.pc)});
                     }
@@ -65,7 +65,7 @@ pub fn verify(mt: &Mutator, code: &Bytecode) -> Result<(), IndexedErr<Vec<usize>
                     amt.pc += 2;
                 },
 
-                &Instr::GlobalSet {sym_index} => {
+                &DecodedInstr::GlobalSet {sym_index} => {
                     if AbstractType::of(mt, amt.get_const(&cfg, sym_index)?) != AbstractType::Symbol {
                         return Err(IndexedErr {err: Err::TypeError, byte_index: byte_path(bp, amt.pc)});
                     }
@@ -75,7 +75,7 @@ pub fn verify(mt: &Mutator, code: &Bytecode) -> Result<(), IndexedErr<Vec<usize>
                     amt.pc += 2;
                 },
 
-                &Instr::Global {sym_index} => {
+                &DecodedInstr::Global {sym_index} => {
                     if AbstractType::of(mt, amt.get_const(&cfg, sym_index)?) != AbstractType::Symbol {
                         return Err(IndexedErr {err: Err::TypeError, byte_index: byte_path(bp, amt.pc)});
                     }
@@ -84,19 +84,19 @@ pub fn verify(mt: &Mutator, code: &Bytecode) -> Result<(), IndexedErr<Vec<usize>
                     amt.pc += 2;
                 },
 
-                &Instr::Const {index} => {
+                &DecodedInstr::Const {index} => {
                     let c = amt.get_const(&cfg, index)?;
                     amt.push(AbstractType::of(mt, c))?;
                     amt.pc += 2;
                 },
 
-                &Instr::Local {index} => {
+                &DecodedInstr::Local {index} => {
                     let t = *amt.get_reg(index)?;
                     amt.push(t)?;
                     amt.pc += 2;
                 },
 
-                &Instr::Clover {index} =>
+                &DecodedInstr::Clover {index} =>
                     if let &AbstractType::Closure {len} = amt.get_reg(0)? {
                         if index >= len {
                             return Err(IndexedErr {
@@ -118,12 +118,12 @@ pub fn verify(mt: &Mutator, code: &Bytecode) -> Result<(), IndexedErr<Vec<usize>
                         return Err(IndexedErr {err: Err::TypeError, byte_index: byte_path(bp, amt.pc)})
                     },
 
-                &Instr::PopNNT {n} => {
+                &DecodedInstr::PopNNT {n} => {
                     amt.popnnt(n)?;
                     amt.pc += 2;
                 },
 
-                &Instr::Prune {prunes} => { // TODO: Warn about unnecessarily long prune mask
+                &DecodedInstr::Prune {prunes} => { // TODO: Warn about unnecessarily long prune mask
                     let regs_len = amt.regs.len();
                     let mut mask_len = 0;
                     let mut free_reg = 0;
@@ -147,18 +147,18 @@ pub fn verify(mt: &Mutator, code: &Bytecode) -> Result<(), IndexedErr<Vec<usize>
                     amt.pc += 1 + mask_len;
                 },
 
-                &Instr::Box => {
+                &DecodedInstr::Box => {
                     amt.pop()?;
                     amt.push(AbstractType::Box)?;
                     amt.pc += 1;
                 },
 
-                &Instr::UninitializedBox => {
+                &DecodedInstr::UninitializedBox => {
                     amt.push(AbstractType::Box)?;
                     amt.pc += 1;
                 },
 
-                &Instr::BoxSet => {
+                &DecodedInstr::BoxSet => {
                     amt.pop()?;
                     if amt.pop()? != AbstractType::Box {
                         return Err(IndexedErr {err: Err::TypeError, byte_index: byte_path(bp, amt.pc)});
@@ -168,7 +168,7 @@ pub fn verify(mt: &Mutator, code: &Bytecode) -> Result<(), IndexedErr<Vec<usize>
                     amt.pc += 1;
                 },
 
-                &Instr::CheckedBoxSet => {
+                &DecodedInstr::CheckedBoxSet => {
                     amt.pop()?;
                     if amt.pop()? != AbstractType::Box {
                         return Err(IndexedErr {err: Err::TypeError, byte_index: byte_path(bp, amt.pc)});
@@ -181,7 +181,7 @@ pub fn verify(mt: &Mutator, code: &Bytecode) -> Result<(), IndexedErr<Vec<usize>
                     amt.pc += 1;
                 },
 
-                &Instr::BoxGet => {
+                &DecodedInstr::BoxGet => {
                     if amt.pop()? != AbstractType::Box {
                         return Err(IndexedErr {err: Err::TypeError, byte_index: byte_path(bp, amt.pc)});
                     }
@@ -190,7 +190,7 @@ pub fn verify(mt: &Mutator, code: &Bytecode) -> Result<(), IndexedErr<Vec<usize>
                     amt.pc += 1;
                 },
 
-                &Instr::CheckedBoxGet => {
+                &DecodedInstr::CheckedBoxGet => {
                     if amt.pop()? != AbstractType::Box {
                         return Err(IndexedErr {err: Err::TypeError, byte_index: byte_path(bp, amt.pc)});
                     }
@@ -202,7 +202,7 @@ pub fn verify(mt: &Mutator, code: &Bytecode) -> Result<(), IndexedErr<Vec<usize>
                     amt.pc += 1;
                 },
 
-                &Instr::CheckUse => {
+                &DecodedInstr::CheckUse => {
                     if amt.pop()? != AbstractType::Box {
                         return Err(IndexedErr {err: Err::TypeError, byte_index: byte_path(bp, amt.pc)});
                     }
@@ -210,7 +210,7 @@ pub fn verify(mt: &Mutator, code: &Bytecode) -> Result<(), IndexedErr<Vec<usize>
                     amt.pc += 1;
                 },
 
-                &Instr::Fn {code_index, len} => {
+                &DecodedInstr::Fn {code_index, len} => {
                     let code = amt.get_const(&cfg, code_index)?;
                     if let Some(code) = code.try_cast::<Bytecode>(mt) {
                         let clovers_len = unsafe { code.as_ref().clovers_len };
@@ -239,7 +239,7 @@ pub fn verify(mt: &Mutator, code: &Bytecode) -> Result<(), IndexedErr<Vec<usize>
                     }
                 },
 
-                &Instr::Call {argc, prunes} => { // TODO: Warn about unnecessarily long prune mask
+                &DecodedInstr::Call {argc, prunes} => { // TODO: Warn about unnecessarily long prune mask
                     amt.popn(argc)?; // Callee and args
 
                     // Save and restore regs:
@@ -268,7 +268,7 @@ pub fn verify(mt: &Mutator, code: &Bytecode) -> Result<(), IndexedErr<Vec<usize>
                     amt.pc += 2 + mask_len;
                 },
 
-                &Instr::Br {..} | &Instr::Brf {..} | &Instr::Ret | &Instr::TailCall {..} => unreachable!()
+                &DecodedInstr::Br {..} | &DecodedInstr::Brf {..} | &DecodedInstr::Ret | &DecodedInstr::TailCall {..} => unreachable!()
             }
 
             Ok(())
@@ -503,7 +503,7 @@ struct CFG<'a> {
 
 struct Block<'a> {
     predecessors: HashSet<usize>,
-    stmts: Vec<Instr<'a>>,
+    stmts: Vec<DecodedInstr<'a>>,
     transfer: Transfer
 }
 
@@ -565,7 +565,7 @@ impl<'a> TryFrom<&'a Bytecode> for CFG<'a> {
     type Error = IndexedErr<usize>;
 
     fn try_from(code: &'a Bytecode) -> Result<Self, Self::Error> {
-        use Instr::*;
+        use DecodedInstr::*;
 
         let instrs = code.instrs();
 
@@ -594,7 +594,7 @@ impl<'a> TryFrom<&'a Bytecode> for CFG<'a> {
                 predecessors.extend(branching_predecessors);
             }
 
-            let (instr, instr_min_len) = Instr::try_decode(&instrs, i)?;
+            let (instr, instr_min_len) = try_decode(&instrs, i)?;
 
             match instr {
                 Br {dist} => {
@@ -733,153 +733,121 @@ impl<'a> CFG<'a> {
     }
 }
 
-#[derive(Debug)]
-enum Instr<'a> {
-    Define {sym_index: usize},
-    GlobalSet {sym_index: usize},
-    Global {sym_index: usize},
+fn try_decode<'a>(bytes: &'a [u8], mut i: usize) -> Result<(DecodedInstr<'a>, usize), IndexedErr<usize>> {
+    if let Some(byte) = bytes.get(i) {
+        match Opcode::try_from(*byte) {
+            Ok(op) => {
+                i += 1;
 
-    Const {index: usize},
-    Local {index: usize},
-    Clover {index: usize},
+                match op {
+                    Opcode::Define =>
+                        match bytes.get(i) {
+                            Some(index) => Ok((DecodedInstr::Define {sym_index: *index as usize}, 2)),
+                            None => Err(IndexedErr{err: Err::MissingOpcodeArg(op), byte_index: i})
+                        },
 
-    PopNNT {n: usize},
-    Prune {prunes: &'a u8},
+                    Opcode::GlobalSet =>
+                        match bytes.get(i) {
+                            Some(index) => Ok((DecodedInstr::GlobalSet {sym_index: *index as usize}, 2)),
+                            None => Err(IndexedErr{err: Err::MissingOpcodeArg(op), byte_index: i})                            },
 
-    Box,
-    UninitializedBox,
-    BoxSet,
-    CheckedBoxSet,
-    BoxGet,
-    CheckedBoxGet,
-    CheckUse,
+                    Opcode::Global =>
+                        match bytes.get(i) {
+                            Some(index) => Ok((DecodedInstr::Global {sym_index: *index as usize}, 2)),
+                            None => Err(IndexedErr{err: Err::MissingOpcodeArg(op), byte_index: i})
+                        },
 
-    Brf {dist: usize},
-    Br {dist: usize},
+                    Opcode::Const =>
+                        match bytes.get(i) {
+                            Some(index) => Ok((DecodedInstr::Const {index: *index as usize}, 2)),
+                            None => Err(IndexedErr{err: Err::MissingOpcodeArg(op), byte_index: i})
+                        },
 
-    Fn {code_index: usize, len: usize},
-    Call {argc: usize, prunes: &'a u8},
-    TailCall {argc: usize},
-    Ret
-}
+                    Opcode::Local =>
+                        match bytes.get(i) {
+                            Some(index) => Ok((DecodedInstr::Local {index: *index as usize}, 2)),
+                            None => Err(IndexedErr{err: Err::MissingOpcodeArg(op), byte_index: i})
+                        },
 
-impl<'a> Instr<'a> {
-    fn try_decode(bytes: &'a [u8], mut i: usize) -> Result<(Self, usize), IndexedErr<usize>> {
-        if let Some(byte) = bytes.get(i) {
-            match Opcode::try_from(*byte) {
-                Ok(op) => {
-                    i += 1;
+                    Opcode::Clover =>
+                        match bytes.get(i) {
+                            Some(index) => Ok((DecodedInstr::Clover {index: *index as usize}, 2)),
+                            None => Err(IndexedErr{err: Err::MissingOpcodeArg(op), byte_index: i})
+                        },
 
-                    match op {
-                        Opcode::Define =>
-                            match bytes.get(i) {
-                                Some(index) => Ok((Instr::Define {sym_index: *index as usize}, 2)),
-                                None => Err(IndexedErr{err: Err::MissingOpcodeArg(op), byte_index: i})
+                    Opcode::PopNNT =>
+                        match bytes.get(i) {
+                            Some(n) => Ok((DecodedInstr::PopNNT {n: *n as usize}, 2)),
+                            None => Err(IndexedErr{err: Err::MissingOpcodeArg(op), byte_index: i})
+                        },
+
+                    Opcode::Prune =>
+                        match bytes.get(i) {
+                            Some(prunes) => Ok((DecodedInstr::Prune {prunes: prunes}, 1)),
+                            None => Err(IndexedErr{err: Err::MissingOpcodeArg(op), byte_index: i})
+                        },
+
+                    Opcode::Box => Ok((DecodedInstr::Box, 1)),
+                    Opcode::UninitializedBox => Ok((DecodedInstr::UninitializedBox, 1)),
+                    Opcode::BoxSet => Ok((DecodedInstr::BoxSet, 1)),
+                    Opcode::CheckedBoxSet => Ok((DecodedInstr::CheckedBoxSet, 1)),
+                    Opcode::BoxGet => Ok((DecodedInstr::BoxGet, 1)),
+                    Opcode::CheckedBoxGet => Ok((DecodedInstr::CheckedBoxGet, 1)),
+                    Opcode::CheckUse => Ok((DecodedInstr::CheckUse, 1)),
+
+                    Opcode::Brf =>
+                        match bytes.get(i) {
+                            Some(dist) => Ok((DecodedInstr::Brf {dist: *dist as usize}, 2)),
+                            None => Err(IndexedErr{err: Err::MissingOpcodeArg(op), byte_index: i})
+                        },
+                    Opcode::Br =>
+                        match bytes.get(i) {
+                            Some(dist) => Ok((DecodedInstr::Br {dist: *dist as usize}, 2)),
+                            None => Err(IndexedErr{err: Err::MissingOpcodeArg(op), byte_index: i})
+                        },
+
+                    Opcode::Fn =>
+                        match bytes.get(i) {
+                            Some(code_index) => {
+                                i+= 1;
+
+                                match bytes.get(i) {
+                                    Some(len) => Ok((DecodedInstr::Fn {
+                                        code_index: *code_index as usize,
+                                        len: *len as usize
+                                    }, 3)),
+                                    None => Err(IndexedErr{err: Err::MissingOpcodeArg(op), byte_index: i})
+                                }
                             },
+                            None => Err(IndexedErr{err: Err::MissingOpcodeArg(op), byte_index: i})
+                        },
 
-                        Opcode::GlobalSet =>
-                            match bytes.get(i) {
-                                Some(index) => Ok((Instr::GlobalSet {sym_index: *index as usize}, 2)),
-                                None => Err(IndexedErr{err: Err::MissingOpcodeArg(op), byte_index: i})                            },
+                    Opcode::Call =>
+                        match bytes.get(i) {
+                            Some(argc) => {
+                                i += 1;
 
-                        Opcode::Global =>
-                            match bytes.get(i) {
-                                Some(index) => Ok((Instr::Global {sym_index: *index as usize}, 2)),
-                                None => Err(IndexedErr{err: Err::MissingOpcodeArg(op), byte_index: i})
+                                match bytes.get(i) {
+                                    Some(prunes) => Ok((DecodedInstr::Call {argc: *argc as usize, prunes: prunes}, 2)),
+                                    None => Err(IndexedErr{err: Err::MissingOpcodeArg(op), byte_index: i})
+                                }
                             },
+                            None => Err(IndexedErr{err: Err::MissingOpcodeArg(op), byte_index: i})
+                        },
 
-                        Opcode::Const =>
-                            match bytes.get(i) {
-                                Some(index) => Ok((Instr::Const {index: *index as usize}, 2)),
-                                None => Err(IndexedErr{err: Err::MissingOpcodeArg(op), byte_index: i})
-                            },
+                    Opcode::TailCall =>
+                        match bytes.get(i) {
+                            Some(argc) => Ok((DecodedInstr::TailCall {argc: *argc as usize}, 2)),
+                            None => Err(IndexedErr{err: Err::MissingOpcodeArg(op), byte_index: i})
+                        },
 
-                        Opcode::Local =>
-                            match bytes.get(i) {
-                                Some(index) => Ok((Instr::Local {index: *index as usize}, 2)),
-                                None => Err(IndexedErr{err: Err::MissingOpcodeArg(op), byte_index: i})
-                            },
+                    Opcode::Ret => Ok((DecodedInstr::Ret, 1))
+                }
+            },
 
-                        Opcode::Clover =>
-                            match bytes.get(i) {
-                                Some(index) => Ok((Instr::Clover {index: *index as usize}, 2)),
-                                None => Err(IndexedErr{err: Err::MissingOpcodeArg(op), byte_index: i})
-                            },
-
-                        Opcode::PopNNT =>
-                            match bytes.get(i) {
-                                Some(n) => Ok((Instr::PopNNT {n: *n as usize}, 2)),
-                                None => Err(IndexedErr{err: Err::MissingOpcodeArg(op), byte_index: i})
-                            },
-
-                        Opcode::Prune =>
-                            match bytes.get(i) {
-                                Some(prunes) => Ok((Instr::Prune {prunes: prunes}, 1)),
-                                None => Err(IndexedErr{err: Err::MissingOpcodeArg(op), byte_index: i})
-                            },
-
-                        Opcode::Box => Ok((Instr::Box, 1)),
-                        Opcode::UninitializedBox => Ok((Instr::UninitializedBox, 1)),
-                        Opcode::BoxSet => Ok((Instr::BoxSet, 1)),
-                        Opcode::CheckedBoxSet => Ok((Instr::CheckedBoxSet, 1)),
-                        Opcode::BoxGet => Ok((Instr::BoxGet, 1)),
-                        Opcode::CheckedBoxGet => Ok((Instr::CheckedBoxGet, 1)),
-                        Opcode::CheckUse => Ok((Instr::CheckUse, 1)),
-
-                        Opcode::Brf =>
-                            match bytes.get(i) {
-                                Some(dist) => Ok((Instr::Brf {dist: *dist as usize}, 2)),
-                                None => Err(IndexedErr{err: Err::MissingOpcodeArg(op), byte_index: i})
-                            },
-                        Opcode::Br =>
-                            match bytes.get(i) {
-                                Some(dist) => Ok((Instr::Br {dist: *dist as usize}, 2)),
-                                None => Err(IndexedErr{err: Err::MissingOpcodeArg(op), byte_index: i})
-                            },
-
-                        Opcode::Fn =>
-                            match bytes.get(i) {
-                                Some(code_index) => {
-                                    i+= 1;
-
-                                    match bytes.get(i) {
-                                        Some(len) => Ok((Instr::Fn {
-                                            code_index: *code_index as usize,
-                                            len: *len as usize
-                                        }, 3)),
-                                        None => Err(IndexedErr{err: Err::MissingOpcodeArg(op), byte_index: i})
-                                    }
-                                },
-                                None => Err(IndexedErr{err: Err::MissingOpcodeArg(op), byte_index: i})
-                            },
-
-                        Opcode::Call =>
-                            match bytes.get(i) {
-                                Some(argc) => {
-                                    i += 1;
-
-                                    match bytes.get(i) {
-                                        Some(prunes) => Ok((Instr::Call {argc: *argc as usize, prunes: prunes}, 2)),
-                                        None => Err(IndexedErr{err: Err::MissingOpcodeArg(op), byte_index: i})
-                                    }
-                                },
-                                None => Err(IndexedErr{err: Err::MissingOpcodeArg(op), byte_index: i})
-                            },
-
-                        Opcode::TailCall =>
-                            match bytes.get(i) {
-                                Some(argc) => Ok((Instr::TailCall {argc: *argc as usize}, 2)),
-                                None => Err(IndexedErr{err: Err::MissingOpcodeArg(op), byte_index: i})
-                            },
-
-                        Opcode::Ret => Ok((Instr::Ret, 1))
-                    }
-                },
-
-                Err(()) => Err(IndexedErr {err: Err::InvalidOpcode(*byte), byte_index: i})
-            }
-        } else {
-            Err(IndexedErr {err: Err::MissingTerminator, byte_index: i})
+            Err(()) => Err(IndexedErr {err: Err::InvalidOpcode(*byte), byte_index: i})
         }
+    } else {
+        Err(IndexedErr {err: Err::MissingTerminator, byte_index: i})
     }
 }

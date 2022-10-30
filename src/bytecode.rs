@@ -1,6 +1,8 @@
 use std::fmt;
 use std::mem::transmute;
 use std::collections::hash_map::HashMap;
+use std::slice;
+use std::cmp::Ordering;
 
 use crate::oref::{Reify, DisplayWithin, ORef, Gc};
 use crate::heap_obj::Indexed;
@@ -131,6 +133,157 @@ impl<'a> Iterator for Prunes<'a> {
             }
 
             Some(prune)
+        } else {
+            None
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum DecodedInstr<'a> {
+    Define {sym_index: usize},
+    GlobalSet {sym_index: usize},
+    Global {sym_index: usize},
+
+    Const {index: usize},
+    Local {index: usize},
+    Clover {index: usize},
+
+    PopNNT {n: usize},
+    Prune {prunes: &'a u8},
+
+    Box,
+    UninitializedBox,
+    BoxSet,
+    CheckedBoxSet,
+    BoxGet,
+    CheckedBoxGet,
+    CheckUse,
+
+    Brf {dist: usize},
+    Br {dist: usize},
+
+    Fn {code_index: usize, len: usize},
+    Call {argc: usize, prunes: &'a u8},
+    TailCall {argc: usize},
+    Ret
+}
+
+impl<'a> DecodedInstr<'a> {
+    fn try_decode(bytes: &'a [u8], mut i: usize) -> Option<(Self, usize)> {
+        if let Some(byte) = bytes.get(i) {
+            match Opcode::try_from(*byte) {
+                Ok(op) => {
+                    i += 1;
+
+                    match op {
+                        Opcode::Define =>
+                            match bytes.get(i) {
+                                Some(index) => Some((DecodedInstr::Define {sym_index: *index as usize}, 2)),
+                                None => None
+                            },
+
+                        Opcode::GlobalSet =>
+                            match bytes.get(i) {
+                                Some(index) => Some((DecodedInstr::GlobalSet {sym_index: *index as usize}, 2)),
+                                None => None                           },
+
+                        Opcode::Global =>
+                            match bytes.get(i) {
+                                Some(index) => Some((DecodedInstr::Global {sym_index: *index as usize}, 2)),
+                                None => None
+                            },
+
+                        Opcode::Const =>
+                            match bytes.get(i) {
+                                Some(index) => Some((DecodedInstr::Const {index: *index as usize}, 2)),
+                                None => None
+                            },
+
+                        Opcode::Local =>
+                            match bytes.get(i) {
+                                Some(index) => Some((DecodedInstr::Local {index: *index as usize}, 2)),
+                                None => None
+                            },
+
+                        Opcode::Clover =>
+                            match bytes.get(i) {
+                                Some(index) => Some((DecodedInstr::Clover {index: *index as usize}, 2)),
+                                None => None
+                            },
+
+                        Opcode::PopNNT =>
+                            match bytes.get(i) {
+                                Some(n) => Some((DecodedInstr::PopNNT {n: *n as usize}, 2)),
+                                None => None
+                            },
+
+                        Opcode::Prune =>
+                            match bytes.get(i) {
+                                Some(prunes) => Some((DecodedInstr::Prune {prunes: prunes}, 1)),
+                                None => None
+                            },
+
+                        Opcode::Box => Some((DecodedInstr::Box, 1)),
+                        Opcode::UninitializedBox => Some((DecodedInstr::UninitializedBox, 1)),
+                        Opcode::BoxSet => Some((DecodedInstr::BoxSet, 1)),
+                        Opcode::CheckedBoxSet => Some((DecodedInstr::CheckedBoxSet, 1)),
+                        Opcode::BoxGet => Some((DecodedInstr::BoxGet, 1)),
+                        Opcode::CheckedBoxGet => Some((DecodedInstr::CheckedBoxGet, 1)),
+                        Opcode::CheckUse => Some((DecodedInstr::CheckUse, 1)),
+
+                        Opcode::Brf =>
+                            match bytes.get(i) {
+                                Some(dist) => Some((DecodedInstr::Brf {dist: *dist as usize}, 2)),
+                                None => None
+                            },
+                        Opcode::Br =>
+                            match bytes.get(i) {
+                                Some(dist) => Some((DecodedInstr::Br {dist: *dist as usize}, 2)),
+                                None => None
+                            },
+
+                        Opcode::Fn =>
+                            match bytes.get(i) {
+                                Some(code_index) => {
+                                    i+= 1;
+
+                                    match bytes.get(i) {
+                                        Some(len) => Some((DecodedInstr::Fn {
+                                            code_index: *code_index as usize,
+                                            len: *len as usize
+                                        }, 3)),
+                                        None => None
+                                    }
+                                },
+                                None => None
+                            },
+
+                        Opcode::Call =>
+                            match bytes.get(i) {
+                                Some(argc) => {
+                                    i += 1;
+
+                                    match bytes.get(i) {
+                                        Some(prunes) => Some((DecodedInstr::Call {argc: *argc as usize, prunes: prunes}, 2)),
+                                        None => None
+                                    }
+                                },
+                                None => None
+                            },
+
+                        Opcode::TailCall =>
+                            match bytes.get(i) {
+                                Some(argc) => Some((DecodedInstr::TailCall {argc: *argc as usize}, 2)),
+                                None => None
+                            },
+
+                        Opcode::Ret => Some((DecodedInstr::Ret, 1))
+                    }
+                },
+
+                Err(()) => None
+            }
         } else {
             None
         }
@@ -377,6 +530,42 @@ impl Bytecode {
         }
 
         Ok(())
+    }
+
+    pub fn pc_pos(&self, target_pc: usize) -> Option<ORef> {
+        let instrs = self.instrs();
+
+        let mut pc = 0;
+        let mut i = 0;
+        while pc < instrs.len() {
+            match pc.cmp(&target_pc) {
+                Ordering::Less =>
+                    match DecodedInstr::try_decode(instrs, pc) {
+                        Some((instr, instr_min_len)) => {
+                            pc += instr_min_len;
+
+                            match instr {
+                                DecodedInstr::Prune {prunes} | DecodedInstr::Call {argc: _, prunes} =>
+                                    pc += unsafe {
+                                        prune_mask_len(slice::from_raw_parts(prunes as *const u8, instrs.len() - pc))
+                                    }.unwrap(),
+
+                                _ => ()
+                            }
+
+                            i += 1;
+                        },
+
+                        None => return None
+                    },
+
+                Ordering::Equal => return Some(unsafe { self.positions.as_ref().indexed_field()[i] }),
+
+                Ordering::Greater => return None
+            }
+        }
+
+        None
     }
 }
 
