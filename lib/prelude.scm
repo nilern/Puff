@@ -2,6 +2,16 @@
 
 (define list (lambda ls ls))
 
+(define fold-right
+  (lambda (proc acc list1)
+    (letrec ((fold-right (lambda (ls)
+                           (if (pair? ls)
+                             (proc (car ls) (fold-right (cdr ls)))
+                             (if (null? ls)
+                               acc
+                               (error "fold-right: improper list" list1))))))
+      (fold-right list1))))
+
 (define map
   (lambda (proc list1)
     (if (pair? list1)
@@ -31,3 +41,7 @@
                              ls
                              (error "for-each: improper list" list1))))))
       (for-each list1))))
+
+(define append
+  (lambda (list1 list2)
+    (fold-right cons list2 list1)))
