@@ -474,6 +474,10 @@ impl Mutator {
             // Check arity:
             // TODO: Varargs
             if argc != unsafe { callee.as_ref().arity } {
+                unsafe {
+                    println!("ArgcError: {} != {} at {}", argc, callee.as_ref().arity,
+                        self.code().as_ref().pc_pos(self.pc).unwrap().within(self));
+                }
                 todo!()
             }
 

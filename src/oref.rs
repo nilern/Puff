@@ -14,7 +14,7 @@ use crate::bool::Bool;
 use crate::r#box::Box;
 use crate::string::String;
 use crate::vector::Vector;
-use crate::syntax::Syntax;
+use crate::syntax::{Syntax, Pos};
 
 trait Tagged {
     const TAG: usize;
@@ -318,6 +318,12 @@ impl DisplayWithin for Gc<()> {
                 write!(fmt, "#<fn @ {:p}>", self.0)
             } else if let Some(_) = self.try_cast::<Syntax>(mt) {
                 write!(fmt, "#<syntax>") // TODO: show unwrapped .expr
+            } else if let Some(pos) = self.try_cast::<Pos>(mt) {
+                write!(fmt, "#<pos {} {} {}>",
+                    pos.as_ref().filename.within(mt),
+                    ORef::from(pos.as_ref().line).within(mt),
+                    ORef::from(pos.as_ref().column).within(mt)
+                )
             } else if let Some(_) = self.try_cast::<Box>(mt) {
                 write!(fmt, "#<box>")
             } else if let Some(code) = self.try_cast::<Bytecode>(mt) {
