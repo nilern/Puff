@@ -285,6 +285,7 @@ fn emit_expr(cmp: &mut Compiler, env: &mut Env, builder: &mut CfgBuilder, cont: 
 
             emit_expr(cmp, env, builder, cont, *body);
 
+            // FIXME: Can't just `popnnt`, some of those might have been pruned already:
             if let Cont::Ret = cont {
                 /* ret/tailcall will take care of popping */
             } else {
