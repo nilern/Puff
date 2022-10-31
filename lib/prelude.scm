@@ -1,6 +1,6 @@
 (define + fx+)
 
-(define not (lambda (obj) (eq? obj #f)))
+(define not (lambda (obj) (if obj #f #t)))
 
 (define list (lambda ls ls))
 
