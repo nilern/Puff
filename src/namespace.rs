@@ -1,6 +1,7 @@
 use std::alloc::{Layout, alloc, dealloc};
 use std::mem::{size_of, align_of};
 use std::slice;
+use std::cell::Cell;
 
 use crate::symbol::Symbol;
 use crate::oref::{Reify, Gc, ORef};
@@ -11,7 +12,7 @@ use crate::r#type::NonIndexedType;
 
 #[repr(C)]
 pub struct Var {
-    value: ORef
+    value: Cell<ORef>
 }
 
 unsafe impl NonIndexed for Var {}
@@ -23,25 +24,23 @@ impl Reify for Var {
 }
 
 impl Var {
-    pub const TYPE_LEN: usize = 1;
-
     pub unsafe fn new_uninitialized(mt: &mut Mutator) -> Gc<Self> { Gc::new_unchecked(mt.alloc_static::<Self>()) }
 
     pub fn new(mt: &mut Mutator, value: Handle) -> Gc<Self> {
         unsafe {
             let nptr = mt.alloc_static::<Self>();
-            nptr.as_ptr().write(Self { value: *value });
+            nptr.as_ptr().write(Self { value: Cell::new(*value) });
             Gc::new_unchecked(nptr)
         }
     }
 
-    pub fn value(&self) -> ORef { self.value }
+    pub fn value(&self) -> ORef { self.value.get() }
 
-    pub fn init(&mut self, v: ORef) { self.value = v; }
+    pub fn init(&self, v: ORef) { self.value.set(v); }
 
-    pub fn redefine(&mut self, v: ORef) { self.value = v; }
+    pub fn redefine(&self, v: ORef) { self.value.set(v); }
 
-    pub fn set(&mut self, v: ORef) { self.value = v; }
+    pub fn set(&self, v: ORef) { self.value.set(v); }
 }
 
 type Key = Option<Gc<Symbol>>;

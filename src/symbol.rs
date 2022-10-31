@@ -103,8 +103,6 @@ impl Reify for Symbol {
 }
 
 impl Symbol {
-    pub const TYPE_LEN: usize = 2;
-
     pub fn new(mt: &mut Mutator, cs: &str) -> Gc<Self> {
         let symbols = mt.symbols_mut();
         let hash = hash::<DefaultHasher, _>(cs);

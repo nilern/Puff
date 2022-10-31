@@ -23,8 +23,6 @@ impl Reify for Syntax {
 unsafe impl NonIndexed for Syntax {}
 
 impl Syntax {
-    pub const TYPE_LEN: usize = 2;
-
     pub fn new(mt: &mut Mutator, expr: Handle, pos: Option<HandleT<Pos>>) -> Gc<Self> {
         unsafe {
             let nptr = mt.alloc_static::<Self>();
@@ -49,15 +47,15 @@ impl ORef {
         } else if let Some(pair) = self.try_cast::<Pair>(mt) {
             let pair = mt.root_t(pair);
 
-            let car = unsafe { pair.as_ref().car }.to_datum(mt);
+            let car = unsafe { pair.as_ref().car() }.to_datum(mt);
             let car = mt.root(car);
-            let cdr = unsafe { pair.as_ref().cdr }.to_datum(mt);
+            let cdr = unsafe { pair.as_ref().cdr() }.to_datum(mt);
             let cdr = mt.root(cdr);
 
-            if *car == unsafe { pair.as_ref().car } && *cdr == unsafe { pair.as_ref().cdr } {
+            if *car == unsafe { pair.as_ref().car() } && *cdr == unsafe { pair.as_ref().cdr() } {
                 (*pair).into()
             } else {
-                Pair::new(mt, car, cdr).into()
+                Gc::<Pair>::new(mt, car, cdr).into()
             }
         } else if let Some(vector) = self.try_cast::<Vector<ORef>>(mt) {
             let vector = mt.root_t(vector);
@@ -95,8 +93,6 @@ impl Reify for Pos {
 unsafe impl NonIndexed for Pos {}
 
 impl Pos {
-    pub const TYPE_LEN: usize = 3;
-
     pub fn new(mt: &mut Mutator, filename: Option<HandleT<String>>, line: Fixnum, column: Fixnum) -> Gc<Self> {
         unsafe {
             let nptr = mt.alloc_static::<Self>();

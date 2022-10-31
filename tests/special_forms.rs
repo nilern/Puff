@@ -3,7 +3,7 @@ use molysite::mutator::Mutator;
 use molysite::compiler::compile;
 use molysite::closure::Closure;
 use molysite::verifier::verify;
-use molysite::oref::{ORef, Fixnum};
+use molysite::oref::{ORef, Gc, Fixnum};
 use molysite::symbol::Symbol;
 use molysite::vector::Vector;
 use molysite::heap_obj::{Singleton, Indexed};
@@ -47,10 +47,10 @@ fn assert_list_equal(mt: &Mutator, mut ls1: ORef, mut ls2: ORef) {
         if let Some(pair1) = ls1.try_cast::<Pair>(mt) {
             if let Some(pair2) = ls2.try_cast::<Pair>(mt) {
                 unsafe {
-                    assert_eq!(pair1.as_ref().car, pair2.as_ref().car);
+                    assert_eq!(pair1.as_ref().car(), pair2.as_ref().car());
 
-                    ls1 = pair1.as_ref().cdr;
-                    ls2 = pair2.as_ref().cdr;
+                    ls1 = pair1.as_ref().cdr();
+                    ls2 = pair2.as_ref().cdr();
                 }
             } else {
                 assert!(false);
@@ -83,11 +83,11 @@ fn test_quote() {
     assert_vector_equal(&mt, v1, v2);
 
     let ls1 = eval_string(&mut mt, "(quote (+ 1 2))");
-    let ls2 = Pair::new(&mut mt, two.clone(), empty_list.clone());
+    let ls2 = Gc::<Pair>::new(&mut mt, two.clone(), empty_list.clone());
     let ls2 = mt.root(ls2.into());
-    let ls2 = Pair::new(&mut mt, one.clone(), ls2);
+    let ls2 = Gc::<Pair>::new(&mut mt, one.clone(), ls2);
     let ls2 = mt.root(ls2.into());
-    let ls2 = Pair::new(&mut mt, plus.clone(), ls2);
+    let ls2 = Gc::<Pair>::new(&mut mt, plus.clone(), ls2);
     assert_list_equal(&mt, ls1, ls2.into());
 
     assert_eq!(eval_string(&mut mt, "'a"), (*a).into());
@@ -99,23 +99,23 @@ fn test_quote() {
     assert_eq!(eval_string(&mut mt, "'()"), EmptyList::instance(&mt).into());
 
     let ls1 = eval_string(&mut mt, "'(+ 1 2)");
-    let ls2 = Pair::new(&mut mt, two, empty_list.clone());
+    let ls2 = Gc::<Pair>::new(&mut mt, two, empty_list.clone());
     let ls2 = mt.root(ls2.into());
-    let ls2 = Pair::new(&mut mt, one, ls2);
+    let ls2 = Gc::<Pair>::new(&mut mt, one, ls2);
     let ls2 = mt.root(ls2.into());
-    let ls2 = Pair::new(&mut mt, plus, ls2);
+    let ls2 = Gc::<Pair>::new(&mut mt, plus, ls2);
     assert_list_equal(&mt, ls1, ls2.into());
 
     let ls1 = eval_string(&mut mt, "'(quote a)");
-    let ls2 = Pair::new(&mut mt, a.clone(), empty_list.clone());
+    let ls2 = Gc::<Pair>::new(&mut mt, a.clone(), empty_list.clone());
     let ls2 = mt.root(ls2.into());
-    let ls2 = Pair::new(&mut mt, quote.clone(), ls2);
+    let ls2 = Gc::<Pair>::new(&mut mt, quote.clone(), ls2);
     assert_list_equal(&mt, ls1, ls2.into());
 
     let ls1 = eval_string(&mut mt, "''a");
-    let ls2 = Pair::new(&mut mt, a, empty_list);
+    let ls2 = Gc::<Pair>::new(&mut mt, a, empty_list);
     let ls2 = mt.root(ls2.into());
-    let ls2 = Pair::new(&mut mt, quote, ls2);
+    let ls2 = Gc::<Pair>::new(&mut mt, quote, ls2);
     assert_list_equal(&mt, ls1, ls2.into());
 }
 

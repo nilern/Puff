@@ -1,6 +1,5 @@
 use std::mem::{transmute, size_of, align_of};
 use std::alloc::Layout;
-use std::ptr::NonNull;
 
 use crate::heap::Heap;
 use crate::oref::Gc;
@@ -55,12 +54,16 @@ impl Type {
         )
     };
 
-    pub unsafe fn bootstrap_new<T>(heap: &mut Heap, type_type: Gc<IndexedType>,
-        len: usize
-    ) -> Option<NonNull<T>>
+    pub unsafe fn bootstrap_new<T>(heap: &mut Heap, type_type: Gc<IndexedType>, fixed: T, fields: &[Field<Type>])
+        -> Option<Gc<T>>
     {
-        heap.alloc_indexed(type_type, len)
-            .map(NonNull::cast)
+        heap.alloc_indexed(type_type, fields.len()).map(|nptr| {
+            let nptr = nptr.cast::<T>();
+            nptr.as_ptr().write(fixed);
+            (*nptr.cast::<Type>().as_ptr()).indexed_field_ptr_mut()
+                .copy_from_nonoverlapping(fields.as_ptr(), fields.len());
+            Gc::new_unchecked(nptr)
+        })
     }
 
     fn fields(&self) -> &[Field<Type>] { self.indexed_field() }

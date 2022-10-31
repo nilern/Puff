@@ -53,23 +53,23 @@ pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::PosExpr {
                 PosExpr {expr: Global(cmp.mt.root_t(name)), pos}
             }
         } else if let Some(ls) = expr.try_cast::<Pair>(cmp.mt) {
-            let callee = unsafe { ls.as_ref().car }.try_cast::<Syntax>(cmp.mt).unwrap_or_else(|| {
+            let callee = unsafe { ls.as_ref().car() }.try_cast::<Syntax>(cmp.mt).unwrap_or_else(|| {
                 todo!() // error
             });
 
             if let Some(callee_sym) = unsafe { callee.as_ref().expr }.try_cast::<Symbol>(cmp.mt) {
                 if unsafe { callee_sym.as_ref().name() == "if" } {
-                    return analyze_if(cmp, env, unsafe { ls.as_ref().cdr }, pos);
+                    return analyze_if(cmp, env, unsafe { ls.as_ref().cdr() }, pos);
                 } else if unsafe { callee_sym.as_ref().name() == "lambda" } {
-                    return analyze_lambda(cmp, env, unsafe { ls.as_ref().cdr }, pos);
+                    return analyze_lambda(cmp, env, unsafe { ls.as_ref().cdr() }, pos);
                 } else if unsafe { callee_sym.as_ref().name() == "begin" } {
-                    return analyze_begin(cmp, env, unsafe { ls.as_ref().cdr }, pos);
+                    return analyze_begin(cmp, env, unsafe { ls.as_ref().cdr() }, pos);
                 } else if unsafe { callee_sym.as_ref().name() == "letrec" } {
-                    return analyze_letrec(cmp, env, unsafe { ls.as_ref().cdr }, pos);
+                    return analyze_letrec(cmp, env, unsafe { ls.as_ref().cdr() }, pos);
                 } else if unsafe { callee_sym.as_ref().name() == "quote" } {
-                    return analyze_quote(cmp, unsafe { ls.as_ref().cdr }, pos);
+                    return analyze_quote(cmp, unsafe { ls.as_ref().cdr() }, pos);
                 } else if unsafe { callee_sym.as_ref().name() == "set!" } {
-                    return analyze_set(cmp, env, unsafe { ls.as_ref().cdr }, pos);
+                    return analyze_set(cmp, env, unsafe { ls.as_ref().cdr() }, pos);
                 }
             }
                 
@@ -90,12 +90,12 @@ pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::PosExpr {
                 });
 
                 if let Some(binding) = unsafe { stx.as_ref().expr }.try_cast::<Pair>(cmp.mt) {
-                    let pat = unsafe { binding.as_ref().car };
+                    let pat = unsafe { binding.as_ref().car() };
 
-                    if let Some(binding) = unsafe { binding.as_ref().cdr }.try_cast::<Pair>(cmp.mt) {
-                        let val = unsafe { binding.as_ref().car };
+                    if let Some(binding) = unsafe { binding.as_ref().cdr() }.try_cast::<Pair>(cmp.mt) {
+                        let val = unsafe { binding.as_ref().car() };
 
-                        if unsafe { binding.as_ref().cdr } == EmptyList::instance(cmp.mt).into() {
+                        if unsafe { binding.as_ref().cdr() } == EmptyList::instance(cmp.mt).into() {
                             let identifier = pat.try_cast::<Syntax>(cmp.mt).unwrap_or_else(|| {
                                 todo!() // error
                             });
@@ -128,11 +128,11 @@ pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::PosExpr {
                 None => todo!() // error
             };
             while let Some(bs_pair) = bs.try_cast::<Pair>(cmp.mt) {
-                let (e, b) = binding(cmp, &env, unsafe { bs_pair.as_ref().car });
+                let (e, b) = binding(cmp, &env, unsafe { bs_pair.as_ref().car() });
                 anf_bs.push(b);
                 env = e;
 
-                bs = unsafe { bs_pair.as_ref().cdr };
+                bs = unsafe { bs_pair.as_ref().cdr() };
             }
 
             if bs == EmptyList::instance(cmp.mt).into() {
@@ -143,12 +143,12 @@ pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::PosExpr {
         }
 
         if let Some(args) = args.try_cast::<Pair>(cmp.mt) {
-            let sexpr_bindings = unsafe { args.as_ref().car };
+            let sexpr_bindings = unsafe { args.as_ref().car() };
 
-            if let Some(args) = unsafe { args.as_ref().cdr }.try_cast::<Pair>(cmp.mt) {
-                let body = unsafe { args.as_ref().car };
+            if let Some(args) = unsafe { args.as_ref().cdr() }.try_cast::<Pair>(cmp.mt) {
+                let body = unsafe { args.as_ref().car() };
 
-                if unsafe { args.as_ref().cdr } == EmptyList::instance(cmp.mt).into() {
+                if unsafe { args.as_ref().cdr() } == EmptyList::instance(cmp.mt).into() {
                     let (env, bindings) = bindings(cmp, env, sexpr_bindings);
 
                     let bindings = bindings.iter()
@@ -171,16 +171,16 @@ pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::PosExpr {
         let args = args.try_cast::<Pair>(cmp.mt).unwrap_or_else(|| {
             todo!() // error
         });
-        let cond = unsafe { args.as_ref().car };
-        let args = unsafe { args.as_ref().cdr }.try_cast::<Pair>(cmp.mt).unwrap_or_else(|| {
+        let cond = unsafe { args.as_ref().car() };
+        let args = unsafe { args.as_ref().cdr() }.try_cast::<Pair>(cmp.mt).unwrap_or_else(|| {
             todo!() // error
         });
-        let conseq = unsafe { args.as_ref().car };
-        let args = unsafe { args.as_ref().cdr }.try_cast::<Pair>(cmp.mt).unwrap_or_else(|| {
+        let conseq = unsafe { args.as_ref().car() };
+        let args = unsafe { args.as_ref().cdr() }.try_cast::<Pair>(cmp.mt).unwrap_or_else(|| {
             todo!() // error
         });
-        let alt = unsafe { args.as_ref().car };
-        if unsafe { args.as_ref().cdr } != EmptyList::instance(cmp.mt).into() {
+        let alt = unsafe { args.as_ref().car() };
+        if unsafe { args.as_ref().cdr() } != EmptyList::instance(cmp.mt).into() {
             todo!() // error
         }
 
@@ -217,7 +217,7 @@ pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::PosExpr {
                 let mut params = unsafe { params.as_ref().expr };
 
                 while let Some(ps_pair) = params.try_cast::<Pair>(cmp.mt) {
-                    let param = unsafe { ps_pair.as_ref().car }.try_cast::<Syntax>(cmp.mt).unwrap_or_else(|| {
+                    let param = unsafe { ps_pair.as_ref().car() }.try_cast::<Syntax>(cmp.mt).unwrap_or_else(|| {
                         todo!() // error
                     });
 
@@ -232,7 +232,7 @@ pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::PosExpr {
                         todo!()
                     }
 
-                    params = unsafe { ps_pair.as_ref().cdr };
+                    params = unsafe { ps_pair.as_ref().cdr() };
                 }
 
                 if params == EmptyList::instance(cmp.mt).into() {
@@ -255,12 +255,12 @@ pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::PosExpr {
         }
 
         if let Some(args) = args.try_cast::<Pair>(cmp.mt) {
-            let params = unsafe { args.as_ref().car };
+            let params = unsafe { args.as_ref().car() };
 
-            if let Some(args) = unsafe { args.as_ref().cdr }.try_cast::<Pair>(cmp.mt) {
-                let body = unsafe { args.as_ref().car };
+            if let Some(args) = unsafe { args.as_ref().cdr() }.try_cast::<Pair>(cmp.mt) {
+                let body = unsafe { args.as_ref().car() };
 
-                if unsafe { args.as_ref().cdr } == EmptyList::instance(cmp.mt).into() {
+                if unsafe { args.as_ref().cdr() } == EmptyList::instance(cmp.mt).into() {
                     let (env, params, varargs) = analyze_params(cmp, env, params);
                     let body = analyze_expr(cmp, &env, body);
 
@@ -280,9 +280,9 @@ pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::PosExpr {
         let mut stmts = Vec::new();
 
         while let Some(args_pair) = args.try_cast::<Pair>(cmp.mt) {
-            stmts.push(analyze_expr(cmp, env, unsafe { args_pair.as_ref().car }));
+            stmts.push(analyze_expr(cmp, env, unsafe { args_pair.as_ref().car() }));
 
-            args = unsafe { args_pair.as_ref().cdr };
+            args = unsafe { args_pair.as_ref().cdr() };
         }
 
         if args == EmptyList::instance(cmp.mt).into() {
@@ -298,8 +298,8 @@ pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::PosExpr {
 
     fn analyze_quote(cmp: &mut Compiler, args: ORef, pos: Handle) -> anf::PosExpr {
         if let Some(args) = args.try_cast::<Pair>(cmp.mt) {
-            if unsafe { args.as_ref().cdr } == EmptyList::instance(cmp.mt).into() {
-                let c = unsafe { cmp.mt.root(args.as_ref().car) }.to_datum(cmp.mt);
+            if unsafe { args.as_ref().cdr() } == EmptyList::instance(cmp.mt).into() {
+                let c = unsafe { cmp.mt.root(args.as_ref().car()) }.to_datum(cmp.mt);
                 PosExpr {expr: Triv(Const(cmp.mt.root(c))), pos}
             } else {
                 todo!()
@@ -311,12 +311,12 @@ pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::PosExpr {
 
     fn analyze_set(cmp: &mut Compiler, env: &Rc<Env>, args: ORef, pos: Handle) -> anf::PosExpr {
         if let Some(args) = args.try_cast::<Pair>(cmp.mt) {
-            let dest = unsafe { args.as_ref().car };
+            let dest = unsafe { args.as_ref().car() };
 
-            if let Some(args) = unsafe { args.as_ref().cdr }.try_cast::<Pair>(cmp.mt) {
-                let val_sexpr = unsafe { args.as_ref().car };
+            if let Some(args) = unsafe { args.as_ref().cdr() }.try_cast::<Pair>(cmp.mt) {
+                let val_sexpr = unsafe { args.as_ref().car() };
 
-                if unsafe { args.as_ref().cdr } == EmptyList::instance(cmp.mt).into() {
+                if unsafe { args.as_ref().cdr() } == EmptyList::instance(cmp.mt).into() {
                     let dest = dest.try_cast::<Syntax>(cmp.mt).unwrap_or_else(|| {
                         todo!() // error
                     });
@@ -342,15 +342,15 @@ pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::PosExpr {
     fn analyze_call(cmp: &mut Compiler, env: &Rc<Env>, expr: Gc<Pair>, pos: Handle) -> anf::PosExpr {
         let mut bindings = Vec::new();
 
-        let anf_callee = analyze_expr(cmp, env, unsafe { expr.as_ref().car });
+        let anf_callee = analyze_expr(cmp, env, unsafe { expr.as_ref().car() });
         bindings.push((Id::fresh(cmp), anf_callee));
 
-        let mut args = unsafe { expr.as_ref().cdr };
+        let mut args = unsafe { expr.as_ref().cdr() };
         while let Some(args_pair) = args.try_cast::<Pair>(cmp.mt) {
-            let anf_arg = analyze_expr(cmp, env, unsafe { args_pair.as_ref().car });
+            let anf_arg = analyze_expr(cmp, env, unsafe { args_pair.as_ref().car() });
             bindings.push((Id::fresh(cmp), anf_arg));
 
-            args = unsafe { args_pair.as_ref().cdr };
+            args = unsafe { args_pair.as_ref().cdr() };
         }
 
         if args == EmptyList::instance(cmp.mt).into() {
@@ -369,15 +369,15 @@ pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::PosExpr {
         let pos = cmp.mt.root(pos);
 
         if let Some(ls) = expr.try_cast::<Pair>(cmp.mt) {
-            let callee = unsafe { ls.as_ref().car }.try_cast::<Syntax>(cmp.mt).unwrap_or_else(|| {
+            let callee = unsafe { ls.as_ref().car() }.try_cast::<Syntax>(cmp.mt).unwrap_or_else(|| {
                 todo!() // error
             });
 
             if let Some(callee) = unsafe { callee.as_ref().expr }.try_cast::<Symbol>(cmp.mt) {
                 if unsafe { callee.as_ref().name() == "define" } {
-                    return analyze_definition(cmp, unsafe { ls.as_ref().cdr }, pos);
+                    return analyze_definition(cmp, unsafe { ls.as_ref().cdr() }, pos);
                 } else if unsafe { callee.as_ref().name() == "begin" } {
-                    return analyze_toplevel_begin(cmp, unsafe { ls.as_ref().cdr }, pos);
+                    return analyze_toplevel_begin(cmp, unsafe { ls.as_ref().cdr() }, pos);
                 }
             }
         }
@@ -389,12 +389,12 @@ pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::PosExpr {
         let args = args.try_cast::<Pair>(cmp.mt).unwrap_or_else(|| {
             todo!() // error
         });
-        let definiend = unsafe { args.as_ref().car };
-        let args = unsafe { args.as_ref().cdr }.try_cast::<Pair>(cmp.mt).unwrap_or_else(|| {
+        let definiend = unsafe { args.as_ref().car() };
+        let args = unsafe { args.as_ref().cdr() }.try_cast::<Pair>(cmp.mt).unwrap_or_else(|| {
             todo!() // error
         });
-        let val_expr = unsafe { args.as_ref().car };
-        if unsafe { args.as_ref().cdr } != EmptyList::instance(cmp.mt).into() {
+        let val_expr = unsafe { args.as_ref().car() };
+        if unsafe { args.as_ref().cdr() } != EmptyList::instance(cmp.mt).into() {
             todo!() // error
         }
 
@@ -413,9 +413,9 @@ pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::PosExpr {
         let mut stmts = Vec::new();
 
         while let Some(args_pair) = args.try_cast::<Pair>(cmp.mt) {
-            stmts.push(analyze_toplevel_form(cmp, unsafe { args_pair.as_ref().car }));
+            stmts.push(analyze_toplevel_form(cmp, unsafe { args_pair.as_ref().car() }));
 
-            args = unsafe { args_pair.as_ref().cdr };
+            args = unsafe { args_pair.as_ref().cdr() };
         }
 
         if args == EmptyList::instance(cmp.mt).into() {

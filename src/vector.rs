@@ -22,11 +22,6 @@ impl Reify for Vector<ORef> {
     fn reify(mt: &Mutator) -> Gc<Self::Kind> { mt.types().vector_of_any }
 }
 
-impl<T> Vector<T> {
-    // The indexed field, .phantom is just for Rust typing:
-    pub const TYPE_LEN: usize = 1;
-}
-
 impl Vector<ORef> {
     pub fn from_handles(mt: &mut Mutator, handles: &[Handle]) -> Gc<Self> {
         unsafe {

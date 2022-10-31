@@ -24,8 +24,6 @@ impl Reify for Closure {
 }
 
 impl Closure {
-    pub const TYPE_LEN: usize = 2;
-
     pub fn new(mt: &mut Mutator, len: usize) -> Gc<Self> {
         unsafe {
             let mut nptr = mt.alloc_indexed(Self::reify(mt), len).cast::<Self>();

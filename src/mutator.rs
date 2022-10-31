@@ -88,208 +88,157 @@ impl Mutator {
             // Create strongly connected bootstrap types, Fields uninitialized:
             // -----------------------------------------------------------------
 
-            let r#type_nptr = heap.alloc_raw(Type::TYPE_LAYOUT, true)?;
-            let mut r#type =
-                Gc::new_unchecked(r#type_nptr.cast::<IndexedType>());
-            Header::initialize_indexed(r#type_nptr,
-                Header::new(r#type.as_type()), Type::TYPE_LEN);
-            *r#type.as_mut() = IndexedType::new_unchecked(Type {
+            let type_nptr = heap.alloc_raw(Type::TYPE_LAYOUT, true)?.cast::<IndexedType>();
+            let r#type = Gc::new_unchecked(type_nptr.cast::<IndexedType>());
+            Header::initialize_indexed(type_nptr, Header::new(r#type.as_type()), Type::TYPE_LEN);
+            type_nptr.as_ptr().write(IndexedType::new_unchecked(Type {
                 min_size: min_size_of_indexed::<Type>(),
                 align: align_of_indexed::<Type>()
-            });
+            }));
 
-            let field_type_nptr = heap.alloc_raw(Field::<()>::TYPE_LAYOUT,
-                true)?;
-            let mut field_type =
-                Gc::new_unchecked(r#field_type_nptr.cast::<NonIndexedType>());
-            Header::initialize_indexed(r#field_type_nptr,
-                Header::new(r#type.as_type()), Field::<()>::TYPE_LEN);
-            *field_type.as_mut() = NonIndexedType::new_unchecked(Type {
+            let field_type_nptr = heap.alloc_raw(Field::<()>::TYPE_LAYOUT, true)?.cast::<NonIndexedType>();
+            let field_type = Gc::new_unchecked(field_type_nptr.cast::<NonIndexedType>());
+            Header::initialize_indexed(field_type_nptr, Header::new(r#type.as_type()), Field::<()>::TYPE_LEN);
+            field_type_nptr.as_ptr().write(NonIndexedType::new_unchecked(Type {
                 min_size: size_of::<Field::<()>>(),
                 align: align_of::<Field::<()>>()
-            });
+            }));
 
-            let usize_type_nptr = heap.alloc_raw(USIZE_TYPE_LAYOUT, true)?;
-            let mut usize_type =
-                Gc::new_unchecked(r#usize_type_nptr.cast::<BitsType>());
-            Header::initialize_indexed(r#usize_type_nptr,
-                Header::new(r#type.as_type()), 0);
-            *usize_type.as_mut() = BitsType::from_static::<usize>();
+            let usize_type_nptr = heap.alloc_raw(USIZE_TYPE_LAYOUT, true)?.cast::<BitsType>();
+            let usize_type = Gc::new_unchecked(usize_type_nptr.cast::<BitsType>());
+            Header::initialize_indexed(r#usize_type_nptr, Header::new(r#type.as_type()), 0);
+            usize_type_nptr.as_ptr().write(BitsType::from_static::<usize>());
 
             // Initialize Fields of strongly connected bootstrap types:
             // -----------------------------------------------------------------
 
-            field_type.as_type().as_mut().indexed_field_mut().copy_from_slice(&[
-                Field { r#type: r#type.as_type(), offset: 0 },
-                Field {
-                    r#type: usize_type.as_type(),
-                    offset: size_of::<Gc<()>>()
-                }
-            ]);
+            {
+                let fields = [
+                    Field { r#type: r#type.as_type(), offset: 0 },
+                    Field {
+                        r#type: usize_type.as_type(),
+                        offset: size_of::<Gc<()>>()
+                    }
+                ];
+                (*field_type_nptr.cast::<Type>().as_ptr()).indexed_field_ptr_mut()
+                    .copy_from_nonoverlapping(fields.as_ptr(), fields.len());
+            }
 
-            r#type.as_type().as_mut().indexed_field_mut().copy_from_slice(&[
-                Field { r#type: usize_type.as_type(), offset: 0 },
-                Field {
-                    r#type: usize_type.as_type(),
-                    offset: size_of::<usize>()
-                },
-                Field {
-                    r#type: field_type.as_type(),
-                    offset: min_size_of_indexed::<Type>()
-                }
-            ]);
+            {
+                let fields = [
+                    Field { r#type: usize_type.as_type(), offset: 0 },
+                    Field {
+                        r#type: usize_type.as_type(),
+                        offset: size_of::<usize>()
+                    },
+                    Field {
+                        r#type: field_type.as_type(),
+                        offset: min_size_of_indexed::<Type>()
+                    }
+                ];
+                (*type_nptr.cast::<Type>().as_ptr()).indexed_field_ptr_mut()
+                    .copy_from_nonoverlapping(fields.as_ptr(), fields.len());
+            }
 
             // Create other `.types`:
             // -----------------------------------------------------------------
 
-            let mut any = Gc::new_unchecked(Type::bootstrap_new(
-                &mut heap, r#type, 0
-            )?);
-            *any.as_mut() = Type {
-                min_size: size_of::<ORef>(),
-                align: align_of::<ORef>()
-            };
+            let any = Type::bootstrap_new(&mut heap, r#type,
+                Type {
+                    min_size: size_of::<ORef>(),
+                    align: align_of::<ORef>()
+                },
+                &[])?;
 
-            let mut bool = Gc::new_unchecked(Type::bootstrap_new(&mut heap, r#type, 0)?);
-            *bool.as_mut() = BitsType::from_static::<bool>();
+            let bool = Type::bootstrap_new(&mut heap, r#type, BitsType::from_static::<bool>(), &[])?;
 
-            let mut u8_type = Gc::new_unchecked(Type::bootstrap_new(
-                &mut heap, r#type, 0
-            )?);
-            *u8_type.as_mut() = BitsType::from_static::<u8>();
+            let u8_type = Type::bootstrap_new(&mut heap, r#type, BitsType::from_static::<u8>(), &[])?;
 
-            let mut symbol = Gc::new_unchecked(Type::bootstrap_new(
-                &mut heap, r#type, Symbol::TYPE_LEN
-            )?);
-            *symbol.as_mut() = IndexedType::new_unchecked(Type {
-                min_size: min_size_of_indexed::<Symbol>(),
-                align: align_of_indexed::<Symbol>()
-            });
-            symbol.as_type().as_mut().indexed_field_mut().copy_from_slice(&[
-                Field { r#type: usize_type.as_type(), offset: 0 },
-                Field {
-                    r#type: u8_type.as_type(),
-                    offset: size_of::<usize>()
-                }
-            ]);
+            let symbol = Type::bootstrap_new(&mut heap, r#type,
+                IndexedType::new_unchecked(Type {
+                    min_size: min_size_of_indexed::<Symbol>(),
+                    align: align_of_indexed::<Symbol>()
+                }),
+                &[Field { r#type: usize_type.as_type(), offset: 0 },
+                  Field {
+                      r#type: u8_type.as_type(),
+                      offset: size_of::<usize>()
+                  }])?;
 
-            let string: NonNull<IndexedType> = Type::bootstrap_new(&mut heap, r#type, String::TYPE_LEN)?;
-            string.as_ptr().write(IndexedType::new_unchecked(Type {
-                min_size: min_size_of_indexed::<String>(),
-                align: align_of_indexed::<String>()
-            }));
-            (*(string.as_ptr() as *mut Type)).indexed_field_mut().copy_from_slice(&[
-                Field {r#type: u8_type.as_type(), offset: min_size_of_indexed::<String>()}
-            ]);
-            let string = Gc::new_unchecked(string);
+            let string = Type::bootstrap_new(&mut heap, r#type,
+                IndexedType::new_unchecked(Type {
+                    min_size: min_size_of_indexed::<String>(),
+                    align: align_of_indexed::<String>()
+                }),
+                &[Field {r#type: u8_type.as_type(), offset: min_size_of_indexed::<String>()}])?;
 
-            let mut pair = Gc::new_unchecked(Type::bootstrap_new(
-                &mut heap, r#type, Pair::TYPE_LEN
-            )?);
-            *pair.as_mut() = NonIndexedType::from_static::<Pair>();
-            pair.as_type().as_mut().indexed_field_mut().copy_from_slice(&[
+            let pair = Type::bootstrap_new(&mut heap, r#type, NonIndexedType::from_static::<Pair>(), &[
                 Field { r#type: any, offset: 0 },
                 Field {
                     r#type: any,
                     offset: size_of::<Gc<()>>()
                 }
-            ]);
+            ])?;
 
-            let mut empty_list = Gc::new_unchecked(Type::bootstrap_new(
-                &mut heap, r#type, EmptyList::TYPE_LEN
-            )?);
-            *empty_list.as_mut() = NonIndexedType::from_static::<EmptyList>();
+            let empty_list = Type::bootstrap_new(&mut heap, r#type, NonIndexedType::from_static::<EmptyList>(), &[])?;
 
-            let mut vector_of_any = Gc::new_unchecked(Type::bootstrap_new(
-                &mut heap, r#type, Vector::<ORef>::TYPE_LEN
-            )?);
-            *vector_of_any.as_mut() = IndexedType::new_unchecked(Type {
-                min_size: min_size_of_indexed::<Vector::<ORef>>(),
-                align: align_of_indexed::<Vector::<ORef>>()
-            });
-            vector_of_any.as_type().as_mut().indexed_field_mut()
-                .copy_from_slice(&[
-                    Field { r#type: any, offset: 0 }
-                ]);
+            let vector_of_any = Type::bootstrap_new(&mut heap, r#type,
+                IndexedType::new_unchecked(Type {
+                    min_size: min_size_of_indexed::<Vector::<ORef>>(),
+                    align: align_of_indexed::<Vector::<ORef>>()
+                }),
+                &[Field { r#type: any, offset: 0 }])?;
 
-            let mut pos = Gc::new_unchecked(Type::bootstrap_new(
-                &mut heap, r#type, Pos::TYPE_LEN
-            )?);
-            *pos.as_mut() = NonIndexedType::from_static::<Pos>();
-            pos.as_type().as_mut().indexed_field_mut().copy_from_slice(&[
+            let pos = Type::bootstrap_new(&mut heap, r#type, NonIndexedType::from_static::<Pos>(), &[
                 Field { r#type: any, offset: 0 },
                 Field { r#type: any, offset: size_of::<ORef>() },
                 Field { r#type: any, offset: 2 * size_of::<ORef>() }
-            ]);
+            ])?;
 
-            let mut syntax = Gc::new_unchecked(Type::bootstrap_new(
-                &mut heap, r#type, Syntax::TYPE_LEN
-            )?);
-            *syntax.as_mut() = NonIndexedType::from_static::<Syntax>();
-            syntax.as_type().as_mut().indexed_field_mut().copy_from_slice(&[
-                Field { r#type: any, offset: 0 },
-                Field { r#type: any, offset: size_of::<ORef>() }
-            ]);
+            let syntax = Type::bootstrap_new(&mut heap, r#type, NonIndexedType::from_static::<Syntax>(),
+                &[Field { r#type: any, offset: 0 },
+                  Field { r#type: any, offset: size_of::<ORef>() }])?;
 
-            let mut bytecode = Gc::new_unchecked(Type::bootstrap_new(
-                &mut heap, r#type, Bytecode::TYPE_LEN
-            )?);
-            *bytecode.as_mut() = IndexedType::new_unchecked(Type {
-                min_size: min_size_of_indexed::<Bytecode>(),
-                align: align_of_indexed::<Bytecode>()
-            });
-            bytecode.as_type().as_mut().indexed_field_mut().copy_from_slice(&[
-                Field { r#type: usize_type.as_type(), offset: 0 },
-                Field { r#type: bool.as_type(), offset: size_of::<usize>() },
-                Field { r#type: usize_type.as_type(), offset: 2 * size_of::<usize>() },
-                Field { r#type: usize_type.as_type(), offset: 3 * size_of::<usize>() },
-                Field { r#type: vector_of_any.as_type(), offset: 4 * size_of::<usize>() },
-                Field { r#type: vector_of_any.as_type(), offset: 5 * size_of::<usize>() },
-                Field { r#type: vector_of_any.as_type(), offset: 6 * size_of::<usize>() },
-                Field {
-                    r#type: u8_type.as_type(),
-                    offset: min_size_of_indexed::<Bytecode>()
-                }
-            ]);
+            let bytecode = Type::bootstrap_new(&mut heap, r#type,
+                IndexedType::new_unchecked(Type {
+                    min_size: min_size_of_indexed::<Bytecode>(),
+                    align: align_of_indexed::<Bytecode>()
+                }),
+                &[Field { r#type: usize_type.as_type(), offset: 0 },
+                  Field { r#type: bool.as_type(), offset: size_of::<usize>() },
+                  Field { r#type: usize_type.as_type(), offset: 2 * size_of::<usize>() },
+                  Field { r#type: usize_type.as_type(), offset: 3 * size_of::<usize>() },
+                  Field { r#type: vector_of_any.as_type(), offset: 4 * size_of::<usize>() },
+                  Field { r#type: vector_of_any.as_type(), offset: 5 * size_of::<usize>() },
+                  Field { r#type: vector_of_any.as_type(), offset: 6 * size_of::<usize>() },
+                  Field {
+                      r#type: u8_type.as_type(),
+                      offset: min_size_of_indexed::<Bytecode>()
+                  }])?;
 
-            let mut closure = Gc::new_unchecked(Type::bootstrap_new(
-                &mut heap, r#type, Closure::TYPE_LEN
-            )?);
-            *closure.as_mut() = IndexedType::new_unchecked(Type {
-                min_size: min_size_of_indexed::<Closure>(),
-                align: align_of_indexed::<Closure>()
-            });
-            closure.as_type().as_mut().indexed_field_mut().copy_from_slice(&[
-                Field { r#type: bytecode.as_type(), offset: 0 },
-                Field {
-                    r#type: any,
-                    offset: min_size_of_indexed::<Closure>()
-                }
-            ]);
+            let closure = Type::bootstrap_new(&mut heap, r#type,
+                IndexedType::new_unchecked(Type {
+                    min_size: min_size_of_indexed::<Closure>(),
+                    align: align_of_indexed::<Closure>()
+                }),
+                &[Field { r#type: bytecode.as_type(), offset: 0 },
+                  Field {
+                      r#type: any,
+                      offset: min_size_of_indexed::<Closure>()
+                  }])?;
 
-            let mut fn_ptr = Gc::new_unchecked(Type::bootstrap_new(&mut heap, r#type, 0)?);
-            *fn_ptr.as_mut() = BitsType::from_static::<native_fn::Code>();
+            let fn_ptr = Type::bootstrap_new(&mut heap, r#type, BitsType::from_static::<native_fn::Code>(), &[])?;
 
-            let mut native_fn = Gc::new_unchecked(Type::bootstrap_new(
-                &mut heap, r#type, NativeFn::TYPE_LEN
-            )?);
-            *native_fn.as_mut() = NonIndexedType::from_static::<NativeFn>();
-            native_fn.as_type().as_mut().indexed_field_mut().copy_from_slice(&[
+            let native_fn = Type::bootstrap_new(&mut heap, r#type, NonIndexedType::from_static::<NativeFn>(), &[
                 Field { r#type: bytecode.as_type(), offset: 0 },
                 Field { r#type: fn_ptr.as_type(), offset: size_of::<usize>().max(align_of::<native_fn::Code>()) }
-            ]);
+            ])?;
 
-            let mut r#box = Gc::new_unchecked(Type::bootstrap_new(
-                &mut heap, r#type, Box::TYPE_LEN
-            )?);
-            *r#box.as_mut() = NonIndexedType::from_static::<Box>();
-            r#box.as_type().as_mut().indexed_field_mut().copy_from_slice(&[Field { r#type: any, offset: 0 }]);
+            let r#box = Type::bootstrap_new(&mut heap, r#type, NonIndexedType::from_static::<Box>(),
+                &[Field { r#type: any, offset: 0 }])?;
 
-            let mut var = Gc::new_unchecked(Type::bootstrap_new(
-                &mut heap, r#type, Var::TYPE_LEN
-            )?);
-            *var.as_mut() = NonIndexedType::from_static::<Var>();
-            var.as_type().as_mut().indexed_field_mut().copy_from_slice(&[Field { r#type: any, offset: 0 }]);
+            let var = Type::bootstrap_new(&mut heap, r#type, NonIndexedType::from_static::<Var>(),
+                &[Field { r#type: any, offset: 0 }])?;
 
             // Create singleton instances:
             // -----------------------------------------------------------------
@@ -462,10 +411,7 @@ impl Mutator {
                 for i in ((acc_index - varargs_len)..acc_index).rev() {
                     unsafe {
                         let pair = self.alloc_static::<Pair>();
-                        pair.as_ptr().write(Pair {
-                            car: self.regs[i],
-                            cdr: self.regs[acc_index]
-                        });
+                        pair.as_ptr().write(Pair::new(self.regs[i], self.regs[acc_index]));
                         self.regs[acc_index] = Gc::new_unchecked(pair).into();
                     }
                 }
@@ -547,18 +493,18 @@ impl Mutator {
                         let i = self.next_oparg();
 
                         let name = unsafe { self.consts().as_ref().indexed_field()[i].unchecked_cast::<Symbol>() };
-                        if let Some(mut var) = self.ns.get(name) {
+                        if let Some(var) = self.ns.get(name) {
                             let v = self.regs.pop().unwrap();
                             unsafe {
-                                var.as_mut().redefine(v);
+                                var.as_ref().redefine(v);
                                 self.regs.push_unchecked(v); // HACK?
                             }
                         } else {
                             unsafe {
-                                let mut var = Var::new_uninitialized(self); // Avoids allocating a HandleT<Var>
+                                let var = Var::new_uninitialized(self); // Avoids allocating a HandleT<Var>
                                 self.ns.add(name, var);
                                 let v = self.regs.pop().unwrap();
-                                var.as_mut().init(v);
+                                var.as_ref().init(v);
                                 self.regs.push_unchecked(v); // HACK?
                             }
                         }
@@ -568,10 +514,10 @@ impl Mutator {
                         let i = self.next_oparg();
 
                         let name = unsafe { self.consts().as_ref().indexed_field()[i].unchecked_cast::<Symbol>() };
-                        if let Some(mut var) = self.ns.get(name) {
+                        if let Some(var) = self.ns.get(name) {
                             let v = self.regs.pop().unwrap();
                             unsafe {
-                                var.as_mut().set(v);
+                                var.as_ref().set(v);
                                 self.regs.push_unchecked(v); // HACK?
                             }
                         } else {
@@ -646,15 +592,15 @@ impl Mutator {
                     },
 
                     Opcode::Box => {
-                        let v = self.regs.pop().unwrap();
+                        let last_index = self.regs.len() - 1;
 
                         let r#box = unsafe {
                             let nptr = self.alloc_static::<Box>();
-                            nptr.as_ptr().write(Box {v});
+                            nptr.as_ptr().write(Box::new(self.regs[last_index]));
                             Gc::new_unchecked(nptr)
                         };
 
-                        self.regs.push(r#box.into());
+                        self.regs[last_index] = r#box.into();
                     },
 
                     Opcode::UninitializedBox => {
@@ -667,7 +613,7 @@ impl Mutator {
                         let v = self.regs.pop().unwrap();
                         let r#box = self.regs.pop().unwrap();
 
-                        unsafe { r#box.unchecked_cast::<Box>().as_mut().v = v; }
+                        unsafe { r#box.unchecked_cast::<Box>().as_ref().set(v); }
 
                         self.regs.push(r#box); // FIXME: Abstraction leak wrt. `set!`-conversion
                     },
@@ -677,8 +623,8 @@ impl Mutator {
                         let r#box = self.regs.pop().unwrap();
                         let guard = unsafe { self.regs.pop().unwrap().unchecked_cast::<Box>() };
 
-                        if unsafe { guard.as_ref().v.is_truthy(self) } {
-                            unsafe { r#box.unchecked_cast::<Box>().as_mut().v = v; }
+                        if unsafe { guard.as_ref().get().is_truthy(self) } {
+                            unsafe { r#box.unchecked_cast::<Box>().as_ref().set(v); }
 
                             self.regs.push(r#box); // FIXME: Abstraction leak wrt. `set!`-conversion
                         } else {
@@ -689,15 +635,15 @@ impl Mutator {
                     Opcode::BoxGet => {
                         let r#box = self.regs.pop().unwrap();
 
-                        self.regs.push(unsafe { r#box.unchecked_cast::<Box>().as_ref().v });
+                        self.regs.push(unsafe { r#box.unchecked_cast::<Box>().as_ref().get() });
                     },
 
                     Opcode::CheckedBoxGet => {
                         let r#box = self.regs.pop().unwrap();
                         let guard = unsafe { self.regs.pop().unwrap().unchecked_cast::<Box>() };
 
-                        if unsafe { guard.as_ref().v.is_truthy(self) } {
-                            self.regs.push(unsafe { r#box.unchecked_cast::<Box>().as_ref().v });
+                        if unsafe { guard.as_ref().get().is_truthy(self) } {
+                            self.regs.push(unsafe { r#box.unchecked_cast::<Box>().as_ref().get() });
                         } else {
                             todo!()
                         }
@@ -706,7 +652,7 @@ impl Mutator {
                     Opcode::CheckUse => {
                         let guard = unsafe { self.regs.pop().unwrap().unchecked_cast::<Box>() };
 
-                        if !unsafe { guard.as_ref().v.is_truthy(self) } {
+                        if !unsafe { guard.as_ref().get().is_truthy(self) } {
                             todo!()
                         }
                     },

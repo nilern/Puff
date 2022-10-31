@@ -128,13 +128,13 @@ pub const IS_NULL: NativeFn = NativeFn {
 fn cons(mt: &mut Mutator) -> Answer {
     let last_index = mt.regs().len() - 1;
 
-    let pair = unsafe { mt.alloc_static::<Pair>() };
-    unsafe { pair.as_ptr().write(Pair {
-        car: mt.regs()[last_index - 1],
-        cdr: mt.regs()[last_index]
-    }) };
+    let pair = unsafe {
+        let nptr = mt.alloc_static::<Pair>();
+        nptr.as_ptr().write(Pair::new(mt.regs()[last_index - 1], mt.regs()[last_index]));
+        Gc::new_unchecked(nptr)
+    };
 
-    unsafe { mt.regs_mut()[last_index] = Gc::new_unchecked(pair).into(); }
+    mt.regs_mut()[last_index] = pair.into();
     Answer::Ret
 }
 
@@ -150,7 +150,7 @@ fn car(mt: &mut Mutator) -> Answer {
         todo!()
     );
 
-    unsafe { mt.regs_mut()[last_index] = pair.as_ref().car; }
+    unsafe { mt.regs_mut()[last_index] = pair.as_ref().car(); }
     Answer::Ret
 }
 
@@ -166,7 +166,7 @@ fn cdr(mt: &mut Mutator) -> Answer {
         todo!()
     );
 
-    unsafe { mt.regs_mut()[last_index] = pair.as_ref().cdr; }
+    unsafe { mt.regs_mut()[last_index] = pair.as_ref().cdr(); }
     Answer::Ret
 }
 
@@ -178,12 +178,12 @@ pub const CDR: NativeFn = NativeFn {
 fn set_car(mt: &mut Mutator) -> Answer {
     let last_index = mt.regs().len() - 1;
 
-    let mut pair = mt.regs()[last_index - 1].try_cast::<Pair>(mt).unwrap_or_else(||
+    let pair = mt.regs()[last_index - 1].try_cast::<Pair>(mt).unwrap_or_else(||
         todo!()
     );
     let v = mt.regs()[last_index];
 
-    unsafe { pair.as_mut().car = v; }
+    unsafe { pair.as_ref().set_car(v); }
 
     Answer::Ret // HACK: Happens to return `v`
 }
@@ -196,12 +196,12 @@ pub const SET_CAR: NativeFn = NativeFn {
 fn set_cdr(mt: &mut Mutator) -> Answer {
     let last_index = mt.regs().len() - 1;
 
-    let mut pair = mt.regs()[last_index - 1].try_cast::<Pair>(mt).unwrap_or_else(||
+    let pair = mt.regs()[last_index - 1].try_cast::<Pair>(mt).unwrap_or_else(||
         todo!()
     );
     let v = mt.regs()[last_index];
 
-    unsafe { pair.as_mut().cdr = v; }
+    unsafe { pair.as_ref().set_cdr(v); }
 
     Answer::Ret // HACK: Happens to return `v`
 }
@@ -263,13 +263,13 @@ fn load(mt: &mut Mutator) -> Answer {
             Ok(stx) =>
                 if let Some((_, ref mut last_pair)) = builder {
                     let nil = mt.root(EmptyList::instance(mt).into());
-                    let pair = Pair::new(mt, stx.into(), nil);
-                    unsafe { last_pair.as_mut().cdr = pair.into(); }
+                    let pair = Gc::<Pair>::new(mt, stx.into(), nil);
+                    unsafe { last_pair.as_ref().set_cdr(pair.into()); }
                     *last_pair = mt.root_t(pair);
                 } else {
                     let nil = mt.root(EmptyList::instance(mt).into());
                     let pair = {
-                        let pair = Pair::new(mt, stx.into(), nil);
+                        let pair = Gc::<Pair>::new(mt, stx.into(), nil);
                         mt.root_t(pair)
                     };
                     builder = Some((pair.clone(), pair));
@@ -293,7 +293,7 @@ fn load(mt: &mut Mutator) -> Answer {
             let begin = Syntax::new(mt, begin, Some(start.clone()));
             mt.root(begin.into())
         };
-        let sexprs = Pair::new(mt, begin, sexprs);
+        let sexprs = Gc::<Pair>::new(mt, begin, sexprs);
         mt.root(sexprs.into())
     };
     let stx = {

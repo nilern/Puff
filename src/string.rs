@@ -22,8 +22,6 @@ impl Reify for String {
 }
 
 impl String {
-    pub const TYPE_LEN: usize = 1;
-
     pub fn new(mt: &mut Mutator, chars: &str) -> Gc<String> {
         unsafe {
             let nptr: NonNull<Self> = mt.alloc_indexed(Self::reify(mt), chars.len()).cast();

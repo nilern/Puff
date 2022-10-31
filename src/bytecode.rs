@@ -321,8 +321,6 @@ impl DisplayWithin for Gc<Bytecode> {
 }
 
 impl Bytecode {
-    pub const TYPE_LEN: usize = 8;
-
     pub fn new(mt: &mut Mutator, min_arity: usize, varargs: bool, max_regs: usize, clovers_len: usize,
         clover_names: HandleT<Vector<ORef>>, consts: HandleT<Vector<ORef>>, positions: HandleT<Vector<ORef>>,
         instrs: &[u8]

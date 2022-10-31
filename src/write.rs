@@ -39,15 +39,15 @@ impl DisplayWithin for Gc<()> {
             if let Some(this) = self.try_cast::<Symbol>(mt) {
                 write!(fmt, "{}", this.as_ref().name())
             } else if let Some(this) = self.try_cast::<Pair>(mt) {
-                write!(fmt, "({}", this.as_ref().car.within(mt))?;
+                write!(fmt, "({}", this.as_ref().car().within(mt))?;
 
-                let mut ls = this.as_ref().cdr;
+                let mut ls = this.as_ref().cdr();
                 loop {
                     if let Ok(ls_obj) = Gc::<()>::try_from(ls) {
                         if let Some(pair) = ls_obj.try_cast::<Pair>(mt) {
-                            write!(fmt, " {}", pair.as_ref().car.within(mt))?;
+                            write!(fmt, " {}", pair.as_ref().car().within(mt))?;
 
-                            ls = pair.as_ref().cdr;
+                            ls = pair.as_ref().cdr();
                             continue;
                         } else if let Some(_) = ls_obj.try_cast::<EmptyList>(mt) {
                             break;
@@ -82,9 +82,9 @@ impl DisplayWithin for Gc<()> {
 
                 write!(fmt, ")")
             } else if let Some(_) = self.try_cast::<Closure>(mt) {
-                write!(fmt, "#<fn @ {:p}>", self.as_ptr())
+                write!(fmt, "#<fn @ {:p}>", self.as_ref())
             } else if let Some(_) = self.try_cast::<NativeFn>(mt) {
-                write!(fmt, "#<fn native @ {:p}>", self.as_ptr())
+                write!(fmt, "#<fn native @ {:p}>", self.as_ref())
             } else if let Some(_) = self.try_cast::<Syntax>(mt) {
                 write!(fmt, "#<syntax>") // TODO: show unwrapped .expr
             } else if let Some(pos) = self.try_cast::<Pos>(mt) {
@@ -98,7 +98,7 @@ impl DisplayWithin for Gc<()> {
             } else if let Some(code) = self.try_cast::<Bytecode>(mt) {
                 write!(fmt, "{}", code.within(mt))
             } else {
-                write!(fmt, "#<object @ {:p}>", self.as_ptr())
+                write!(fmt, "#<object @ {:p}>", self.as_ref())
             }
         }
     }

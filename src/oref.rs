@@ -271,15 +271,9 @@ impl TryFrom<ORef> for Gc<()> {
 impl<T> Gc<T> {
     pub unsafe fn new_unchecked(ptr: NonNull<T>) -> Self { Self(ptr) }
 
-    pub fn as_ptr(self) -> *const T { self.0.as_ptr() }
-
     pub unsafe fn as_ref(&self) -> &T { self.0.as_ref() }
 
-    pub unsafe fn as_mut(&mut self) -> &mut T { self.0.as_mut() }
-
-    fn header(&self) -> &Header {
-        unsafe { &*((self.0.as_ptr() as *const Header).offset(-1)) }
-    }
+    fn header(&self) -> &Header { unsafe { &*((self.0.as_ptr() as *const Header).offset(-1)) } }
 
     pub fn r#type(self) -> Gc<Type> { self.header().r#type() }
 
@@ -294,14 +288,14 @@ impl Gc<()> {
     pub fn to_doc(self, mt: &Mutator) -> RcDoc<()> {
         if let Some(pair) = self.try_cast::<Pair>(mt) {
             unsafe {
-                let mut doc = RcDoc::text("(").append(pair.as_ref().car.to_doc(mt));
+                let mut doc = RcDoc::text("(").append(pair.as_ref().car().to_doc(mt));
                 
-                let mut ls = pair.as_ref().cdr;
+                let mut ls = pair.as_ref().cdr();
                 loop {
                     if let Some(pair) = ls.try_cast::<Pair>(mt) {
                         doc = doc.append(RcDoc::line())
-                            .append(pair.as_ref().car.to_doc(mt));
-                        ls = pair.as_ref().cdr;
+                            .append(pair.as_ref().car().to_doc(mt));
+                        ls = pair.as_ref().cdr();
                     } else if ls == EmptyList::instance(mt).into() {
                         doc = doc.append(RcDoc::text(")"));
                         break;

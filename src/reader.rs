@@ -169,13 +169,13 @@ impl<'i> Reader<'i> {
         if let Some(res) = self.next(mt) {
             let ls = EmptyList::instance(mt).into();
             let ls = mt.root(ls);
-            let ls = Pair::new(mt, res?.into(), ls).into();
+            let ls = Gc::<Pair>::new(mt, res?.into(), ls).into();
             let ls = mt.root(ls);
             let quote = Symbol::new(mt, "quote").into();
             let quote = mt.root(quote);
             let quote = Syntax::new(mt, quote, Some(start.clone()));
             let quote = mt.root(quote.into());
-            let ls = Pair::new(mt, quote, ls).into();
+            let ls = Gc::<Pair>::new(mt, quote, ls).into();
             let ls = mt.root(ls);
             let ls = Syntax::new(mt, ls, Some(start));
 
@@ -297,7 +297,7 @@ impl<'i> Reader<'i> {
         };
 
         let ls: HandleT<Pair> = {
-            let ls = Pair::new(mt, car, empty.clone());
+            let ls = Gc::<Pair>::new(mt, car, empty.clone());
             mt.root_t(ls)
         };
 
@@ -316,7 +316,7 @@ impl<'i> Reader<'i> {
                     self.input.next();
 
                     match self.next(mt) {
-                        Some(res) => unsafe { last_pair.as_mut().cdr = (*res?).into(); },
+                        Some(res) => unsafe { last_pair.as_ref().set_cdr((*res?).into()); },
                         None => return Err(())
                     }
 
@@ -339,8 +339,8 @@ impl<'i> Reader<'i> {
                 Some(_) => // (<datum>+ ...
                     match self.next(mt) {
                         Some(res) => {
-                            let pair = Pair::new(mt, res?.into(), empty.clone());
-                            unsafe { last_pair.as_mut().cdr = pair.into(); }
+                            let pair = Gc::<Pair>::new(mt, res?.into(), empty.clone());
+                            unsafe { last_pair.as_ref().set_cdr(pair.into()); }
                             last_pair = mt.root_t(pair);
                         },
 
