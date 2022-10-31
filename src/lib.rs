@@ -14,6 +14,7 @@ pub mod list;
 pub mod vector;
 pub mod closure;
 mod native_fn;
+mod write;
 mod builtins;
 mod r#box;
 mod namespace;

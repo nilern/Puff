@@ -30,6 +30,11 @@ const USIZE_TYPE_LAYOUT: Layout = unsafe {
     )
 };
 
+pub struct WithinMt<'a, T> {
+    pub v: T,
+    pub mt: &'a Mutator
+}
+
 pub struct Cfg {
     pub debug: bool
 }

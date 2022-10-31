@@ -71,10 +71,6 @@ fn test_quote() {
     let plus = mt.root(plus.into());
     let a = Symbol::new(&mut mt, "a");
     let a = mt.root(a.into());
-    let b = Symbol::new(&mut mt, "b");
-    let b = mt.root(b.into());
-    let c = Symbol::new(&mut mt, "c");
-    let c = mt.root(c.into());
     let one = mt.root(Fixnum::from(1u8).into());
     let two = mt.root(Fixnum::from(2u8).into());
     let empty_list = EmptyList::instance(&mt);

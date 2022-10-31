@@ -4,7 +4,7 @@ use std::collections::hash_map::HashMap;
 use std::slice;
 use std::cmp::Ordering;
 
-use crate::oref::{Reify, DisplayWithin, ORef, Gc};
+use crate::oref::{Reify, ORef, Gc};
 use crate::heap_obj::Indexed;
 use crate::vector::Vector;
 use crate::mutator::Mutator;
@@ -12,6 +12,7 @@ use crate::handle::{Handle, HandleT};
 use crate::r#type::IndexedType;
 use crate::compiler::cfg;
 use crate::symbol::Symbol;
+use crate::write::DisplayWithin;
 
 #[derive(Debug)]
 pub enum Opcode {

@@ -1,39 +1,16 @@
-use std::fmt::{self, Debug, Display};
+use std::fmt::{self, Debug};
 use std::mem::{size_of, transmute};
 use std::ptr::NonNull;
 use pretty::RcDoc;
 
 use crate::r#type::{Type, NonIndexedType, IndexedType, BitsType};
-use crate::heap_obj::{Singleton, HeapObj, Header, Indexed};
-use crate::mutator::Mutator;
-use crate::symbol::Symbol;
+use crate::heap_obj::{Singleton, HeapObj, Header};
+use crate::mutator::{Mutator, WithinMt};
 use crate::list::{Pair, EmptyList};
-use crate::closure::Closure;
-use crate::native_fn::NativeFn;
-use crate::bytecode::Bytecode;
 use crate::bool::Bool;
-use crate::r#box::Box;
-use crate::string::String;
-use crate::vector::Vector;
-use crate::syntax::{Syntax, Pos};
 
 trait Tagged {
     const TAG: usize;
-}
-
-pub trait DisplayWithin {
-    fn fmt_within(&self, mt: &Mutator, fmt: &mut fmt::Formatter) -> fmt::Result;
-}
-
-pub struct WithinMt<'a, T> {
-    pub v: T,
-    pub mt: &'a Mutator
-}
-
-impl<'a, T: DisplayWithin> Display for WithinMt<'a, T> {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        self.v.fmt_within(self.mt, fmt)
-    }
 }
 
 // TODO: Enforce `usize` at least 32 bits:
@@ -87,20 +64,20 @@ impl ORef {
     }
 }
 
-impl DisplayWithin for ORef {
-    fn fmt_within(&self, mt: &Mutator, fmt: &mut fmt::Formatter) -> fmt::Result {
-        match self.tag() {
-            Gc::<()>::TAG => unsafe {
-                let ptr = NonNull::new_unchecked(self.0 as *mut ());
-                Gc::new_unchecked(ptr).fmt_within(mt, fmt)
-            },
+pub enum ORefEnum {
+    Gc(Gc<()>),
+    Fixnum(isize),
+    Flonum(f64),
+    Char(char)
+}
 
-            Fixnum::TAG => Display::fmt(&isize::from(Fixnum(self.0)), fmt),
-
-            Flonum::TAG => Display::fmt(&f64::from(Flonum(self.0)), fmt),
-
-            Char::TAG => Display::fmt(&char::from(Char(self.0)), fmt),
-
+impl From<ORef> for ORefEnum {
+    fn from(oref: ORef) -> Self {
+        match oref.tag() {
+            Gc::<()>::TAG => Self::Gc(unsafe { Gc(NonNull::new_unchecked(oref.0 as *mut ())) }),
+            Fixnum::TAG => Self::Fixnum(Fixnum(oref.0).into()),
+            Flonum::TAG => Self::Flonum(Flonum(oref.0).into()),
+            Char::TAG => Self::Char(Char(oref.0).into()),
             _ => unreachable!()
         }
     }
@@ -186,7 +163,7 @@ impl From<u8> for Fixnum {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-struct Flonum(usize);
+pub struct Flonum(usize);
 
 impl Tagged for Flonum {
     const TAG: usize = Fixnum::TAG + 1;
@@ -210,7 +187,7 @@ impl From<Flonum> for f64 {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct Char(usize);
+pub struct Char(usize);
 
 impl Tagged for Char {
     const TAG: usize = Flonum::TAG + 1;
@@ -265,84 +242,6 @@ impl<T> Debug for Gc<T> {
     }
 }
 
-impl<T> Display for Gc<T> {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        write!(fmt, "#<object {:p}>", self.0)
-    }
-}
-
-impl DisplayWithin for Gc<()> {
-    fn fmt_within(&self, mt: &Mutator, fmt: &mut fmt::Formatter) -> fmt::Result
-    {
-        unsafe {
-            if let Some(this) = self.try_cast::<Symbol>(mt) {
-                write!(fmt, "{}", this.as_ref().name())
-            } else if let Some(this) = self.try_cast::<Pair>(mt) {
-                write!(fmt, "({}", this.as_ref().car.within(mt))?;
-
-                let mut ls = this.as_ref().cdr;
-                loop {
-                    if let Ok(ls_obj) = Gc::<()>::try_from(ls) {
-                        if let Some(pair) = ls_obj.try_cast::<Pair>(mt) {
-                            write!(fmt, " {}", pair.as_ref().car.within(mt))?;
-
-                            ls = pair.as_ref().cdr;
-                            continue;
-                        } else if let Some(_) = ls_obj.try_cast::<EmptyList>(mt) {
-                            break;
-                        }
-                    }
-
-                    write!(fmt, " . {}", ls.within(mt))?;
-                    break;
-                }
-
-                write!(fmt, ")")
-            } else if let Some(_) = self.try_cast::<EmptyList>(mt) {
-                write!(fmt, "()")
-            } else if let Some(this) = self.try_cast::<String>(mt) {
-                write!(fmt, "\"{}\"", this.as_ref().as_str())
-            } else if let Some(this) = self.try_cast::<Bool>(mt) {
-                if bool::from(this.as_ref().0) {
-                    write!(fmt, "#t")
-                } else {
-                    write!(fmt, "#f")
-                }
-            } else if let Some(vs) = self.try_cast::<Vector<ORef>>(mt) {
-                write!(fmt, "#(")?;
-
-                if vs.as_ref().indexed_field().len() > 0 {
-                    write!(fmt, "{}", vs.as_ref().indexed_field()[0].within(mt))?;
-
-                    for v in &vs.as_ref().indexed_field()[1..] {
-                        write!(fmt, " {}", v.within(mt))?;
-                    }
-                }
-
-                write!(fmt, ")")
-            } else if let Some(_) = self.try_cast::<Closure>(mt) {
-                write!(fmt, "#<fn @ {:p}>", self.0)
-            } else if let Some(_) = self.try_cast::<NativeFn>(mt) {
-                write!(fmt, "#<fn native @ {:p}>", self.0)
-            } else if let Some(_) = self.try_cast::<Syntax>(mt) {
-                write!(fmt, "#<syntax>") // TODO: show unwrapped .expr
-            } else if let Some(pos) = self.try_cast::<Pos>(mt) {
-                write!(fmt, "#<pos {} {} {}>",
-                    pos.as_ref().filename.within(mt),
-                    ORef::from(pos.as_ref().line).within(mt),
-                    ORef::from(pos.as_ref().column).within(mt)
-                )
-            } else if let Some(_) = self.try_cast::<Box>(mt) {
-                write!(fmt, "#<box>")
-            } else if let Some(code) = self.try_cast::<Bytecode>(mt) {
-                write!(fmt, "{}", code.within(mt))
-            } else {
-                write!(fmt, "#<object @ {:p}>", self.0)
-            }
-        }
-    }
-}
-
 impl<T> Clone for Gc<T> {
     fn clone(&self) -> Self { Self(self.0) }
 }
@@ -371,6 +270,8 @@ impl TryFrom<ORef> for Gc<()> {
 
 impl<T> Gc<T> {
     pub unsafe fn new_unchecked(ptr: NonNull<T>) -> Self { Self(ptr) }
+
+    pub fn as_ptr(self) -> *const T { self.0.as_ptr() }
 
     pub unsafe fn as_ref(&self) -> &T { self.0.as_ref() }
 

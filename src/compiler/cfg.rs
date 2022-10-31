@@ -1,12 +1,13 @@
 use std::fmt;
 use std::collections::hash_set::HashSet;
 
-use crate::oref::{WithinMt, DisplayWithin, ORef};
+use crate::oref::ORef;
 use crate::handle::{Handle, HandleT};
-use crate::mutator::Mutator;
+use crate::mutator::{Mutator, WithinMt};
 use crate::symbol::Symbol;
 use crate::vector::Vector;
 use crate::heap_obj::Indexed;
+use crate::write::DisplayWithin;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Label(usize);
