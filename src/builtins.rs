@@ -19,7 +19,7 @@ fn eq(mt: &mut Mutator) -> Answer {
     let res = mt.regs()[mt.regs().len() - 1] == mt.regs()[mt.regs().len() - 2];
     let res = Bool::instance(mt, res);
     mt.push(res.into());
-    Answer::Ret
+    Answer::Ret {retc: 1}
 }
 
 pub const EQ: NativeFn = NativeFn {
@@ -33,7 +33,7 @@ fn fx_add(mt: &mut Mutator) -> Answer {
         if let Ok(a) = Fixnum::try_from(mt.regs()[mt.regs().len() - 2]) {
             if let Some(v) = a.checked_add(b) {
                 mt.push(v.into());
-                Answer::Ret
+                Answer::Ret {retc: 1}
             } else {
                 todo!()
             }
@@ -56,7 +56,7 @@ fn fx_sub(mt: &mut Mutator) -> Answer {
         if let Ok(a) = Fixnum::try_from(mt.regs()[mt.regs().len() - 2]) {
             if let Some(v) = a.checked_sub(b) {
                 mt.push(v.into());
-                Answer::Ret
+                Answer::Ret {retc: 1}
             } else {
                 todo!()
             }
@@ -79,7 +79,7 @@ fn fx_mul(mt: &mut Mutator) -> Answer {
         if let Ok(a) = Fixnum::try_from(mt.regs()[mt.regs().len() - 2]) {
             if let Some(v) = a.checked_mul(b) {
                 mt.push(v.into());
-                Answer::Ret
+                Answer::Ret {retc: 1}
             } else {
                 todo!()
             }
@@ -107,7 +107,7 @@ fn is_pair(mt: &mut Mutator) -> Answer {
     };
 
     mt.regs_mut()[last_index] = Bool::instance(mt, res).into();
-    Answer::Ret
+    Answer::Ret {retc: 1}
 }
 
 pub const IS_PAIR: NativeFn = NativeFn {
@@ -122,7 +122,7 @@ fn is_null(mt: &mut Mutator) -> Answer {
     let res = mt.regs()[last_index] == EmptyList::instance(mt).into();
 
     mt.regs_mut()[last_index] = Bool::instance(mt, res).into();
-    Answer::Ret
+    Answer::Ret {retc: 1}
 }
 
 pub const IS_NULL: NativeFn = NativeFn {
@@ -141,7 +141,7 @@ fn cons(mt: &mut Mutator) -> Answer {
     };
 
     mt.regs_mut()[last_index] = pair.into();
-    Answer::Ret
+    Answer::Ret {retc: 1}
 }
 
 pub const CONS: NativeFn = NativeFn {
@@ -158,7 +158,7 @@ fn car(mt: &mut Mutator) -> Answer {
     );
 
     unsafe { mt.regs_mut()[last_index] = pair.as_ref().car(); }
-    Answer::Ret
+    Answer::Ret {retc: 1}
 }
 
 pub const CAR: NativeFn = NativeFn {
@@ -175,7 +175,7 @@ fn cdr(mt: &mut Mutator) -> Answer {
     );
 
     unsafe { mt.regs_mut()[last_index] = pair.as_ref().cdr(); }
-    Answer::Ret
+    Answer::Ret {retc: 1}
 }
 
 pub const CDR: NativeFn = NativeFn {
@@ -194,7 +194,7 @@ fn set_car(mt: &mut Mutator) -> Answer {
 
     unsafe { pair.as_ref().set_car(v); }
 
-    Answer::Ret // HACK: Happens to return `v`
+    Answer::Ret {retc: 1} // HACK: Happens to return `v`
 }
 
 pub const SET_CAR: NativeFn = NativeFn {
@@ -213,7 +213,7 @@ fn set_cdr(mt: &mut Mutator) -> Answer {
 
     unsafe { pair.as_ref().set_cdr(v); }
 
-    Answer::Ret // HACK: Happens to return `v`
+    Answer::Ret {retc: 1} // HACK: Happens to return `v`
 }
 
 pub const SET_CDR: NativeFn = NativeFn {
@@ -333,4 +333,14 @@ pub const APPLY: NativeFn = NativeFn {
     min_arity: 3,
     varargs: true,
     code: apply 
+};
+
+fn values(mt: &mut Mutator) -> Answer {
+    Answer::Ret {retc: mt.regs().len() - 1}
+}
+
+pub const VALUES: NativeFn = NativeFn {
+    min_arity: 1,
+    varargs: true,
+    code: values
 };

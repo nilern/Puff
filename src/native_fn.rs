@@ -5,7 +5,7 @@ use crate::r#type::NonIndexedType;
 
 #[must_use]
 pub enum Answer {
-    Ret,
+    Ret {retc: usize},
     TailCall {argc: usize}
 }
 

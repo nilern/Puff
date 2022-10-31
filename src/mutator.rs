@@ -286,7 +286,7 @@ impl Mutator {
                 ("car", builtins::CAR), ("cdr", builtins::CDR),
                 ("set-car!", builtins::SET_CAR), ("set-cdr!", builtins::SET_CDR),
                 ("eval-syntax", builtins::EVAL_SYNTAX), ("load", builtins::LOAD),
-                ("apply", builtins::APPLY)
+                ("apply", builtins::APPLY), ("values", builtins::VALUES)
             ] {
                 let name = Symbol::new(&mut mt, name);
                 let f = root!(&mut mt, NativeFn::new(&mut mt, f));
@@ -439,7 +439,7 @@ impl Mutator {
 
             // Call:
             match unsafe { (callee.as_ref().code)(self) } {
-                Answer::Ret => self.ret(),
+                Answer::Ret {retc} => self.ret(retc),
                 Answer::TailCall {argc} => self.tailcall(argc) // trampoline
             }
         } else {
@@ -447,7 +447,7 @@ impl Mutator {
         }
     }
 
-    fn ret(&mut self) -> Option<ORef> {
+    fn ret(&mut self, retc: usize) -> Option<ORef> {
         if self.stack.len() > 0 {
             // Restore registers:
 
@@ -729,7 +729,7 @@ impl Mutator {
                     },
 
                     Opcode::Ret =>
-                        if let Some(res) = self.ret() {
+                        if let Some(res) = self.ret(1) {
                             return res;
                         }
                 }
