@@ -6,6 +6,7 @@ use std::ptr::NonNull;
 use std::marker::PhantomData;
 
 use crate::oref::{ORef, Gc};
+use crate::mutator::Mutator;
 
 struct LiveHandleImpl {
     oref: ORef,
@@ -205,6 +206,33 @@ impl HandlePool {
         self.free = Some(NonNull::new_unchecked(free));
     }
 }
+
+pub trait Root {
+    type Rooted;
+
+    fn root(self, mt: &mut Mutator) -> Self::Rooted;
+}
+
+impl Root for ORef {
+    type Rooted = Handle;
+
+    fn root(self, mt: &mut Mutator) -> Self::Rooted { mt.root(self) }
+}
+
+impl<T> Root for Gc<T> {
+    type Rooted = HandleT<T>;
+
+    fn root(self, mt: &mut Mutator) -> Self::Rooted { mt.root_t(self) }
+}
+
+macro_rules! root {
+    ($mt:expr, $e:expr) => {{
+        let oref = $e;
+        oref.root($mt)
+    }}
+}
+
+pub(crate) use root;
 
 #[cfg(test)]
 mod tests {

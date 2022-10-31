@@ -1,5 +1,5 @@
 use crate::oref::{Reify, ORef, Gc, Fixnum};
-use crate::handle::{Handle, HandleT};
+use crate::handle::{Handle, HandleT, Root, root};
 use crate::mutator::Mutator;
 use crate::heap_obj::{NonIndexed, Indexed};
 use crate::r#type::NonIndexedType;
@@ -45,12 +45,10 @@ impl ORef {
         if let Some(stx) = self.try_cast::<Syntax>(mt) {
             unsafe { stx.as_ref().to_datum(mt) }
         } else if let Some(pair) = self.try_cast::<Pair>(mt) {
-            let pair = mt.root_t(pair);
+            let pair = root!(mt, pair);
 
-            let car = unsafe { pair.as_ref().car() }.to_datum(mt);
-            let car = mt.root(car);
-            let cdr = unsafe { pair.as_ref().cdr() }.to_datum(mt);
-            let cdr = mt.root(cdr);
+            let car = root!(mt, unsafe { pair.as_ref().car() }.to_datum(mt));
+            let cdr = root!(mt, unsafe { pair.as_ref().cdr() }.to_datum(mt));
 
             if *car == unsafe { pair.as_ref().car() } && *cdr == unsafe { pair.as_ref().cdr() } {
                 (*pair).into()
@@ -58,13 +56,13 @@ impl ORef {
                 Gc::<Pair>::new(mt, car, cdr).into()
             }
         } else if let Some(vector) = self.try_cast::<Vector<ORef>>(mt) {
-            let vector = mt.root_t(vector);
+            let vector = root!(mt, vector);
 
-            let vs: Vec<Handle> = unsafe { vector.as_ref().indexed_field().iter().map(|v| {
-                let v = v.to_datum(mt);
-                mt.root(v)
-            })
-            .collect() };
+            let vs: Vec<Handle> = unsafe {
+                vector.as_ref().indexed_field().iter()
+                    .map(|v| root!(mt, v.to_datum(mt)))
+                    .collect()
+            };
 
             if unsafe { vector.as_ref().indexed_field().iter().zip(vs.iter()).all(|(v, u)| *v == **u) } {
                 (*vector).into()

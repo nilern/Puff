@@ -2,8 +2,8 @@ use std::fs;
 
 use crate::native_fn::{NativeFn, Answer};
 use crate::mutator::Mutator;
-use crate::oref::{Fixnum, Gc};
-use crate::handle::HandleT;
+use crate::oref::{ORef, Fixnum, Gc};
+use crate::handle::{HandleT, Root, root};
 use crate::bool::Bool;
 use crate::string::String;
 use crate::list::{Pair, EmptyList};
@@ -251,7 +251,7 @@ fn load(mt: &mut Mutator) -> Answer {
         (unsafe { fs::read_to_string(filename.as_ref().as_str()).unwrap_or_else(|_|
              todo!()
          ) },
-         mt.root_t(filename))
+         root!(mt, filename))
     } else {
         todo!()
     };
@@ -262,16 +262,13 @@ fn load(mt: &mut Mutator) -> Answer {
         match res {
             Ok(stx) =>
                 if let Some((_, ref mut last_pair)) = builder {
-                    let nil = mt.root(EmptyList::instance(mt).into());
+                    let nil = root!(mt, ORef::from(EmptyList::instance(mt)));
                     let pair = Gc::<Pair>::new(mt, stx.into(), nil);
                     unsafe { last_pair.as_ref().set_cdr(pair.into()); }
-                    *last_pair = mt.root_t(pair);
+                    *last_pair = root!(mt, pair);
                 } else {
-                    let nil = mt.root(EmptyList::instance(mt).into());
-                    let pair = {
-                        let pair = Gc::<Pair>::new(mt, stx.into(), nil);
-                        mt.root_t(pair)
-                    };
+                    let nil = root!(mt, ORef::from(EmptyList::instance(mt)));
+                    let pair = root!(mt, Gc::<Pair>::new(mt, stx.into(), nil));
                     builder = Some((pair.clone(), pair));
                 },
             Err(()) => todo!()
@@ -279,27 +276,18 @@ fn load(mt: &mut Mutator) -> Answer {
     }
     let sexprs = match builder {
         Some((sexprs, _)) => sexprs.into(),
-        None => mt.root(EmptyList::instance(mt).into())
+        None => root!(mt, ORef::from(EmptyList::instance(mt)))
     };
 
-    let start = {
-        let start = Pos::new(mt, Some(filename), Fixnum::from(1u8), Fixnum::from(1u8));
-        mt.root_t(start)
-    };
+    let start = root!(mt, Pos::new(mt, Some(filename), Fixnum::from(1u8), Fixnum::from(1u8)));
     let sexpr = { // `(begin ,@sexprs)
         let begin = {
-            let begin = Symbol::new(mt, "begin");
-            let begin = mt.root(begin.into());
-            let begin = Syntax::new(mt, begin, Some(start.clone()));
-            mt.root(begin.into())
+            let begin = root!(mt, Symbol::new(mt, "begin"));
+            root!(mt, Syntax::new(mt, begin.into(), Some(start.clone())))
         };
-        let sexprs = Gc::<Pair>::new(mt, begin, sexprs);
-        mt.root(sexprs.into())
+        root!(mt, Gc::<Pair>::new(mt, begin.into(), sexprs))
     };
-    let stx = {
-        let stx = Syntax::new(mt, sexpr, Some(start));
-        mt.root_t(stx)
-    };
+    let stx = root!(mt, Syntax::new(mt, sexpr.into(), Some(start)));
 
     mt.push_global("eval-syntax");
     mt.push((*stx).into());

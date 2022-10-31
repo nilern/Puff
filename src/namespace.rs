@@ -184,6 +184,7 @@ impl Namespace {
 mod tests {
     use super::*;
     use crate::oref::Fixnum;
+    use crate::handle::{Root, root};
 
     #[test]
     fn test_add_get() {
@@ -194,9 +195,9 @@ mod tests {
         let bar = Symbol::new(&mut mt, "bar");
         let baz = Symbol::new(&mut mt, "baz");
 
-        let one = mt.root(Fixnum::try_from(1isize).unwrap().into());
-        let two = mt.root(Fixnum::try_from(2isize).unwrap().into());
-        let three = mt.root(Fixnum::try_from(3isize).unwrap().into());
+        let one = root!(&mut mt, ORef::from(Fixnum::from(1u8)));
+        let two = root!(&mut mt, ORef::from(Fixnum::from(2u8)));
+        let three = root!(&mut mt, ORef::from(Fixnum::from(3u8)));
 
         assert_eq!(ns.get(foo), None);
 

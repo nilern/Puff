@@ -6,7 +6,7 @@ use crate::list::{Pair, EmptyList};
 use crate::compiler::anf::{self, PosExpr};
 use crate::heap_obj::Singleton;
 use crate::oref::{ORef, Gc};
-use crate::handle::{HandleT, Handle};
+use crate::handle::{HandleT, Handle, Root, root};
 use crate::symbol::Symbol;
 use crate::compiler::{Compiler, Id};
 use crate::syntax::Syntax;
@@ -43,14 +43,13 @@ pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::PosExpr {
         });
 
         let expr = unsafe { stx.as_ref().expr };
-        let pos = unsafe { stx.as_ref().pos };
-        let pos = cmp.mt.root(pos);
+        let pos = root!(&mut cmp.mt, unsafe { stx.as_ref().pos });
 
         if let Some(name) = expr.try_cast::<Symbol>(cmp.mt) {
             if let Some(id) = Env::get(env, name) {
                 PosExpr {expr: Triv(Use(id)), pos}
             } else {
-                PosExpr {expr: Global(cmp.mt.root_t(name)), pos}
+                PosExpr {expr: Global(root!(&mut cmp.mt, name)), pos}
             }
         } else if let Some(ls) = expr.try_cast::<Pair>(cmp.mt) {
             let callee = unsafe { ls.as_ref().car() }.try_cast::<Syntax>(cmp.mt).unwrap_or_else(|| {
@@ -78,7 +77,7 @@ pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::PosExpr {
             todo!() // error
         } else {
             let c = expr.to_datum(cmp.mt);
-            PosExpr {expr: Triv(Const(cmp.mt.root(c))), pos}
+            PosExpr {expr: Triv(Const(root!(&mut cmp.mt, c))), pos}
         }
     }
 
@@ -102,10 +101,10 @@ pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::PosExpr {
 
                             if let Some(name) = unsafe { identifier.as_ref().expr }.try_cast::<Symbol>(cmp.mt) {
                                 let id = {
-                                    let name = cmp.mt.root_t(name);
+                                    let name = root!(&mut cmp.mt, name);
                                     Id::src_fresh(cmp, name)
                                 };
-                                (Rc::new(Env::Binding(id, cmp.mt.root_t(name), env.clone())), (id, name, val))
+                                (Rc::new(Env::Binding(id, root!(&mut cmp.mt, name), env.clone())), (id, name, val))
                             } else {
                                 todo!()
                             }
@@ -206,11 +205,11 @@ pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::PosExpr {
 
             if let Some(param) = unsafe { params.as_ref().expr }.try_cast::<Symbol>(cmp.mt) {
                 let id = {
-                    let param = cmp.mt.root_t(param);
+                    let param = root!(&mut cmp.mt, param);
                     Id::src_fresh(cmp, param)
                 };
                 anf_ps.push(id);
-                env = Rc::new(Env::Binding(id, cmp.mt.root_t(param), env.clone()));
+                env = Rc::new(Env::Binding(id, root!(&mut cmp.mt, param), env.clone()));
 
                 return (env, anf_ps, true)
             } else {
@@ -223,11 +222,11 @@ pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::PosExpr {
 
                     if let Some(param) = unsafe { param.as_ref().expr }.try_cast::<Symbol>(cmp.mt) {
                         let id = {
-                            let param = cmp.mt.root_t(param);
+                            let param = root!(&mut cmp.mt, param);
                             Id::src_fresh(cmp, param)
                         };
                         anf_ps.push(id);
-                        env = Rc::new(Env::Binding(id, cmp.mt.root_t(param), env.clone()));
+                        env = Rc::new(Env::Binding(id, root!(&mut cmp.mt, param), env.clone()));
                     } else {
                         todo!()
                     }
@@ -240,11 +239,11 @@ pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::PosExpr {
                 } else if let Some(param) = params.try_cast::<Syntax>(cmp.mt) {
                     if let Some(param) = unsafe { param.as_ref().expr }.try_cast::<Symbol>(cmp.mt) {
                         let id = {
-                            let param = cmp.mt.root_t(param);
+                            let param = root!(&mut cmp.mt, param);
                             Id::src_fresh(cmp, param)
                         };
                         anf_ps.push(id);
-                        env = Rc::new(Env::Binding(id, cmp.mt.root_t(param), env.clone()));
+                        env = Rc::new(Env::Binding(id, root!(&mut cmp.mt, param), env.clone()));
 
                         return (env, anf_ps, true)
                     }
@@ -299,8 +298,8 @@ pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::PosExpr {
     fn analyze_quote(cmp: &mut Compiler, args: ORef, pos: Handle) -> anf::PosExpr {
         if let Some(args) = args.try_cast::<Pair>(cmp.mt) {
             if unsafe { args.as_ref().cdr() } == EmptyList::instance(cmp.mt).into() {
-                let c = unsafe { cmp.mt.root(args.as_ref().car()) }.to_datum(cmp.mt);
-                PosExpr {expr: Triv(Const(cmp.mt.root(c))), pos}
+                let c = unsafe { root!(&mut cmp.mt, args.as_ref().car()) }.to_datum(cmp.mt);
+                PosExpr {expr: Triv(Const(root!(&mut cmp.mt, c))), pos}
             } else {
                 todo!()
             }
@@ -327,7 +326,7 @@ pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::PosExpr {
                         if let Some(id) = Env::get(env, name) {
                             return PosExpr {expr: Set(id, val_expr), pos};
                         } else {
-                            return PosExpr {expr: GlobalSet(cmp.mt.root_t(name), val_expr), pos};
+                            return PosExpr {expr: GlobalSet(root!(&mut cmp.mt, name), val_expr), pos};
                         }
                     } else {
                         todo!() // error: dest not an identifier
@@ -365,8 +364,7 @@ pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::PosExpr {
             todo!() // error
         });
         let expr = unsafe { stx.as_ref().expr };
-        let pos = unsafe { stx.as_ref().pos };
-        let pos = cmp.mt.root(pos);
+        let pos = root!(&mut cmp.mt, unsafe { stx.as_ref().pos });
 
         if let Some(ls) = expr.try_cast::<Pair>(cmp.mt) {
             let callee = unsafe { ls.as_ref().car() }.try_cast::<Syntax>(cmp.mt).unwrap_or_else(|| {
@@ -406,7 +404,7 @@ pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::PosExpr {
         };
         let val_expr = analyze_expr(cmp, &Rc::new(Env::Empty), val_expr);
 
-        PosExpr {expr: Define(cmp.mt.root_t(definiend), boxed::Box::new(val_expr)), pos}
+        PosExpr {expr: Define(root!(&mut cmp.mt, definiend), boxed::Box::new(val_expr)), pos}
     }
 
     fn analyze_toplevel_begin(cmp: &mut Compiler, mut args: ORef, pos: Handle) -> anf::PosExpr {

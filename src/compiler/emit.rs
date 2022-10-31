@@ -2,6 +2,7 @@ use crate::bytecode::{Bytecode, Builder};
 use crate::compiler::Compiler;
 use crate::compiler::cfg::{self, PosInstr};
 use crate::oref::Gc;
+use crate::handle::{Root, root};
 
 pub fn emit(cmp: &mut Compiler, f: &cfg::Fn) -> Gc<Bytecode> {
     fn emit_instr(cmp: &mut Compiler, builder: &mut Builder, instr: &cfg::PosInstr, rpo_next: Option<cfg::Label>) {
@@ -33,7 +34,7 @@ pub fn emit(cmp: &mut Compiler, f: &cfg::Fn) -> Gc<Bytecode> {
 
             &Fn(ref code, len) => {
                 let code = emit(cmp, code);
-                builder.r#fn(cmp.mt.root_t(code), len, pos.clone());
+                builder.r#fn(root!(&mut cmp.mt, code), len, pos.clone());
             },
 
             &Call(cargc, ref prunes) => builder.call(cargc, prunes, pos.clone()),

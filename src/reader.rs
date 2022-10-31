@@ -1,5 +1,5 @@
 use crate::oref::{ORef, Fixnum, Gc};
-use crate::handle::{Handle, HandleT};
+use crate::handle::{Handle, HandleT, Root, root};
 use crate::mutator::Mutator;
 use crate::symbol::Symbol;
 use crate::list::{EmptyList, Pair};
@@ -154,32 +154,22 @@ impl<'i> Reader<'i> {
             _ => unreachable!()
         };
 
-        let b = Bool::instance(mt, b);
-        let b = mt.root(b.into());
-        let start = start.as_obj(mt);
-        let start = mt.root_t(start);
-        let stx = Syntax::new(mt, b, Some(start));
-        Ok(mt.root_t(stx))
+        let b = root!(mt, Bool::instance(mt, b));
+        let start = root!(mt, start.as_obj(mt));
+        Ok(root!(mt, Syntax::new(mt, b.into(), Some(start.into()))))
     }
 
     fn read_quoted(&mut self, mt: &mut Mutator, quote: Positioned<char>) -> ReadResult {
-        let start = quote.pos.as_obj(mt);
-        let start = mt.root_t(start);
+        let start = root!(mt, quote.pos.as_obj(mt));
 
         if let Some(res) = self.next(mt) {
-            let ls = EmptyList::instance(mt).into();
-            let ls = mt.root(ls);
-            let ls = Gc::<Pair>::new(mt, res?.into(), ls).into();
-            let ls = mt.root(ls);
-            let quote = Symbol::new(mt, "quote").into();
-            let quote = mt.root(quote);
-            let quote = Syntax::new(mt, quote, Some(start.clone()));
-            let quote = mt.root(quote.into());
-            let ls = Gc::<Pair>::new(mt, quote, ls).into();
-            let ls = mt.root(ls);
-            let ls = Syntax::new(mt, ls, Some(start));
+            let ls = root!(mt, EmptyList::instance(mt));
+            let ls = root!(mt, Gc::<Pair>::new(mt, res?.into(), ls.into()));
+            let quote = root!(mt, Symbol::new(mt, "quote"));
+            let quote = root!(mt, Syntax::new(mt, quote.into(), Some(start.clone())));
+            let ls = root!(mt, Gc::<Pair>::new(mt, quote.into(), ls.into()));
 
-            Ok(mt.root_t(ls))
+            Ok(root!(mt, Syntax::new(mt, ls.into(), Some(start))))
         } else {
             Err(()) // FIXME
         }
@@ -201,11 +191,9 @@ impl<'i> Reader<'i> {
 
         match Fixnum::try_from(n) {
             Ok(n) => {
-                let n = mt.root(n.into());
-                let start = first_pc.pos.as_obj(mt);
-                let start = mt.root_t(start);
-                let stx = Syntax::new(mt, n, Some(start));
-                Ok(mt.root_t(stx))
+                let n = root!(mt, ORef::from(n));
+                let start = root!(mt, first_pc.pos.as_obj(mt));
+                Ok(root!(mt, Syntax::new(mt, n, Some(start.into()))))
             },
 
             Err(()) => Err(()) // FIXME
@@ -221,12 +209,9 @@ impl<'i> Reader<'i> {
             }
         }
 
-        let sym = Symbol::new(mt, &self.input.chars[first_pc.pos.index..self.input.pos.index]);
-        let sym = mt.root(sym.into());
-        let start = first_pc.pos.as_obj(mt);
-        let start = mt.root_t(start);
-        let stx = Syntax::new(mt, sym, Some(start));
-        mt.root_t(stx)
+        let sym = root!(mt, Symbol::new(mt, &self.input.chars[first_pc.pos.index..self.input.pos.index]));
+        let start = root!(mt, first_pc.pos.as_obj(mt));
+        root!(mt, Syntax::new(mt, sym.into(), Some(start)))
     }
 
     fn read_peculiar_identifier(&mut self, mt: &mut Mutator, sign: Positioned<char>) -> HandleT<Syntax> {
@@ -238,12 +223,9 @@ impl<'i> Reader<'i> {
             }
         }
 
-        let sym = Symbol::new(mt, &self.input.chars[sign.pos.index..self.input.pos.index]);
-        let sym = mt.root(sym.into());
-        let start = sign.pos.as_obj(mt);
-        let start = mt.root_t(start);
-        let stx = Syntax::new(mt, sym, Some(start));
-        mt.root_t(stx)
+        let sym = root!(mt, Symbol::new(mt, &self.input.chars[sign.pos.index..self.input.pos.index]));
+        let start = root!(mt, sign.pos.as_obj(mt));
+        root!(mt, Syntax::new(mt, sym.into(), Some(start)))
     }
 
     fn read_string(&mut self, mt: &mut Mutator, double_quote: Positioned<char>) -> ReadResult {
@@ -265,20 +247,16 @@ impl<'i> Reader<'i> {
         }
 
         let start = double_quote.pos;
-        let str = String::new(mt, &self.input.chars[start.index + 1..self.input.pos.index - 1]);
-        let str = mt.root(str.into());
-        let start = start.as_obj(mt);
-        let start = mt.root_t(start);
-        let stx = Syntax::new(mt, str, Some(start));
-        Ok(mt.root_t(stx))
+        let str = root!(mt, String::new(mt, &self.input.chars[start.index + 1..self.input.pos.index - 1]));
+        let start = root!(mt, start.as_obj(mt));
+        Ok(root!(mt, Syntax::new(mt, str.into(), Some(start))))
     }
 
     fn read_list(&mut self, mt: &mut Mutator, lparen: Positioned<char>) -> ReadResult {
         let start = lparen.pos;
-        let start = start.as_obj(mt);
-        let start = mt.root_t(start);
+        let start = root!(mt, start.as_obj(mt));
 
-        let empty = mt.root(EmptyList::instance(mt).into());
+        let empty = root!(mt, ORef::from(EmptyList::instance(mt)));
 
         self.intertoken_space();
 
@@ -286,8 +264,7 @@ impl<'i> Reader<'i> {
         if let Some(pc) = self.input.peek() {
             if pc.v == ')' {
                 self.input.next();
-                let stx = Syntax::new(mt, empty, Some(start));
-                return Ok(mt.root_t(stx));
+                return Ok(root!(mt, Syntax::new(mt, empty, Some(start))));
             }
         }
 
@@ -296,10 +273,7 @@ impl<'i> Reader<'i> {
             None => return Err(())
         };
 
-        let ls: HandleT<Pair> = {
-            let ls = Gc::<Pair>::new(mt, car, empty.clone());
-            mt.root_t(ls)
-        };
+        let ls: HandleT<Pair> = root!(mt, Gc::<Pair>::new(mt, car, empty.clone()));
 
         // (<datum> ...
         let mut last_pair = ls.clone();
@@ -341,7 +315,7 @@ impl<'i> Reader<'i> {
                         Some(res) => {
                             let pair = Gc::<Pair>::new(mt, res?.into(), empty.clone());
                             unsafe { last_pair.as_ref().set_cdr(pair.into()); }
-                            last_pair = mt.root_t(pair);
+                            last_pair = root!(mt, pair);
                         },
 
                         None => return Err(())
@@ -351,8 +325,7 @@ impl<'i> Reader<'i> {
             }
         }
 
-        let stx = Syntax::new(mt, ls.into(), Some(start));
-        Ok(mt.root_t(stx))
+        Ok(root!(mt, Syntax::new(mt, ls.into(), Some(start))))
     }
 
     fn read_vector(&mut self, mt: &mut Mutator, start: Pos) -> ReadResult {
@@ -377,12 +350,9 @@ impl<'i> Reader<'i> {
             }
         }
 
-        let vector = Vector::<ORef>::from_handles(mt, &vs);
-        let vector = mt.root(vector.into());
-        let start = start.as_obj(mt);
-        let start = mt.root_t(start);
-        let stx = Syntax::new(mt, vector, Some(start));
-        Ok(mt.root_t(stx))
+        let vector = root!(mt, Vector::<ORef>::from_handles(mt, &vs));
+        let start = root!(mt, start.as_obj(mt));
+        Ok(root!(mt, Syntax::new(mt, vector.into(), Some(start))))
     }
 
     pub fn next(&mut self, mt: &mut Mutator) -> Option<ReadResult> {

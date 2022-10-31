@@ -4,7 +4,7 @@ use std::collections::hash_map::HashMap;
 use crate::oref::ORef;
 use crate::vector::Vector;
 use crate::bool::Bool;
-use crate::handle::Handle;
+use crate::handle::{Handle, Root, root};
 use crate::compiler::cfg::{Fn, Instr, Label, PosInstr};
 use crate::compiler::anf::{self, PosExpr};
 use crate::compiler::{Compiler, Id};
@@ -466,12 +466,9 @@ fn emit_fn(cmp: &mut Compiler, clovers: &[Id], params: &[Id], varargs: bool, bod
         // OPTIMIZE: temp Vec:
         let clover_names: Vec<Handle> = clovers.iter()
             .map(|id| id.name(cmp).map(Handle::from)
-                .unwrap_or_else(|| cmp.mt.root(Bool::instance(cmp.mt, false).into())))
+                .unwrap_or_else(|| root!(&mut cmp.mt, Bool::instance(cmp.mt, false)).into()))
             .collect();
-        let clover_names = {
-            let clover_names = Vector::<ORef>::from_handles(cmp.mt, &clover_names);
-            cmp.mt.root_t(clover_names)
-        };
+        let clover_names = root!(&mut cmp.mt, Vector::<ORef>::from_handles(cmp.mt, &clover_names));
         Fn::new(params.len() - varargs as usize, varargs, 0, clover_names)
     };
     let current = f.create_block();

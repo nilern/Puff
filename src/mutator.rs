@@ -8,7 +8,7 @@ use crate::r#type::{Type, Field, IndexedType, NonIndexedType, BitsType};
 use crate::symbol::{Symbol, SymbolTable};
 use crate::heap_obj::{NonIndexed, Indexed, Singleton, Header, min_size_of_indexed,
     align_of_indexed};
-use crate::handle::{Handle, HandleT, HandlePool};
+use crate::handle::{Handle, HandleT, HandlePool, Root, root};
 use crate::list::{EmptyList, Pair};
 use crate::bytecode::{Opcode, Bytecode, decode_prune_mask};
 use crate::vector::Vector;
@@ -287,8 +287,7 @@ impl Mutator {
                 ("eval-syntax", builtins::EVAL_SYNTAX), ("load", builtins::LOAD)
             ] {
                 let name = Symbol::new(&mut mt, name);
-                let f = NativeFn::new(&mut mt, f);
-                let f = mt.root_t(f);
+                let f = root!(&mut mt, NativeFn::new(&mut mt, f));
                 let var = Var::new(&mut mt, f.into());
                 mt.ns.add(name, var);
             }

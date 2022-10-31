@@ -4,7 +4,7 @@ use std::collections::hash_map::HashMap;
 
 use crate::compiler::anf::{self, PosExpr};
 use crate::compiler::{Compiler, Id};
-use crate::handle::Handle;
+use crate::handle::{Handle, Root, root};
 use crate::bool::Bool;
 
 pub fn mutables(expr: &anf::PosExpr) -> HashSet<Id> {
@@ -217,14 +217,14 @@ pub fn letrec(cmp: &mut Compiler, mutables: &HashSet<Id>, expr: anf::PosExpr) ->
                 if guard_used {
                     // (guard (box #f))
                     let fals = PosExpr {
-                        expr: Triv(Const(cmp.mt.root(Bool::instance(cmp.mt, false).into()))),
+                        expr: Triv(Const(root!(&mut cmp.mt, Bool::instance(cmp.mt, false)).into())),
                         pos: pos.clone()
                     };
                     final_bindings.push((guard, PosExpr {expr: Box(boxed::Box::new(fals)), pos: pos.clone()}));
 
                     // (set! guard #t)
                     let tru = PosExpr {
-                        expr: Triv(Const(cmp.mt.root(Bool::instance(cmp.mt, true).into()))),
+                        expr: Triv(Const(root!(&mut cmp.mt, Bool::instance(cmp.mt, true)).into())),
                         pos: pos.clone()
                     };
                     body = PosExpr {
