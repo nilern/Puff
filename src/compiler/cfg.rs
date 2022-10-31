@@ -29,6 +29,7 @@ pub enum Instr {
     Local(usize),
     Clover(usize),
 
+    Pop,
     PopNNT(usize),
     Prune(Vec<bool>),
 
@@ -45,6 +46,8 @@ pub enum Instr {
 
     Fn(Fn, usize),
     Call(usize, Vec<bool>),
+    CheckOneReturnValue,
+    IgnoreReturnValues,
     TailCall(usize),
     Ret
 }
@@ -62,6 +65,7 @@ impl Instr {
             &Local(reg) => writeln!(fmt, "{}local {}", indent, reg),
             &Clover(i) => writeln!(fmt, "{}clover {}", indent, i),
 
+            &Pop => writeln!(fmt, "{}pop", indent),
             &PopNNT(n) => writeln!(fmt, "{}popnnt {}", indent, n),
             &Prune(ref prunes) => {
                 write!(fmt, "{}prune #b", indent)?;
@@ -90,6 +94,8 @@ impl Instr {
                 for &prune in prunes { write!(fmt, "{}", prune as u8)?; }
                 writeln!(fmt, "")
             },
+            &CheckOneReturnValue => writeln!(fmt, "{}check-one-return-value", indent),
+            &IgnoreReturnValues => writeln!(fmt, "{}ignore-return-values", indent),
             &TailCall(argc) => writeln!(fmt, "{}tailcall {}", indent, argc),
             &Ret => writeln!(fmt, "{}ret", indent)
         }

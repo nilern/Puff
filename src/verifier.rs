@@ -28,6 +28,8 @@ pub enum Err {
     InvalidPruneMask,
     MissingOpcodeArg(Opcode),
 
+    UnexpectedInstr,
+
     BranchOut(usize),
     MissingTerminator,
 
@@ -50,10 +52,15 @@ pub fn verify(mt: &Mutator, code: &Bytecode) -> Result<(), IndexedErr<Vec<usize>
     fn verify_in(mt: &Mutator, bp: &[usize], clovers: &[AbstractType], code: &Bytecode)
         -> Result<(), IndexedErr<Vec<usize>>>
     {
-        fn verify_stmt(mt: &Mutator, code: &Bytecode, bp: &[usize], clovers: &[AbstractType], cfg: &CFG,
-            amt: &mut AbstractMutator, stmt: &DecodedInstr
-        ) -> Result<(), IndexedErr<Vec<usize>>>
+        fn verify_stmt<'a, I>(mt: &Mutator, code: &'a Bytecode, bp: &[usize], clovers: &[AbstractType],
+            cfg: &'a CFG, amt: &mut AbstractMutator, stmts: &mut I
+        ) -> Result<bool, IndexedErr<Vec<usize>>> where I: Iterator<Item=&'a DecodedInstr<'a>>
         {
+            let stmt = match stmts.next() {
+                Some(stmt) => stmt,
+                None => return Ok(false)
+            };
+
             match stmt {
                 &DecodedInstr::Define {sym_index} => {
                     if AbstractType::of(mt, amt.get_const(&cfg, sym_index)?) != AbstractType::Symbol {
@@ -117,6 +124,11 @@ pub fn verify(mt: &Mutator, code: &Bytecode) -> Result<(), IndexedErr<Vec<usize>
                     } else {
                         return Err(IndexedErr {err: Err::TypeError, byte_index: byte_path(bp, amt.pc)})
                     },
+
+                &DecodedInstr::Pop => {
+                    amt.pop()?;
+                    amt.pc += 1;
+                },
 
                 &DecodedInstr::PopNNT {n} => {
                     amt.popnnt(n)?;
@@ -263,15 +275,32 @@ pub fn verify(mt: &Mutator, code: &Bytecode) -> Result<(), IndexedErr<Vec<usize>
                     }
                     amt.regs.truncate(free_reg);
 
-                    amt.push(AbstractType::Any)?; // Return value
-
                     amt.pc += 2 + mask_len;
+
+                    let stmt = match stmts.next() {
+                        Some(stmt) => stmt,
+                        None => return Err(IndexedErr {err: Err::MissingTerminator, byte_index: byte_path(bp, amt.pc)})
+                    };
+                    match stmt {
+                        &DecodedInstr::CheckOneReturnValue => {
+                            amt.push(AbstractType::Any)?; // Return value
+                            amt.pc += 1;
+                        },
+
+                        &DecodedInstr::IgnoreReturnValues => amt.pc += 1,
+
+                        _ => return Err(IndexedErr {err: Err::UnexpectedInstr, byte_index: byte_path(bp, amt.pc)})
+                    }
                 },
 
-                &DecodedInstr::Br {..} | &DecodedInstr::Brf {..} | &DecodedInstr::Ret | &DecodedInstr::TailCall {..} => unreachable!()
+                &DecodedInstr::CheckOneReturnValue | &DecodedInstr::IgnoreReturnValues =>
+                    return Err(IndexedErr {err: Err::UnexpectedInstr, byte_index: byte_path(bp, amt.pc)}),
+
+                &DecodedInstr::Br {..} | &DecodedInstr::Brf {..} | &DecodedInstr::Ret | &DecodedInstr::TailCall {..} =>
+                    unreachable!()
             }
 
-            Ok(())
+            Ok(true)
         }
 
         fn verify_transfer(bp: &[usize], amt: &mut AbstractMutator, transfer: &Transfer)
@@ -327,8 +356,9 @@ pub fn verify(mt: &Mutator, code: &Bytecode) -> Result<(), IndexedErr<Vec<usize>
                 oamt.unwrap() // `block.predecessors` can't be empty since `block` is not the entry block but in RPO
             };
 
-            for stmt in block.stmts.iter() {
-                verify_stmt(mt, code, bp, clovers, &cfg, &mut amt, stmt)?;
+            let mut stmts = block.stmts.iter();
+            while verify_stmt(mt, code, bp, clovers, &cfg, &mut amt, &mut stmts)? {
+                // Empty body
             }
 
             verify_transfer(bp, &mut amt, &block.transfer)?;
@@ -687,8 +717,9 @@ impl<'a> TryFrom<&'a Bytecode> for CFG<'a> {
                     stmts.push(instr);
                 },
 
-                Define{..} | GlobalSet{..} | Global{..} | PopNNT{..} | Const{..} | Local{..} | Clover{..}
-                | Box | UninitializedBox | BoxSet | CheckedBoxSet | BoxGet | CheckedBoxGet | CheckUse | Fn{..} => {
+                Define{..} | GlobalSet{..} | Global{..} | Pop | PopNNT{..} | Const{..} | Local{..} | Clover{..}
+                | Box | UninitializedBox | BoxSet | CheckedBoxSet | BoxGet | CheckedBoxGet | CheckUse | Fn{..}
+                | CheckOneReturnValue | IgnoreReturnValues => {
                     i += instr_min_len;
                     if i >= instrs.len() { return Err(IndexedErr{err: Err::MissingTerminator, byte_index: i}); }
 
@@ -775,6 +806,8 @@ fn try_decode<'a>(bytes: &'a [u8], mut i: usize) -> Result<(DecodedInstr<'a>, us
                             None => Err(IndexedErr{err: Err::MissingOpcodeArg(op), byte_index: i})
                         },
 
+                    Opcode::Pop => Ok((DecodedInstr::Pop, 1)),
+
                     Opcode::PopNNT =>
                         match bytes.get(i) {
                             Some(n) => Ok((DecodedInstr::PopNNT {n: *n as usize}, 2)),
@@ -834,6 +867,9 @@ fn try_decode<'a>(bytes: &'a [u8], mut i: usize) -> Result<(DecodedInstr<'a>, us
                             },
                             None => Err(IndexedErr{err: Err::MissingOpcodeArg(op), byte_index: i})
                         },
+
+                    Opcode::CheckOneReturnValue => Ok((DecodedInstr::CheckOneReturnValue, 1)),
+                    Opcode::IgnoreReturnValues => Ok((DecodedInstr::IgnoreReturnValues, 1)),
 
                     Opcode::TailCall =>
                         match bytes.get(i) {

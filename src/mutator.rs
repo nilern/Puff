@@ -449,35 +449,46 @@ impl Mutator {
 
     fn ret(&mut self, retc: usize) -> Option<ORef> {
         if self.stack.len() > 0 {
-            // Restore registers:
-
             let rip =
                 unsafe { isize::from(Fixnum::from_oref_unchecked(self.stack.pop().unwrap())) as usize };
             let frame_len =
                 unsafe { isize::from(Fixnum::from_oref_unchecked(self.stack.pop().unwrap())) as usize };
 
             let start = self.stack.len() - frame_len;
-            self.regs.re_enter(&self.stack[start..]);
-            self.stack.truncate(start);
+            let f = unsafe { self.stack[start].unchecked_cast::<Closure>() };
+            let code = unsafe { f.as_ref().code };
 
-            let f = self.regs[self.regs.len() - frame_len - 1];
-            if let Some(f) = f.try_cast::<Closure>(self) {
-                let code = unsafe { f.as_ref().code };
+            // Jump back:
+            self.set_code(code);
+            self.pc = rip;
 
-                // Jump back:
-                self.set_code(code);
-                self.pc = rip;
+            // Restore registers:
+            match self.next_opcode().unwrap() {
+                Opcode::CheckOneReturnValue => {
+                    if retc != 1 {
+                        todo!() // error
+                    }
 
-                // Ensure register space, reclaim garbage regs prefix and extend regs if necessary:
-                self.regs.ensure(unsafe { code.as_ref().max_regs });
-            } else {
-                todo!()
+                    self.regs.re_enter(&self.stack[start..], retc);
+                    self.stack.truncate(start);
+                },
+
+                Opcode::IgnoreReturnValues => {
+                    self.regs.re_enter(&self.stack[start..], 0);
+                    self.stack.truncate(start);
+                },
+
+                _ => unreachable!()
             }
+
+            // Ensure register space, reclaim garbage regs prefix and extend regs if necessary:
+            self.regs.ensure(unsafe { code.as_ref().max_regs });
 
             None
         } else {
             let res = self.regs[self.regs.len() - 1];
             self.regs.enter(0);
+
             Some(res)
         }
     }
@@ -558,6 +569,8 @@ impl Mutator {
                             self.regs.push_unchecked(self.regs[0].unchecked_cast::<Closure>().as_ref().clovers()[i]);
                         }
                     },
+
+                    Opcode::Pop => unsafe { self.regs.pop_unchecked(); },
 
                     Opcode::PopNNT => {
                         let n = self.next_oparg();
@@ -719,6 +732,8 @@ impl Mutator {
 
                         self.tailcall(argc);
                     },
+
+                    Opcode::CheckOneReturnValue | Opcode::IgnoreReturnValues => unreachable!(),
 
                     Opcode::TailCall => {
                         let argc = self.peek_oparg();

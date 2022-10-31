@@ -25,6 +25,7 @@ pub enum Opcode {
     Local,
     Clover,
 
+    Pop,
     PopNNT,
     Prune,
 
@@ -41,6 +42,8 @@ pub enum Opcode {
 
     r#Fn,
     Call,
+    CheckOneReturnValue,
+    IgnoreReturnValues,
     TailCall,
     Ret
 }
@@ -150,6 +153,7 @@ pub enum DecodedInstr<'a> {
     Local {index: usize},
     Clover {index: usize},
 
+    Pop,
     PopNNT {n: usize},
     Prune {prunes: &'a u8},
 
@@ -166,6 +170,8 @@ pub enum DecodedInstr<'a> {
 
     Fn {code_index: usize, len: usize},
     Call {argc: usize, prunes: &'a u8},
+    CheckOneReturnValue,
+    IgnoreReturnValues,
     TailCall {argc: usize},
     Ret
 }
@@ -212,6 +218,8 @@ impl<'a> DecodedInstr<'a> {
                                 Some(index) => Some((DecodedInstr::Clover {index: *index as usize}, 2)),
                                 None => None
                             },
+
+                        Opcode::Pop => Some((DecodedInstr::Pop, 1)),
 
                         Opcode::PopNNT =>
                             match bytes.get(i) {
@@ -272,6 +280,10 @@ impl<'a> DecodedInstr<'a> {
                                 },
                                 None => None
                             },
+
+                        Opcode::CheckOneReturnValue => Some((DecodedInstr::CheckOneReturnValue, 1)),
+
+                        Opcode::IgnoreReturnValues => Some((DecodedInstr::IgnoreReturnValues, 1)),
 
                         Opcode::TailCall =>
                             match bytes.get(i) {
@@ -427,6 +439,8 @@ impl Bytecode {
                                 todo!()
                             },
 
+                        Opcode::Pop => writeln!(fmt, "{}{}: pop", indent, i)?,
+
                         Opcode::PopNNT =>
                             if let Some((_, n)) = instrs.next() {
                                 writeln!(fmt, "{}{}: popnnt {}", indent, i, n)?;
@@ -512,6 +526,10 @@ impl Bytecode {
                             } else {
                                 todo!()
                             },
+
+                        Opcode::CheckOneReturnValue => writeln!(fmt, "{}{}: check-one-return-value", indent, i)?,
+
+                        Opcode::IgnoreReturnValues => writeln!(fmt, "{}{}: ignore-return-values", indent, i)?,
 
                         Opcode::TailCall =>
                             if let Some((_, argc)) = instrs.next() {
@@ -649,6 +667,11 @@ impl Builder {
         self.positions.push(pos);
     }
 
+    pub fn pop(&mut self, pos: Handle) {
+        self.instrs.push(Opcode::Pop as u8);
+        self.positions.push(pos);
+    }
+
     pub fn popnnt(&mut self, n: usize, pos: Handle) {
         self.instrs.push(Opcode::PopNNT as u8);
         self.instrs.push(u8::try_from(n).unwrap());
@@ -729,6 +752,16 @@ impl Builder {
         self.instrs.push(Opcode::Call as u8);
         self.instrs.push(u8::try_from(cargc).unwrap());
         encode_prune_mask(&mut self.instrs, prune_mask);
+        self.positions.push(pos);
+    }
+
+    pub fn check_one_return_value(&mut self, pos: Handle) {
+        self.instrs.push(Opcode::CheckOneReturnValue as u8);
+        self.positions.push(pos);
+    }
+
+    pub fn ignore_return_values(&mut self, pos: Handle) {
+        self.instrs.push(Opcode::IgnoreReturnValues as u8);
         self.positions.push(pos);
     }
 

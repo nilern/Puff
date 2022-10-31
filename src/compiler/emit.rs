@@ -18,6 +18,7 @@ pub fn emit(cmp: &mut Compiler, f: &cfg::Fn) -> Gc<Bytecode> {
             &Local(reg) => builder.local(reg, pos.clone()),
             &Clover(i) => builder.clover(i, pos.clone()),
 
+            &Pop => builder.pop(pos.clone()),
             &PopNNT(n) => builder.popnnt(n, pos.clone()),
             &Prune(ref prunes) => builder.prune(prunes, pos.clone()),
 
@@ -38,6 +39,8 @@ pub fn emit(cmp: &mut Compiler, f: &cfg::Fn) -> Gc<Bytecode> {
             },
 
             &Call(cargc, ref prunes) => builder.call(cargc, prunes, pos.clone()),
+            &CheckOneReturnValue => builder.check_one_return_value(pos.clone()),
+            &IgnoreReturnValues => builder.ignore_return_values(pos.clone()),
             &TailCall(cargc) => builder.tailcall(cargc, pos.clone()),
             &Ret => builder.ret(pos.clone())
         }

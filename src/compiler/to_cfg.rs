@@ -117,12 +117,6 @@ impl Env {
         }
     }
 
-    fn call(&mut self, cargc: usize, prunes: &[bool]) {
-        self.prune(prunes);
-        self.popn(cargc);
-        self.reg_ids.push(None);
-    }
-
     fn get(&self, id: Id) -> Loc {
         self.id_regs.get(&id).map(|&reg| Loc::Reg(reg))
             .or_else(|| self.clovers.get(&id).map(|&i| Loc::Clover(i)))
@@ -208,16 +202,28 @@ impl Env {
 
 #[derive(Clone, Copy)]
 enum Cont {
-    Next,
-    Label(Label),
+    Next {ignore_values: bool},
+    Label {label: Label, ignore_values: bool},
     Ret
 }
 
 impl Cont {
-    fn goto(self, builder: &mut CfgBuilder, pos: Handle) {
+    fn goto(self, env: &mut Env, builder: &mut CfgBuilder, pos: Handle) {
         match self {
-            Cont::Next => (),
-            Cont::Label(dest) => builder.push(Instr::Goto(dest), pos),
+            Cont::Next {ignore_values} =>
+                if ignore_values {
+                    builder.push(Instr::Pop, pos);
+                    env.pop();
+                },
+
+            Cont::Label {label: dest, ignore_values} => {
+                if ignore_values {
+                    builder.push(Instr::Pop, pos.clone());
+                    env.pop();
+                }
+                builder.push(Instr::Goto(dest), pos);
+            },
+
             Cont::Ret => builder.push(Instr::Ret, pos)
         }
     }
@@ -242,41 +248,30 @@ fn emit_expr(cmp: &mut Compiler, env: &mut Env, builder: &mut CfgBuilder, cont: 
 
     match expr {
         anf::Expr::Define(definiend, val_expr) => {
-            emit_expr(cmp, env, builder, Cont::Next, *val_expr);
+            emit_expr(cmp, env, builder, Cont::Next {ignore_values: false}, *val_expr);
             builder.push(Instr::Define(definiend), pos.clone());
             env.pop();
             env.push();
 
-            cont.goto(builder, pos);
+            cont.goto(env, builder, pos);
         },
         anf::Expr::GlobalSet(definiend, val_expr) => {
-            emit_expr(cmp, env, builder, Cont::Next, *val_expr);
+            emit_expr(cmp, env, builder, Cont::Next {ignore_values: false}, *val_expr);
             builder.push(Instr::GlobalSet(definiend), pos.clone());
             env.pop();
             env.push();
 
-            cont.goto(builder, pos);
+            cont.goto(env, builder, pos);
         },
 
         anf::Expr::Begin(mut stmts) => {
             let body = stmts.pop().unwrap();
-            let body_pos = body.pos.clone();
-            let pop_count = stmts.len();
 
             for stmt in stmts {
-                emit_expr(cmp, env, builder, Cont::Next, stmt);
+                emit_expr(cmp, env, builder, Cont::Next {ignore_values: true}, stmt);
             }
 
             emit_expr(cmp, env, builder, cont, body);
-
-            if let Cont::Ret = cont {
-                /* ret/tailcall will take care of popping */
-            } else {
-                if pop_count > 0 {
-                    builder.push(Instr::PopNNT(pop_count), body_pos);
-                    env.popnnt(pop_count);
-                }
-            }
         }
 
         anf::Expr::Let(bindings, body) => {
@@ -284,7 +279,7 @@ fn emit_expr(cmp: &mut Compiler, env: &mut Env, builder: &mut CfgBuilder, cont: 
             let body_pos = body.pos.clone();
 
             for (id, val) in bindings {
-                emit_expr(cmp, env, builder, Cont::Next, val);
+                emit_expr(cmp, env, builder, Cont::Next {ignore_values: false}, val);
                 env.name_top(id);
             }
 
@@ -303,9 +298,13 @@ fn emit_expr(cmp: &mut Compiler, env: &mut Env, builder: &mut CfgBuilder, cont: 
         anf::Expr::If(cond, conseq, alt, live_outs) => {
             let conseq_label = builder.f.create_block();
             let alt_label = builder.f.create_block();
-            let join = if let Cont::Next = cont { Cont::Label(builder.f.create_block()) } else { cont };
+            let join = if let Cont::Next {ignore_values} = cont {
+                Cont::Label {label: builder.f.create_block(), ignore_values}
+            } else {
+                cont
+            };
 
-            emit_expr(cmp, env, builder, Cont::Next, *cond);
+            emit_expr(cmp, env, builder, Cont::Next {ignore_values: false}, *cond);
             builder.push(Instr::If(conseq_label, alt_label), pos);
             env.pop();
 
@@ -332,7 +331,7 @@ fn emit_expr(cmp: &mut Compiler, env: &mut Env, builder: &mut CfgBuilder, cont: 
             }
             env.max_regs = env.max_regs.max(alt_env.max_regs);
 
-            if let Cont::Label(join_label) = join {
+            if let Cont::Label {label: join_label, ignore_values: _} = join {
                 builder.current = join_label;
             }
         },
@@ -341,37 +340,37 @@ fn emit_expr(cmp: &mut Compiler, env: &mut Env, builder: &mut CfgBuilder, cont: 
             builder.push(Instr::UninitializedBox, pos.clone());
             env.push();
 
-            cont.goto(builder, pos);
+            cont.goto(env, builder, pos);
         },
 
         anf::Expr::Box(val_expr) => {
-            emit_expr(cmp, env, builder, Cont::Next, *val_expr);
+            emit_expr(cmp, env, builder, Cont::Next {ignore_values: false}, *val_expr);
             builder.push(Instr::Box, pos.clone());
             env.pop();
             env.push();
 
-            cont.goto(builder, pos);
+            cont.goto(env, builder, pos);
         },
 
         anf::Expr::BoxSet(r#box, val_expr) => {
             emit_use(env, builder, r#box, pos.clone());
-            emit_expr(cmp, env, builder, Cont::Next, *val_expr);
+            emit_expr(cmp, env, builder, Cont::Next {ignore_values: false}, *val_expr);
             builder.push(Instr::BoxSet, pos.clone());
             env.popn(2);
             env.push();
 
-            cont.goto(builder, pos);
+            cont.goto(env, builder, pos);
         },
 
         anf::Expr::CheckedBoxSet {guard, r#box, val_expr} => {
             emit_use(env, builder, guard, pos.clone());
             emit_use(env, builder, r#box, pos.clone());
-            emit_expr(cmp, env, builder, Cont::Next, *val_expr);
+            emit_expr(cmp, env, builder, Cont::Next {ignore_values: false}, *val_expr);
             builder.push(Instr::CheckedBoxSet, pos.clone());
             env.popn(3);
             env.push();
 
-            cont.goto(builder, pos);
+            cont.goto(env, builder, pos);
         },
 
         anf::Expr::BoxGet(r#box) => {
@@ -380,7 +379,7 @@ fn emit_expr(cmp: &mut Compiler, env: &mut Env, builder: &mut CfgBuilder, cont: 
             env.pop();
             env.push();
 
-            cont.goto(builder, pos);
+            cont.goto(env, builder, pos);
         },
 
         anf::Expr::CheckedBoxGet {guard, r#box} => {
@@ -390,7 +389,7 @@ fn emit_expr(cmp: &mut Compiler, env: &mut Env, builder: &mut CfgBuilder, cont: 
             env.popn(2);
             env.push();
 
-            cont.goto(builder, pos);
+            cont.goto(env, builder, pos);
         },
 
         anf::Expr::Fn(ref fvs, ref params, varargs, body) => {
@@ -405,25 +404,41 @@ fn emit_expr(cmp: &mut Compiler, env: &mut Env, builder: &mut CfgBuilder, cont: 
             env.popn(fvs.len());
             env.push();
 
-            cont.goto(builder, pos);
+            cont.goto(env, builder, pos);
         },
 
         anf::Expr::Call(cargs, live_outs) => {
             let cargc = cargs.len();
 
             for (id, val) in cargs {
-                emit_expr(cmp, env, builder, Cont::Next, val);
+                emit_expr(cmp, env, builder, Cont::Next {ignore_values: false}, val);
                 env.name_top(id);
             }
 
-            if let Cont::Ret = cont {
-                builder.push(Instr::TailCall(cargc), pos);
-            } else {
-                let prunes = env.prune_mask(cargc, &live_outs);
-                env.call(cargc, &prunes);
-                builder.push(Instr::Call(cargc, prunes), pos.clone());
+            match cont {
+                Cont::Next {ignore_values} | Cont::Label {label: _, ignore_values} => {
+                    let prunes = env.prune_mask(cargc, &live_outs);
+                    env.prune(&prunes);
+                    env.popn(cargc);
+                    builder.push(Instr::Call(cargc, prunes), pos.clone());
 
-                cont.goto(builder, pos);
+                    if !ignore_values {
+                        builder.push(Instr::CheckOneReturnValue, pos.clone());
+                        env.push();
+
+                        cont.goto(env, builder, pos);
+                    } else {
+                        builder.push(Instr::IgnoreReturnValues, pos.clone());
+
+                        match cont {
+                            Cont::Next {ignore_values: _} => (),
+                            Cont::Label {label, ignore_values: _} => builder.push(Instr::Goto(label), pos),
+                            Cont::Ret => unreachable!()
+                        }
+                    }
+                },
+
+                Cont::Ret => builder.push(Instr::TailCall(cargc), pos)
             }
         },
 
@@ -431,7 +446,7 @@ fn emit_expr(cmp: &mut Compiler, env: &mut Env, builder: &mut CfgBuilder, cont: 
             builder.push(Instr::Global(name), pos.clone());
             env.push();
 
-            cont.goto(builder, pos);
+            cont.goto(env, builder, pos);
         },
 
         anf::Expr::CheckedUse {guard, id} => {
@@ -440,20 +455,20 @@ fn emit_expr(cmp: &mut Compiler, env: &mut Env, builder: &mut CfgBuilder, cont: 
             env.pop();
             emit_use(env, builder, id, pos.clone());
 
-            cont.goto(builder, pos);
+            cont.goto(env, builder, pos);
         },
 
         anf::Expr::Triv(anf::Triv::Use(id)) => {
             emit_use(env, builder, id, pos.clone());
 
-            cont.goto(builder, pos);
+            cont.goto(env, builder, pos);
         },
 
         anf::Expr::Triv(anf::Triv::Const(c)) => {
             builder.push(Instr::Const(c), pos.clone());
             env.push();
 
-            cont.goto(builder, pos);
+            cont.goto(env, builder, pos);
         },
 
         anf::Expr::Letrec(..) | anf::Expr::Set(..) => unreachable!()

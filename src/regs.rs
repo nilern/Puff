@@ -146,12 +146,14 @@ impl<T: Copy> Regs<T> {
         self.top = top;
     }
 
+    /// Keep only the `new_len` top values.
     pub fn enter(&mut self, new_len: usize) {
         unsafe { self.base = self.top.sub(new_len); }
     }
 
-    pub fn re_enter(&mut self, saveds: &[T]) {
-        let required = saveds.len() + 1;
+    /// Keep `retc` top values, copy `saveds` below them:
+    pub fn re_enter(&mut self, saveds: &[T], retc: usize) {
+        let required = saveds.len() + retc;
 
         unsafe {
             let base = self.top.sub(required);
@@ -161,10 +163,11 @@ impl<T: Copy> Regs<T> {
                 self.base = base;
             } else {
                 let required_bytes = required * size_of::<T>();
+                let rets = self.top.sub(retc);
 
                 if (self.end as usize - self.start as usize) < required_bytes {
                     self.start.copy_from_nonoverlapping(saveds.as_ptr(), saveds.len());
-                    self.start.add(saveds.len()).write(*self.top);
+                    self.start.add(saveds.len()).copy_from(rets, retc);
 
                     self.base = self.start;
                     self.top = self.start.add(required);
@@ -173,7 +176,7 @@ impl<T: Copy> Regs<T> {
                         as *mut T;
 
                     start.copy_from_nonoverlapping(saveds.as_ptr(), saveds.len());
-                    start.add(saveds.len()).write(*self.top);
+                    start.add(saveds.len()).copy_from_nonoverlapping(rets, retc);
 
                     self.start = start;
                     self.end = start.add(required);
