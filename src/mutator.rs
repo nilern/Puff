@@ -231,7 +231,8 @@ impl Mutator {
 
             let native_fn = Type::bootstrap_new(&mut heap, r#type, NonIndexedType::from_static::<NativeFn>(), &[
                 Field { r#type: bytecode.as_type(), offset: 0 },
-                Field { r#type: fn_ptr.as_type(), offset: size_of::<usize>().max(align_of::<native_fn::Code>()) }
+                Field { r#type: bool.as_type(), offset: size_of::<usize>() },
+                Field { r#type: fn_ptr.as_type(), offset: 2* size_of::<usize>() }
             ])?;
 
             let r#box = Type::bootstrap_new(&mut heap, r#type, NonIndexedType::from_static::<Box>(),
@@ -284,7 +285,8 @@ impl Mutator {
                 ("pair?", builtins::IS_PAIR), ("null?", builtins::IS_NULL), ("cons", builtins::CONS),
                 ("car", builtins::CAR), ("cdr", builtins::CDR),
                 ("set-car!", builtins::SET_CAR), ("set-cdr!", builtins::SET_CDR),
-                ("eval-syntax", builtins::EVAL_SYNTAX), ("load", builtins::LOAD)
+                ("eval-syntax", builtins::EVAL_SYNTAX), ("load", builtins::LOAD),
+                ("apply", builtins::APPLY)
             ] {
                 let name = Symbol::new(&mut mt, name);
                 let f = root!(&mut mt, NativeFn::new(&mut mt, f));
@@ -424,13 +426,15 @@ impl Mutator {
             self.regs.enter(argc);
 
             // Check arity:
-            // TODO: Varargs
-            if argc != unsafe { callee.as_ref().arity } {
-                unsafe {
-                    println!("[{}]: ArgcError: {} != {} at {}", self.pc, argc, callee.as_ref().arity,
-                        self.code().as_ref().pc_pos(self.pc).unwrap().within(self));
+            let min_arity = unsafe { callee.as_ref().min_arity };
+            if ! unsafe { callee.as_ref().varargs } {
+                if argc != min_arity {
+                    todo!()
                 }
-                todo!()
+            } else {
+                if argc < min_arity {
+                    todo!()
+                }
             }
 
             // Call:

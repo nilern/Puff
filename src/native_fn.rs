@@ -13,7 +13,8 @@ pub type Code = fn(&mut Mutator) -> Answer;
 
 #[repr(C)]
 pub struct NativeFn {
-    pub arity: usize,
+    pub min_arity: usize,
+    pub varargs: bool,
     pub code: Code
 }
 

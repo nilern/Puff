@@ -23,7 +23,8 @@ fn eq(mt: &mut Mutator) -> Answer {
 }
 
 pub const EQ: NativeFn = NativeFn {
-    arity: 3,
+    min_arity: 3,
+    varargs: false,
     code: eq
 };
 
@@ -45,7 +46,8 @@ fn fx_add(mt: &mut Mutator) -> Answer {
 }
 
 pub const FX_ADD: NativeFn = NativeFn {
-    arity: 3,
+    min_arity: 3,
+    varargs: false,
     code: fx_add
 };
 
@@ -67,7 +69,8 @@ fn fx_sub(mt: &mut Mutator) -> Answer {
 }
 
 pub const FX_SUB: NativeFn = NativeFn {
-    arity: 3,
+    min_arity: 3,
+    varargs: false,
     code: fx_sub
 };
 
@@ -89,7 +92,8 @@ fn fx_mul(mt: &mut Mutator) -> Answer {
 }
 
 pub const FX_MUL: NativeFn = NativeFn {
-    arity: 3,
+    min_arity: 3,
+    varargs: false,
     code: fx_mul
 };
 
@@ -107,7 +111,8 @@ fn is_pair(mt: &mut Mutator) -> Answer {
 }
 
 pub const IS_PAIR: NativeFn = NativeFn {
-    arity: 2,
+    min_arity: 2,
+    varargs: false,
     code: is_pair
 };
 
@@ -121,7 +126,8 @@ fn is_null(mt: &mut Mutator) -> Answer {
 }
 
 pub const IS_NULL: NativeFn = NativeFn {
-    arity: 2,
+    min_arity: 2,
+    varargs: false,
     code: is_null
 };
 
@@ -139,7 +145,8 @@ fn cons(mt: &mut Mutator) -> Answer {
 }
 
 pub const CONS: NativeFn = NativeFn {
-    arity: 3,
+    min_arity: 3,
+    varargs: false,
     code: cons
 };
 
@@ -155,7 +162,8 @@ fn car(mt: &mut Mutator) -> Answer {
 }
 
 pub const CAR: NativeFn = NativeFn {
-    arity: 2,
+    min_arity: 2,
+    varargs: false,
     code: car
 };
 
@@ -171,7 +179,8 @@ fn cdr(mt: &mut Mutator) -> Answer {
 }
 
 pub const CDR: NativeFn = NativeFn {
-    arity: 2,
+    min_arity: 2,
+    varargs: false,
     code: cdr
 };
 
@@ -189,7 +198,8 @@ fn set_car(mt: &mut Mutator) -> Answer {
 }
 
 pub const SET_CAR: NativeFn = NativeFn {
-    arity: 3,
+    min_arity: 3,
+    varargs: false,
     code: set_car
 };
 
@@ -207,7 +217,8 @@ fn set_cdr(mt: &mut Mutator) -> Answer {
 }
 
 pub const SET_CDR: NativeFn = NativeFn {
-    arity: 3,
+    min_arity: 3,
+    varargs: false,
     code: set_cdr
 };
 
@@ -242,7 +253,8 @@ fn eval_syntax(mt: &mut Mutator) -> Answer {
 }
 
 pub const EVAL_SYNTAX: NativeFn = NativeFn {
-    arity: 2,
+    min_arity: 2,
+    varargs: false,
     code: eval_syntax
 };
 
@@ -295,6 +307,30 @@ fn load(mt: &mut Mutator) -> Answer {
 }
 
 pub const LOAD: NativeFn = NativeFn {
-    arity: 2,
+    min_arity: 2,
+    varargs: false,
     code: load
+};
+
+fn apply(mt: &mut Mutator) -> Answer {
+    let mut argc = mt.regs().len() - 2;
+
+    let mut arglist = mt.regs_mut().pop().unwrap();
+    while let Some(args_pair) = arglist.try_cast::<Pair>(mt) {
+        mt.push(unsafe { args_pair.as_ref().car() });
+        argc += 1;
+        arglist = unsafe { args_pair.as_ref().cdr() };
+    }
+
+    if arglist != EmptyList::instance(mt).into() {
+        todo!() // error
+    }
+
+    Answer::TailCall {argc}
+}
+
+pub const APPLY: NativeFn = NativeFn {
+    min_arity: 3,
+    varargs: true,
+    code: apply 
 };
