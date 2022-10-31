@@ -54,14 +54,8 @@
                              (error "for-each: improper list" list1))))))
       (for-each list1))))
 
-(define length
-  (lambda (list)
-    (fold (lambda (_ len) (+ len 1)) 0 list)))
+(define length (lambda (list) (fold (lambda (_ len) (+ len 1)) 0 list)))
 
-(define append
-  (lambda (list1 list2)
-    (fold-right cons list2 list1)))
+(define append (lambda (list1 list2) (fold-right cons list2 list1)))
 
-(define reverse
-  (lambda (list1)
-    (fold cons '() list1)))
+(define reverse (lambda (list1) (fold cons '() list1)))
