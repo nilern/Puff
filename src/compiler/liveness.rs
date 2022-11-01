@@ -92,6 +92,15 @@ pub fn liveness(expr: &mut anf::PosExpr) {
                     })
             },
 
+            CallWithValues((pid, ref mut producer), (_, ref mut consumer), ref mut call_live_outs) => {
+                *call_live_outs = live_outs.clone();
+
+                live_outs.insert(pid);
+                live_outs = live_ins(consumer, live_outs);
+                live_outs.remove(&pid);
+                live_ins(producer, live_outs)
+            },
+
             Global(_) => live_outs,
 
             CheckedUse {guard, id} => {

@@ -284,11 +284,14 @@ pub fn verify(mt: &Mutator, code: &Bytecode) -> Result<(), IndexedErr<Vec<usize>
 
                         &DecodedInstr::IgnoreReturnValues => amt.pc += 1,
 
+                        &DecodedInstr::TailCallWithValues => todo!(),
+
                         _ => return Err(IndexedErr {err: Err::UnexpectedInstr, byte_index: byte_path(bp, amt.pc)})
                     }
                 },
 
-                &DecodedInstr::CheckOneReturnValue | &DecodedInstr::IgnoreReturnValues =>
+                &DecodedInstr::CheckOneReturnValue | &DecodedInstr::IgnoreReturnValues
+                | &DecodedInstr::TailCallWithValues =>
                     return Err(IndexedErr {err: Err::UnexpectedInstr, byte_index: byte_path(bp, amt.pc)}),
 
                 &DecodedInstr::Br {..} | &DecodedInstr::Brf {..} | &DecodedInstr::Ret | &DecodedInstr::TailCall {..} =>
@@ -316,7 +319,10 @@ pub fn verify(mt: &Mutator, code: &Bytecode) -> Result<(), IndexedErr<Vec<usize>
                 &Transfer::TailCall {argc} =>
                     if amt.regs.len() < argc {
                         return Err(IndexedErr {err: Err::RegsUnderflow, byte_index: byte_path(bp, amt.pc)});
-                    }
+                    },
+
+                &Transfer::TailCallWithValues =>
+                    return Err(IndexedErr {err: Err::UnexpectedInstr, byte_index: byte_path(bp, amt.pc)})
             }
 
             Ok(())
@@ -528,7 +534,8 @@ enum Transfer {
     Goto {dest: usize},
     If {conseq: usize, alt: usize},
     Ret,
-    TailCall {argc: usize}
+    TailCall {argc: usize},
+    TailCallWithValues
 }
 
 impl<'a> Block<'a> {
@@ -536,7 +543,7 @@ impl<'a> Block<'a> {
         match self.transfer {
             Transfer::Goto {dest} => Successors::new([dest, 0], 1),
             Transfer::If {conseq, alt} => Successors::new([conseq, alt], 2),
-            Transfer::Ret | Transfer::TailCall {..} => Successors::new([0, 0], 0)
+            Transfer::Ret | Transfer::TailCall {..} | Transfer::TailCallWithValues => Successors::new([0, 0], 0)
         }
     }
 }
@@ -682,6 +689,18 @@ impl<'a> TryFrom<&'a Bytecode> for CFG<'a> {
                         predecessors: mem::take(&mut predecessors),
                         stmts: mem::take(&mut stmts),
                         transfer: Transfer::TailCall {argc}
+                    });
+                    block_start = i;
+                },
+
+                TailCallWithValues => {
+                    i += instr_min_len;
+                    prev_was_branch = true;
+
+                    blocks.insert(block_start, Block {
+                        predecessors: mem::take(&mut predecessors),
+                        stmts: mem::take(&mut stmts),
+                        transfer: Transfer::TailCallWithValues
                     });
                     block_start = i;
                 },
@@ -850,6 +869,7 @@ fn try_decode<'a>(bytes: &'a [u8], mut i: usize) -> Result<(DecodedInstr<'a>, us
 
                     Opcode::CheckOneReturnValue => Ok((DecodedInstr::CheckOneReturnValue, 1)),
                     Opcode::IgnoreReturnValues => Ok((DecodedInstr::IgnoreReturnValues, 1)),
+                    Opcode::TailCallWithValues => Ok((DecodedInstr::TailCallWithValues, 1)),
 
                     Opcode::TailCall =>
                         match bytes.get(i) {

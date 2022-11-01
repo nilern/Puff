@@ -426,6 +426,28 @@ fn emit_expr(cmp: &mut Compiler, env: &mut Env, builder: &mut CfgBuilder, cont: 
             }
         },
 
+        anf::Expr::CallWithValues((pid, producer), (cid, consumer), live_outs) => {
+            match cont {
+                Cont::Next {..} | Cont::Label {..} => todo!(), // Error: `call-with-values*` not in tail position
+                Cont::Ret => ()
+            }
+
+            emit_expr(cmp, env, builder, Cont::Next {ignore_values: false}, *producer);
+            env.name_top(pid);
+            emit_expr(cmp, env, builder, Cont::Next {ignore_values: false}, *consumer);
+            env.name_top(cid);
+
+            emit_use(env, builder, pid, pos.clone());
+            let mut producer_live_outs = live_outs.clone();
+            producer_live_outs.insert(cid);
+            let prunes = env.prune_mask(1, &producer_live_outs);
+            env.prune(&prunes);
+            env.pop();
+            builder.push(Instr::Call(1, prunes), pos.clone());
+
+            builder.push(Instr::TailCallWithValues, pos);
+        },
+
         anf::Expr::Global(name) => {
             builder.push(Instr::Global(name), pos.clone());
             env.push();

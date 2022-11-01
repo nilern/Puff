@@ -47,6 +47,7 @@ pub enum Instr {
     Call(usize, Vec<bool>),
     CheckOneReturnValue,
     IgnoreReturnValues,
+    TailCallWithValues,
     TailCall(usize),
     Ret
 }
@@ -94,6 +95,7 @@ impl Instr {
             },
             &CheckOneReturnValue => writeln!(fmt, "{}check-one-return-value", indent),
             &IgnoreReturnValues => writeln!(fmt, "{}ignore-return-values", indent),
+            &TailCallWithValues => writeln!(fmt, "{}tailcall-with-values", indent),
             &TailCall(argc) => writeln!(fmt, "{}tailcall {}", indent, argc),
             &Ret => writeln!(fmt, "{}ret", indent)
         }

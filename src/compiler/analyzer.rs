@@ -69,6 +69,8 @@ pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::PosExpr {
                     return analyze_quote(cmp, unsafe { ls.as_ref().cdr() }, pos);
                 } else if unsafe { callee_sym.as_ref().name() == "set!" } {
                     return analyze_set(cmp, env, unsafe { ls.as_ref().cdr() }, pos);
+                } else if unsafe { callee_sym.as_ref().name() == "call-with-values*" } {
+                    return analyze_call_with_values(cmp, env, unsafe { ls.as_ref().cdr() }, pos);
                 }
             }
                 
@@ -336,6 +338,30 @@ pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::PosExpr {
         }
 
         todo!() // Error: argc
+    }
+
+    fn analyze_call_with_values(cmp: &mut Compiler, env: &Rc<Env>, args: ORef, pos: Handle) -> anf::PosExpr {
+        let args = args.try_cast::<Pair>(cmp.mt).unwrap_or_else(|| {
+            todo!() // error
+        });
+        let producer = unsafe { args.as_ref().car() };
+        let args = unsafe { args.as_ref().cdr() }.try_cast::<Pair>(cmp.mt).unwrap_or_else(|| {
+            todo!() // error
+        });
+        let consumer = unsafe { args.as_ref().car() };
+        if unsafe { args.as_ref().cdr() } != EmptyList::instance(cmp.mt).into() {
+            todo!() // error
+        }
+
+        let producer = analyze_expr(cmp, env, producer);
+        let pid = Id::fresh(cmp);
+        let consumer = analyze_expr(cmp, env, consumer);
+        let cid = Id::fresh(cmp);
+        PosExpr {
+            expr: CallWithValues((pid, boxed::Box::new(producer)), (cid, boxed::Box::new(consumer)),
+                anf::LiveVars::new()),
+            pos
+        }
     }
 
     fn analyze_call(cmp: &mut Compiler, env: &Rc<Env>, expr: Gc<Pair>, pos: Handle) -> anf::PosExpr {

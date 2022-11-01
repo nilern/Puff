@@ -478,6 +478,8 @@ impl Mutator {
                     self.stack.truncate(start);
                 },
 
+                Opcode::TailCallWithValues => todo!(),
+
                 _ => unreachable!()
             }
 
@@ -726,7 +728,8 @@ impl Mutator {
                         self.tailcall(argc);
                     },
 
-                    Opcode::CheckOneReturnValue | Opcode::IgnoreReturnValues => unreachable!(),
+                    Opcode::CheckOneReturnValue | Opcode::IgnoreReturnValues | Opcode::TailCallWithValues =>
+                        unreachable!(),
 
                     Opcode::TailCall => {
                         let argc = self.peek_oparg();

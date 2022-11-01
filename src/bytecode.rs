@@ -43,6 +43,7 @@ pub enum Opcode {
     Call,
     CheckOneReturnValue,
     IgnoreReturnValues,
+    TailCallWithValues,
     TailCall,
     Ret
 }
@@ -170,6 +171,7 @@ pub enum DecodedInstr<'a> {
     Call {argc: usize, prunes: &'a u8},
     CheckOneReturnValue,
     IgnoreReturnValues,
+    TailCallWithValues,
     TailCall {argc: usize},
     Ret
 }
@@ -276,6 +278,8 @@ impl<'a> DecodedInstr<'a> {
                         Opcode::CheckOneReturnValue => Some((DecodedInstr::CheckOneReturnValue, 1)),
 
                         Opcode::IgnoreReturnValues => Some((DecodedInstr::IgnoreReturnValues, 1)),
+
+                        Opcode::TailCallWithValues => Some((DecodedInstr::TailCallWithValues, 1)),
 
                         Opcode::TailCall =>
                             match bytes.get(i) {
@@ -516,6 +520,8 @@ impl Bytecode {
 
                         Opcode::IgnoreReturnValues => writeln!(fmt, "{}{}: ignore-return-values", indent, i)?,
 
+                        Opcode::TailCallWithValues => writeln!(fmt, "{}{}: tailcall-with-values", indent, i)?,
+
                         Opcode::TailCall =>
                             if let Some((_, argc)) = instrs.next() {
                                 writeln!(fmt, "{}{}: tailcall {}", indent, i, argc)?;
@@ -741,6 +747,11 @@ impl Builder {
 
     pub fn ignore_return_values(&mut self, pos: Handle) {
         self.instrs.push(Opcode::IgnoreReturnValues as u8);
+        self.positions.push(pos);
+    }
+
+    pub fn tailcall_with_values(&mut self, pos: Handle) {
+        self.instrs.push(Opcode::TailCallWithValues as u8);
         self.positions.push(pos);
     }
 

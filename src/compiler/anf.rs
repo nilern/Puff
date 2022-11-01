@@ -33,6 +33,7 @@ pub enum Expr {
 
     r#Fn(LiveVars, Params, bool, Box<PosExpr>),
     Call(Vec<Binding>, LiveVars),
+    CallWithValues((Id, Box<PosExpr>), (Id, Box<PosExpr>), LiveVars),
 
     Global(HandleT<Symbol>),
     CheckedUse {guard: Id, id: Id},
@@ -160,6 +161,22 @@ impl Expr {
                 RcDoc::text("(call")
                     .append(RcDoc::line()
                         .append(RcDoc::intersperse(cargs.iter().map(|b| binding_to_doc(b, mt, cmp)), RcDoc::line()))
+                        .nest(1)).append(RcDoc::text(")"))
+                    .group(),
+
+            &CallWithValues((pid, ref producer), (cid, ref consumer), _) =>
+                RcDoc::text("(call-with-values*")
+                    .append(RcDoc::line()
+                        .append(RcDoc::text("(")
+                            .append(pid.to_doc(cmp).append(RcDoc::line())
+                                .append(producer.to_doc(mt, cmp))
+                                .group().nest(1))
+                            .append(RcDoc::text(")")))
+                        .append(RcDoc::text("(")
+                            .append(cid.to_doc(cmp).append(RcDoc::line())
+                                .append(consumer.to_doc(mt, cmp))
+                                .group().nest(1))
+                            .append(RcDoc::text(")")))
                         .nest(1)).append(RcDoc::text(")"))
                     .group(),
 

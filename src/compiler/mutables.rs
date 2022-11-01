@@ -36,7 +36,12 @@ pub fn mutables(expr: &anf::PosExpr) -> HashSet<Id> {
             Fn(_, _, _, ref body) => expr_mutables(mutables, body),
 
             Call(ref cargs, _) =>
-                for (_, val_expr) in cargs { expr_mutables(mutables, val_expr); }
+                for (_, val_expr) in cargs { expr_mutables(mutables, val_expr); },
+
+            CallWithValues((_, ref producer), (_, ref consumer), _) => {
+                expr_mutables(mutables, producer);
+                expr_mutables(mutables, consumer);
+            },
 
             Global(_) => (),
             Triv(_) => (),
@@ -270,6 +275,11 @@ pub fn letrec(cmp: &mut Compiler, mutables: &HashSet<Id>, expr: anf::PosExpr) ->
                 Call(cargs.into_iter().map(|(id, val_expr)| (id, convert(cmp, mutables, env, val_expr))).collect(),
                     live_outs),
 
+            CallWithValues((pid, producer), (cid, consumer), live_outs) =>
+                CallWithValues((pid, boxed::Box::new(convert(cmp, mutables, env, *producer))),
+                    (cid, boxed::Box::new(convert(cmp, mutables, env, *consumer))),
+                    live_outs),
+
             Global(name) => Global(name),
 
             Triv(Use(id)) =>
@@ -380,6 +390,11 @@ pub fn convert_mutables(cmp: &mut Compiler, mutables: &HashSet<Id>, expr: anf::P
         Call(cargs, live_outs) =>
             // Callee and args ids are not from source code and so cannot be mutable:
             Call(cargs.into_iter().map(|(id, val_expr)| (id, convert_mutables(cmp, mutables, val_expr))).collect(),
+                live_outs),
+
+        CallWithValues((pid, producer), (cid, consumer), live_outs) =>
+            CallWithValues((pid, boxed::Box::new(convert_mutables(cmp, mutables, *producer))),
+                (cid, boxed::Box::new(convert_mutables(cmp, mutables, *consumer))),
                 live_outs),
 
         Global(name) => Global(name),

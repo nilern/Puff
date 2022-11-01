@@ -40,6 +40,7 @@ pub fn emit(cmp: &mut Compiler, f: &cfg::Fn) -> Gc<Bytecode> {
             &Call(cargc, ref prunes) => builder.call(cargc, prunes, pos.clone()),
             &CheckOneReturnValue => builder.check_one_return_value(pos.clone()),
             &IgnoreReturnValues => builder.ignore_return_values(pos.clone()),
+            &TailCallWithValues => builder.tailcall_with_values(pos.clone()),
             &TailCall(cargc) => builder.tailcall(cargc, pos.clone()),
             &Ret => builder.ret(pos.clone())
         }
