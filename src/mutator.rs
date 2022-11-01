@@ -379,7 +379,7 @@ impl Mutator {
         unsafe { self.handles.root_t(obj) }
     }
 
-    fn tailcall(&mut self, argc: usize) -> Option<ORef> {
+    fn tailcall(&mut self, argc: usize) -> Option<usize> {
         let callee = self.regs[self.regs.len() - argc];
         if let Some(callee) = callee.try_cast::<Closure>(self) {
             let code = unsafe { callee.as_ref().code };
@@ -447,7 +447,7 @@ impl Mutator {
         }
     }
 
-    fn ret(&mut self, retc: usize) -> Option<ORef> {
+    fn ret(&mut self, retc: usize) -> Option<usize> {
         if self.stack.len() > 0 {
             let rip =
                 unsafe { isize::from(Fixnum::from_oref_unchecked(self.stack.pop().unwrap())) as usize };
@@ -486,14 +486,13 @@ impl Mutator {
 
             None
         } else {
-            let res = self.regs[self.regs.len() - 1];
-            self.regs.enter(0);
+            self.regs.enter(retc);
 
-            Some(res)
+            Some(retc)
         }
     }
 
-    pub fn invoke(&mut self) -> ORef {
+    pub fn invoke(&mut self) -> &[ORef] {
         {
             let argc = self.regs.len();
             assert!(argc > 0);
@@ -732,14 +731,14 @@ impl Mutator {
                     Opcode::TailCall => {
                         let argc = self.peek_oparg();
 
-                        if let Some(res) = self.tailcall(argc) {
-                            return res;
+                        if let Some(retc) = self.tailcall(argc) {
+                            return &self.regs.as_slice()[self.regs.len() - retc..];
                         }
                     },
 
                     Opcode::Ret =>
-                        if let Some(res) = self.ret(1) {
-                            return res;
+                        if let Some(retc) = self.ret(1) {
+                            return &self.regs.as_slice()[self.regs.len() - retc..];
                         }
                 }
             } else {

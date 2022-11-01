@@ -27,6 +27,7 @@ use clap::Parser;
 use rustyline::error::ReadlineError;
 use rustyline;
 
+use oref::ORef;
 use handle::Handle;
 use reader::Reader;
 use mutator::Mutator;
@@ -83,9 +84,12 @@ fn main() {
                                     let f = Closure::new(&mut mt, 0);
                                     mt.pop();
                                     mt.push(f.into());
-                                    let v = mt.invoke();
+                                    let vs: Vec<ORef> = mt.invoke().iter().copied().collect();
+                                    mt.regs_mut().truncate(0);
 
-                                    println!("{}", v.within(&mt));
+                                    for v in vs {
+                                        println!("{}", v.within(&mt));
+                                    }
                                 },
 
                                 Err(error) => {
