@@ -26,7 +26,6 @@ pub enum Opcode {
     Clover,
 
     Pop,
-    PopNNT,
     Prune,
 
     Box,
@@ -154,7 +153,6 @@ pub enum DecodedInstr<'a> {
     Clover {index: usize},
 
     Pop,
-    PopNNT {n: usize},
     Prune {prunes: &'a u8},
 
     Box,
@@ -220,12 +218,6 @@ impl<'a> DecodedInstr<'a> {
                             },
 
                         Opcode::Pop => Some((DecodedInstr::Pop, 1)),
-
-                        Opcode::PopNNT =>
-                            match bytes.get(i) {
-                                Some(n) => Some((DecodedInstr::PopNNT {n: *n as usize}, 2)),
-                                None => None
-                            },
 
                         Opcode::Prune =>
                             match bytes.get(i) {
@@ -440,13 +432,6 @@ impl Bytecode {
                             },
 
                         Opcode::Pop => writeln!(fmt, "{}{}: pop", indent, i)?,
-
-                        Opcode::PopNNT =>
-                            if let Some((_, n)) = instrs.next() {
-                                writeln!(fmt, "{}{}: popnnt {}", indent, i, n)?;
-                            } else {
-                                todo!()
-                            },
 
                         Opcode::Prune => {
                             write!(fmt, "{}{}: prune #b", indent, i)?;
@@ -669,12 +654,6 @@ impl Builder {
 
     pub fn pop(&mut self, pos: Handle) {
         self.instrs.push(Opcode::Pop as u8);
-        self.positions.push(pos);
-    }
-
-    pub fn popnnt(&mut self, n: usize, pos: Handle) {
-        self.instrs.push(Opcode::PopNNT as u8);
-        self.instrs.push(u8::try_from(n).unwrap());
         self.positions.push(pos);
     }
 

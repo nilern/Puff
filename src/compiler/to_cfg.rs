@@ -81,22 +81,6 @@ impl Env {
         self.reg_ids.truncate(self.reg_ids.len() - n);
     }
 
-    fn popnnt(&mut self, n: usize) {
-        let last_index = self.reg_ids.len() - 1;
-        for oid in &self.reg_ids[(last_index - n)..last_index] {
-            if let Some(id) = oid {
-                self.id_regs.remove(id);
-            }
-        }
-
-        let top = *self.reg_ids.last().unwrap();
-        self.reg_ids.truncate(self.reg_ids.len() - n);
-        *self.reg_ids.last_mut().unwrap() = top;
-        if let Some(id) = top {
-            self.id_regs.insert(id, self.reg_ids.len() - 1);
-        }
-    }
-
     fn prune(&mut self, prunes: &[bool]) {
         let mut prune_count = 0;
         for (reg, &prune) in prunes.iter().enumerate() {
@@ -274,8 +258,7 @@ fn emit_expr(cmp: &mut Compiler, env: &mut Env, builder: &mut CfgBuilder, cont: 
             emit_expr(cmp, env, builder, cont, body);
         }
 
-        anf::Expr::Let(bindings, body) => {
-            let bindingc = bindings.len();
+        anf::Expr::Let(bindings, body, live_outs) => {
             let body_pos = body.pos.clone();
 
             for (id, val) in bindings {
@@ -285,13 +268,13 @@ fn emit_expr(cmp: &mut Compiler, env: &mut Env, builder: &mut CfgBuilder, cont: 
 
             emit_expr(cmp, env, builder, cont, *body);
 
-            // FIXME: Can't just `popnnt`, some of those might have been pruned already:
             if let Cont::Ret = cont {
                 /* ret/tailcall will take care of popping */
             } else {
-                if bindingc > 0 {
-                    builder.push(Instr::PopNNT(bindingc), body_pos);
-                    env.popnnt(bindingc);
+                let prunes = env.prune_mask(/* Don't prune body value: */ 1, &live_outs);
+                if prunes.iter().any(|&prune| prune) {
+                    env.prune(&prunes);
+                    builder.push(Instr::Prune(prunes), body_pos);
                 }
             }
         },

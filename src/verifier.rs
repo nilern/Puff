@@ -130,11 +130,6 @@ pub fn verify(mt: &Mutator, code: &Bytecode) -> Result<(), IndexedErr<Vec<usize>
                     amt.pc += 1;
                 },
 
-                &DecodedInstr::PopNNT {n} => {
-                    amt.popnnt(n)?;
-                    amt.pc += 2;
-                },
-
                 &DecodedInstr::Prune {prunes} => { // TODO: Warn about unnecessarily long prune mask
                     let regs_len = amt.regs.len();
                     let mut mask_len = 0;
@@ -497,15 +492,6 @@ impl AbstractMutator {
         }
     }
 
-    fn popnnt(&mut self, n: usize) -> Result<(), IndexedErr<Vec<usize>>> {
-        if self.regs.len() >= n + 1 {
-            unsafe { self.regs.popnnt_unchecked(n); }
-            Ok(())
-        } else {
-            Err(IndexedErr {err: Err::RegsUnderflow, byte_index: byte_path(&self.byte_path, self.pc)})
-        }
-    }
-
     fn get_reg(&self, reg: usize) -> Result<&AbstractType, IndexedErr<Vec<usize>>> {
         if reg < self.regs.len() {
             Ok(&self.regs[reg])
@@ -717,7 +703,7 @@ impl<'a> TryFrom<&'a Bytecode> for CFG<'a> {
                     stmts.push(instr);
                 },
 
-                Define{..} | GlobalSet{..} | Global{..} | Pop | PopNNT{..} | Const{..} | Local{..} | Clover{..}
+                Define{..} | GlobalSet{..} | Global{..} | Pop | Const{..} | Local{..} | Clover{..}
                 | Box | UninitializedBox | BoxSet | CheckedBoxSet | BoxGet | CheckedBoxGet | CheckUse | Fn{..}
                 | CheckOneReturnValue | IgnoreReturnValues => {
                     i += instr_min_len;
@@ -807,12 +793,6 @@ fn try_decode<'a>(bytes: &'a [u8], mut i: usize) -> Result<(DecodedInstr<'a>, us
                         },
 
                     Opcode::Pop => Ok((DecodedInstr::Pop, 1)),
-
-                    Opcode::PopNNT =>
-                        match bytes.get(i) {
-                            Some(n) => Ok((DecodedInstr::PopNNT {n: *n as usize}, 2)),
-                            None => Err(IndexedErr{err: Err::MissingOpcodeArg(op), byte_index: i})
-                        },
 
                     Opcode::Prune =>
                         match bytes.get(i) {

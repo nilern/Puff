@@ -30,7 +30,6 @@ pub enum Instr {
     Clover(usize),
 
     Pop,
-    PopNNT(usize),
     Prune(Vec<bool>),
 
     Box,
@@ -66,7 +65,6 @@ impl Instr {
             &Clover(i) => writeln!(fmt, "{}clover {}", indent, i),
 
             &Pop => writeln!(fmt, "{}pop", indent),
-            &PopNNT(n) => writeln!(fmt, "{}popnnt {}", indent, n),
             &Prune(ref prunes) => {
                 write!(fmt, "{}prune #b", indent)?;
                 for &prune in prunes { write!(fmt, "{}", prune as u8)?; }

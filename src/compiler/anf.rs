@@ -18,7 +18,7 @@ pub enum Expr {
     GlobalSet(HandleT<Symbol>, Box<PosExpr>),
 
     Begin(Vec<PosExpr>),
-    Let(Vec<Binding>, Box<PosExpr>),
+    Let(Vec<Binding>, Box<PosExpr>, LiveVars),
     Letrec(Vec<Binding>, Box<PosExpr>),
 
     If(Box<PosExpr>, Box<PosExpr>, Box<PosExpr>, LiveVars),
@@ -80,7 +80,7 @@ impl Expr {
                     .append(RcDoc::text(")"))
                     .group(),
 
-            &Let(ref bindings, ref body) =>
+            &Let(ref bindings, ref body, _) =>
                 RcDoc::text("(let")
                     .append(RcDoc::line().append(RcDoc::text("("))
                         .append(RcDoc::intersperse(bindings.iter().map(|b| binding_to_doc(b, mt, cmp)), RcDoc::line())

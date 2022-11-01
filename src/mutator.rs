@@ -572,12 +572,6 @@ impl Mutator {
 
                     Opcode::Pop => unsafe { self.regs.pop_unchecked(); },
 
-                    Opcode::PopNNT => {
-                        let n = self.next_oparg();
-
-                        unsafe { self.regs.popnnt_unchecked(n); }
-                    },
-
                     Opcode::Prune => {
                         let regs_len = self.regs.len();
                         let mut reg = 0;

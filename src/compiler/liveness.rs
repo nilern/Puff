@@ -13,7 +13,9 @@ pub fn liveness(expr: &mut anf::PosExpr) {
                 stmts.iter_mut().rev()
                     .fold(live_outs, |live_outs, stmt| live_ins(stmt, live_outs)),
 
-            Let(ref mut bindings, ref mut body) => {
+            Let(ref mut bindings, ref mut body, ref mut let_live_outs) => {
+                *let_live_outs = live_outs.clone();
+
                 let body_live_ins = live_ins(body, live_outs);
 
                 bindings.iter_mut().rev()
@@ -24,7 +26,7 @@ pub fn liveness(expr: &mut anf::PosExpr) {
             },
 
             If(ref mut cond, ref mut conseq, ref mut alt, ref mut if_live_outs) => {
-                *if_live_outs = live_outs.iter().copied().collect();
+                *if_live_outs = live_outs.clone();
 
                 let conseq_outs = live_outs.clone();
                 let alt_ins = live_ins(alt, live_outs);
@@ -70,14 +72,14 @@ pub fn liveness(expr: &mut anf::PosExpr) {
                     free_vars.remove(param);
                 }
 
-                *fvs = free_vars.iter().copied().collect();
+                *fvs = free_vars.clone();
 
                 live_outs.extend(free_vars);
                 live_outs
             },
 
             Call(ref mut cargs, ref mut call_live_outs) => {
-                *call_live_outs = live_outs.iter().copied().collect();
+                *call_live_outs = live_outs.clone();
 
                 for (id, _) in cargs.iter() {
                     live_outs.insert(*id);

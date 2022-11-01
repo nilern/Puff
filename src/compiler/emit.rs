@@ -19,7 +19,6 @@ pub fn emit(cmp: &mut Compiler, f: &cfg::Fn) -> Gc<Bytecode> {
             &Clover(i) => builder.clover(i, pos.clone()),
 
             &Pop => builder.pop(pos.clone()),
-            &PopNNT(n) => builder.popnnt(n, pos.clone()),
             &Prune(ref prunes) => builder.prune(prunes, pos.clone()),
 
             &Box => builder.r#box(pos.clone()),

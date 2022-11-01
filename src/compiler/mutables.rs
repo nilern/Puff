@@ -17,7 +17,7 @@ pub fn mutables(expr: &anf::PosExpr) -> HashSet<Id> {
 
             Begin(ref stmts) => for stmt in stmts { expr_mutables(mutables, stmt) },
 
-            Let(ref bindings, ref body) | Letrec(ref bindings, ref body) => {
+            Let(ref bindings, ref body, _) | Letrec(ref bindings, ref body) => {
                 for (_, val_expr) in bindings { expr_mutables(mutables, val_expr); }
                 expr_mutables(mutables, body);
             },
@@ -143,9 +143,10 @@ pub fn letrec(cmp: &mut Compiler, mutables: &HashSet<Id>, expr: anf::PosExpr) ->
 
             Begin(stmts) => Begin(stmts.into_iter().map(|stmt| convert(cmp, mutables, env, stmt)).collect()),
 
-            Let(bindings, body) =>
+            Let(bindings, body, live_outs) =>
                 Let(bindings.into_iter().map(|(id, val_expr)| (id, convert(cmp, mutables, env, val_expr))).collect(),
-                    boxed::Box::new(convert(cmp, mutables, env, *body))),
+                    boxed::Box::new(convert(cmp, mutables, env, *body)),
+                    live_outs),
 
             // OPTIMIZE: If all `lambda`:s, emit `fix` instead:
             Letrec(bindings, body) => {
@@ -179,7 +180,8 @@ pub fn letrec(cmp: &mut Compiler, mutables: &HashSet<Id>, expr: anf::PosExpr) ->
                                         boxed::Box::new(PosExpr {expr: Begin(vec![
                                             PosExpr {expr: BoxSet(r#box, boxed::Box::new(tmp_use)), pos: pos.clone()},
                                             PosExpr {expr: Triv(Use(tmp)), pos: pos.clone()}
-                                        ]), pos: pos.clone()})),
+                                        ]), pos: pos.clone()}),
+                                        anf::LiveVars::new()),
                                     pos
                                 })
                             }
@@ -237,7 +239,7 @@ pub fn letrec(cmp: &mut Compiler, mutables: &HashSet<Id>, expr: anf::PosExpr) ->
                 }
 
                 final_bindings.extend(converted_bindings);
-                Let(final_bindings, boxed::Box::new(body))
+                Let(final_bindings, boxed::Box::new(body), anf::LiveVars::new())
             },
 
             If(cond, conseq, alt, live_outs) =>
@@ -308,7 +310,7 @@ pub fn convert_mutables(cmp: &mut Compiler, mutables: &HashSet<Id>, expr: anf::P
 
         Begin(stmts) => Begin(stmts.into_iter().map(|stmt| convert_mutables(cmp, mutables, stmt)).collect()),
 
-        Let(bindings, body) => {
+        Let(bindings, body, live_outs) => {
             let bindings = bindings.into_iter()
                 .map(|(id, val_expr)| {
                     let val_expr = convert_mutables(cmp, mutables, val_expr);
@@ -323,7 +325,7 @@ pub fn convert_mutables(cmp: &mut Compiler, mutables: &HashSet<Id>, expr: anf::P
 
             let body = convert_mutables(cmp, mutables, *body);
 
-            Let(bindings, boxed::Box::new(body))
+            Let(bindings, boxed::Box::new(body), live_outs)
         },
 
         If(cond, conseq, alt, live_outs) =>
@@ -371,7 +373,7 @@ pub fn convert_mutables(cmp: &mut Compiler, mutables: &HashSet<Id>, expr: anf::P
                 if bindings.len() == 0 {
                     body
                 } else {
-                    PosExpr {expr: Let(bindings, boxed::Box::new(body)), pos: pos.clone()}
+                    PosExpr {expr: Let(bindings, boxed::Box::new(body), anf::LiveVars::new()), pos: pos.clone()}
                 }))
         },
 
