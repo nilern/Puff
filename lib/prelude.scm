@@ -1,3 +1,5 @@
+(define call-with-values (lambda (producer consumer) (call-with-values* producer consumer)))
+
 (define + fx+)
 
 (define not (lambda (obj) (if obj #f #t)))
