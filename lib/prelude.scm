@@ -90,3 +90,21 @@
       (if (pair? tail)
         (set-car! tail obj)
         (error "list-set!: out of bounds" list k)))))
+
+(define list-copy
+  (lambda (list)
+    (if (pair? list)
+      (letrec ((ls* (cons (car list) '()))
+               (copy-tail! (lambda (ls last-pair)
+                            (if (pair? ls)
+                              (letrec ((pair (cons (car ls) '())))
+                                (begin
+                                  (set-cdr! last-pair pair)
+                                  (copy-tail! (cdr ls) pair)))
+                              (begin
+                                (set-cdr! last-pair ls)
+                                ls*)))))
+        (copy-tail! (cdr list) ls*))
+      (if (null? list)
+        list
+        (error "list-copy: not a list" list)))))
