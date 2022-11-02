@@ -139,13 +139,14 @@ pub fn verify(mt: &Mutator, code: &Bytecode) -> Result<(), IndexedErr<Vec<usize>
 
                 &DecodedInstr::Prune {prunes} => { // TODO: Warn about unnecessarily long prune mask
                     let regs_len = amt.regs.len();
+                    let mut reg = 0;
                     let mut mask_len = 0;
                     let mut free_reg = 0;
                     unsafe {
                         let prunes = prunes as *const u8;
                         let prunes = slice::from_raw_parts(prunes,
                             code.instrs().as_ptr().add(code.instrs().len()) as usize - prunes as usize);
-                        for (reg, prune) in decode_prune_mask(prunes).enumerate() {
+                        for prune in decode_prune_mask(prunes) {
                             if !prune && reg < regs_len {
                                 *amt.get_reg_mut(free_reg)? = *amt.get_reg(reg)?;
                                 free_reg += 1;
@@ -154,6 +155,13 @@ pub fn verify(mt: &Mutator, code: &Bytecode) -> Result<(), IndexedErr<Vec<usize>
                             if reg % 7 == 0 {
                                 mask_len += 1;
                             }
+
+                            reg += 1;
+                        }
+
+                        for reg in reg..regs_len {
+                            *amt.get_reg_mut(free_reg)? = *amt.get_reg(reg)?;
+                            free_reg += 1;
                         }
                     }
                     amt.regs.truncate(free_reg);
@@ -258,13 +266,14 @@ pub fn verify(mt: &Mutator, code: &Bytecode) -> Result<(), IndexedErr<Vec<usize>
 
                     // Save and restore regs:
                     let regs_len = amt.regs.len();
+                    let mut reg = 0;
                     let mut mask_len = 0;
                     let mut free_reg = 0;
                     unsafe {
                         let prunes = prunes as *const u8;
                         let prunes = slice::from_raw_parts(prunes,
                             code.instrs().as_ptr().add(code.instrs().len()) as usize - prunes as usize);
-                        for (reg, prune) in decode_prune_mask(prunes).enumerate() {
+                        for prune in decode_prune_mask(prunes) {
                             if !prune && reg < regs_len {
                                 *amt.get_reg_mut(free_reg)? = *amt.get_reg(reg)?;
                                 free_reg += 1;
@@ -273,6 +282,13 @@ pub fn verify(mt: &Mutator, code: &Bytecode) -> Result<(), IndexedErr<Vec<usize>
                             if reg % 7 == 0 {
                                 mask_len += 1;
                             }
+
+                            reg += 1;
+                        }
+
+                        for reg in reg..regs_len {
+                            *amt.get_reg_mut(free_reg)? = *amt.get_reg(reg)?;
+                            free_reg += 1;
                         }
                     }
                     amt.regs.truncate(free_reg);
@@ -305,7 +321,7 @@ pub fn verify(mt: &Mutator, code: &Bytecode) -> Result<(), IndexedErr<Vec<usize>
                                         });
                                     } else {
                                         return Ok(Continue::Block);
-                                    }
+                                    },
 
                                 _ => return Err(IndexedErr {
                                     err: Err::MissingReturnValuesHandler,
@@ -403,7 +419,7 @@ pub fn verify(mt: &Mutator, code: &Bytecode) -> Result<(), IndexedErr<Vec<usize>
     verify_in(mt, &[], &[], code)
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum AbstractType {
     Bytecode,
     Closure {len: usize},
