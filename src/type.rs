@@ -39,7 +39,9 @@ impl<T> Field<T> {
 #[repr(C)]
 pub struct Type {
     pub align: usize,
-    pub min_size: usize
+    pub min_size: usize,
+    pub has_indexed: bool,
+    pub inlineable: bool
 }
 
 impl Type {
@@ -83,10 +85,12 @@ unsafe impl HeapObj for NonIndexedType {}
 impl NonIndexedType {
     pub fn new_unchecked(r#type: Type) -> Self { Self(r#type) }
     
-    pub fn from_static<T>() -> Self {
+    pub fn from_static<T>(inlineable: bool) -> Self {
         Self(Type {
             align: align_of::<T>(),
-            min_size: size_of::<T>()
+            min_size: size_of::<T>(),
+            has_indexed: false,
+            inlineable
         })
     }
 
@@ -111,10 +115,12 @@ pub struct BitsType(Type);
 unsafe impl HeapObj for BitsType {}
 
 impl BitsType {
-    pub fn from_static<T>() -> Self {
+    pub fn from_static<T>(inlineable: bool) -> Self {
         Self(Type {
             align: align_of::<T>(),
-            min_size: size_of::<T>()
+            min_size: size_of::<T>(),
+            has_indexed: false,
+            inlineable
         })
     }
 }

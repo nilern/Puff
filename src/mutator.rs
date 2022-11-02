@@ -30,6 +30,14 @@ const USIZE_TYPE_LAYOUT: Layout = unsafe {
     )
 };
 
+const BOOL_TYPE_SIZE: usize = min_size_of_indexed::<Type>();
+
+const BOOL_TYPE_LAYOUT: Layout = unsafe {
+    Layout::from_size_align_unchecked(
+        BOOL_TYPE_SIZE, align_of_indexed::<Type>()
+    )
+};
+
 pub struct WithinMt<'a, T> {
     pub v: T,
     pub mt: &'a Mutator
@@ -98,7 +106,9 @@ impl Mutator {
             Header::initialize_indexed(type_nptr, Header::new(r#type.as_type()), Type::TYPE_LEN);
             type_nptr.as_ptr().write(IndexedType::new_unchecked(Type {
                 min_size: min_size_of_indexed::<Type>(),
-                align: align_of_indexed::<Type>()
+                align: align_of_indexed::<Type>(),
+                has_indexed: true,
+                inlineable: false
             }));
 
             let field_type_nptr = heap.alloc_raw(Field::<()>::TYPE_LAYOUT, true)?.cast::<NonIndexedType>();
@@ -106,13 +116,20 @@ impl Mutator {
             Header::initialize_indexed(field_type_nptr, Header::new(r#type.as_type()), Field::<()>::TYPE_LEN);
             field_type_nptr.as_ptr().write(NonIndexedType::new_unchecked(Type {
                 min_size: size_of::<Field::<()>>(),
-                align: align_of::<Field::<()>>()
+                align: align_of::<Field::<()>>(),
+                has_indexed: false,
+                inlineable: true
             }));
 
             let usize_type_nptr = heap.alloc_raw(USIZE_TYPE_LAYOUT, true)?.cast::<BitsType>();
             let usize_type = Gc::new_unchecked(usize_type_nptr.cast::<BitsType>());
             Header::initialize_indexed(r#usize_type_nptr, Header::new(r#type.as_type()), 0);
-            usize_type_nptr.as_ptr().write(BitsType::from_static::<usize>());
+            usize_type_nptr.as_ptr().write(BitsType::from_static::<usize>(true));
+
+            let bool_nptr = heap.alloc_raw(BOOL_TYPE_LAYOUT, true)?.cast::<BitsType>();
+            let bool = Gc::new_unchecked(bool_nptr.cast::<BitsType>());
+            Header::initialize_indexed(r#bool_nptr, Header::new(r#type.as_type()), 0);
+            bool_nptr.as_ptr().write(BitsType::from_static::<bool>(true));
 
             // Initialize Fields of strongly connected bootstrap types:
             // -----------------------------------------------------------------
@@ -137,6 +154,14 @@ impl Mutator {
                         offset: size_of::<usize>()
                     },
                     Field {
+                        r#type: bool.as_type(),
+                        offset: 2 * size_of::<usize>()
+                    },
+                    Field {
+                        r#type: bool.as_type(),
+                        offset: 2 * size_of::<usize>() + size_of::<bool>()
+                    },
+                    Field {
                         r#type: field_type.as_type(),
                         offset: min_size_of_indexed::<Type>()
                     }
@@ -151,18 +176,20 @@ impl Mutator {
             let any = Type::bootstrap_new(&mut heap, r#type,
                 Type {
                     min_size: size_of::<ORef>(),
-                    align: align_of::<ORef>()
+                    align: align_of::<ORef>(),
+                    has_indexed: false,
+                    inlineable: false
                 },
                 &[])?;
 
-            let bool = Type::bootstrap_new(&mut heap, r#type, BitsType::from_static::<bool>(), &[])?;
-
-            let u8_type = Type::bootstrap_new(&mut heap, r#type, BitsType::from_static::<u8>(), &[])?;
+            let u8_type = Type::bootstrap_new(&mut heap, r#type, BitsType::from_static::<u8>(true), &[])?;
 
             let symbol = Type::bootstrap_new(&mut heap, r#type,
                 IndexedType::new_unchecked(Type {
                     min_size: min_size_of_indexed::<Symbol>(),
-                    align: align_of_indexed::<Symbol>()
+                    align: align_of_indexed::<Symbol>(),
+                    has_indexed: true,
+                    inlineable: false
                 }),
                 &[Field { r#type: usize_type.as_type(), offset: 0 },
                   Field {
@@ -173,11 +200,13 @@ impl Mutator {
             let string = Type::bootstrap_new(&mut heap, r#type,
                 IndexedType::new_unchecked(Type {
                     min_size: min_size_of_indexed::<String>(),
-                    align: align_of_indexed::<String>()
+                    align: align_of_indexed::<String>(),
+                    has_indexed: true,
+                    inlineable: false
                 }),
                 &[Field {r#type: u8_type.as_type(), offset: min_size_of_indexed::<String>()}])?;
 
-            let pair = Type::bootstrap_new(&mut heap, r#type, NonIndexedType::from_static::<Pair>(), &[
+            let pair = Type::bootstrap_new(&mut heap, r#type, NonIndexedType::from_static::<Pair>(false), &[
                 Field { r#type: any, offset: 0 },
                 Field {
                     r#type: any,
@@ -185,29 +214,33 @@ impl Mutator {
                 }
             ])?;
 
-            let empty_list = Type::bootstrap_new(&mut heap, r#type, NonIndexedType::from_static::<EmptyList>(), &[])?;
+            let empty_list = Type::bootstrap_new(&mut heap, r#type, NonIndexedType::from_static::<EmptyList>(false), &[])?;
 
             let vector_of_any = Type::bootstrap_new(&mut heap, r#type,
                 IndexedType::new_unchecked(Type {
                     min_size: min_size_of_indexed::<Vector::<ORef>>(),
-                    align: align_of_indexed::<Vector::<ORef>>()
+                    align: align_of_indexed::<Vector::<ORef>>(),
+                    has_indexed: true,
+                    inlineable: false
                 }),
                 &[Field { r#type: any, offset: 0 }])?;
 
-            let pos = Type::bootstrap_new(&mut heap, r#type, NonIndexedType::from_static::<Pos>(), &[
+            let pos = Type::bootstrap_new(&mut heap, r#type, NonIndexedType::from_static::<Pos>(false), &[
                 Field { r#type: any, offset: 0 },
                 Field { r#type: any, offset: size_of::<ORef>() },
                 Field { r#type: any, offset: 2 * size_of::<ORef>() }
             ])?;
 
-            let syntax = Type::bootstrap_new(&mut heap, r#type, NonIndexedType::from_static::<Syntax>(),
+            let syntax = Type::bootstrap_new(&mut heap, r#type, NonIndexedType::from_static::<Syntax>(false),
                 &[Field { r#type: any, offset: 0 },
                   Field { r#type: any, offset: size_of::<ORef>() }])?;
 
             let bytecode = Type::bootstrap_new(&mut heap, r#type,
                 IndexedType::new_unchecked(Type {
                     min_size: min_size_of_indexed::<Bytecode>(),
-                    align: align_of_indexed::<Bytecode>()
+                    align: align_of_indexed::<Bytecode>(),
+                    has_indexed: true,
+                    inlineable: false
                 }),
                 &[Field { r#type: usize_type.as_type(), offset: 0 },
                   Field { r#type: bool.as_type(), offset: size_of::<usize>() },
@@ -224,7 +257,9 @@ impl Mutator {
             let closure = Type::bootstrap_new(&mut heap, r#type,
                 IndexedType::new_unchecked(Type {
                     min_size: min_size_of_indexed::<Closure>(),
-                    align: align_of_indexed::<Closure>()
+                    align: align_of_indexed::<Closure>(),
+                    has_indexed: true,
+                    inlineable: false
                 }),
                 &[Field { r#type: bytecode.as_type(), offset: 0 },
                   Field {
@@ -232,18 +267,18 @@ impl Mutator {
                       offset: min_size_of_indexed::<Closure>()
                   }])?;
 
-            let fn_ptr = Type::bootstrap_new(&mut heap, r#type, BitsType::from_static::<native_fn::Code>(), &[])?;
+            let fn_ptr = Type::bootstrap_new(&mut heap, r#type, BitsType::from_static::<native_fn::Code>(true), &[])?;
 
-            let native_fn = Type::bootstrap_new(&mut heap, r#type, NonIndexedType::from_static::<NativeFn>(), &[
+            let native_fn = Type::bootstrap_new(&mut heap, r#type, NonIndexedType::from_static::<NativeFn>(false), &[
                 Field { r#type: bytecode.as_type(), offset: 0 },
                 Field { r#type: bool.as_type(), offset: size_of::<usize>() },
                 Field { r#type: fn_ptr.as_type(), offset: 2* size_of::<usize>() }
             ])?;
 
-            let r#box = Type::bootstrap_new(&mut heap, r#type, NonIndexedType::from_static::<Box>(),
+            let r#box = Type::bootstrap_new(&mut heap, r#type, NonIndexedType::from_static::<Box>(false),
                 &[Field { r#type: any, offset: 0 }])?;
 
-            let var = Type::bootstrap_new(&mut heap, r#type, NonIndexedType::from_static::<Var>(),
+            let var = Type::bootstrap_new(&mut heap, r#type, NonIndexedType::from_static::<Var>(false),
                 &[Field { r#type: any, offset: 0 }])?;
 
             // Create singleton instances:

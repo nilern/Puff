@@ -1,9 +1,9 @@
 use std::alloc::{Layout, alloc, dealloc};
-use std::mem::align_of;
+use std::mem::{align_of, transmute};
 use std::ptr::{self, NonNull};
 
-use crate::oref::{AsType, Gc};
-use crate::r#type::{NonIndexedType, IndexedType};
+use crate::oref::{AsType, Gc, ORef};
+use crate::r#type::{NonIndexedType, IndexedType, Type};
 use crate::heap_obj::Header;
 
 struct Granule(usize);
@@ -112,6 +112,67 @@ impl Heap {
 
             obj
         })
+    }
+
+    unsafe fn shallow_copy(&mut self, obj: Gc<()>) -> Option<Gc<()>> {
+        let r#type = obj.r#type();
+
+        if !r#type.as_ref().has_indexed {
+            let r#type = r#type.unchecked_cast::<NonIndexedType>();
+            let layout = r#type.as_ref().layout();
+
+            self.alloc_raw(layout, false).map(|nptr| {
+                // Initialize:
+                let header = (nptr.as_ptr() as *mut Header).offset(-1);
+                header.write(Header::new(r#type.as_type()));
+                nptr.as_ptr().copy_from_nonoverlapping(obj.as_ptr() as *const u8, layout.size());
+
+                Gc::<()>::new_unchecked(nptr.cast::<()>())
+            })
+        } else {
+            let r#type = r#type.unchecked_cast::<IndexedType>();
+            let len = *((obj.as_ptr() as *const Header).offset(-1) as *const usize).offset(-1);
+            let layout = r#type.as_ref().layout(len);
+
+            self.alloc_raw(layout, true).map(|nptr| {
+                // Initialize:
+                Header::initialize_indexed(nptr, Header::new(r#type.as_type()), len);
+                nptr.as_ptr().copy_from_nonoverlapping(obj.as_ptr() as *const u8, layout.size());
+
+                Gc::<()>::new_unchecked(nptr.cast::<()>())
+            })
+        }
+    }
+
+    pub unsafe fn mark(&mut self, oref: usize) -> Option<Gc<()>> {
+        if oref != 0 {
+            let oref = transmute::<usize, ORef>(oref);
+
+            if let Ok(obj) = Gc::<()>::try_from(oref) {
+                return Some(match obj.forwarding_address() {
+                    None => {
+                        let copy = self.shallow_copy(obj).unwrap().into();
+                        obj.set_forwarding_address(copy);
+                        copy
+                    },
+
+                    Some(copy) => copy
+                });
+            }
+        }
+
+        None // Null (= uninitialized) or tagged scalar
+    }
+
+    pub unsafe fn scan_field(&mut self, r#type: Gc<Type>, data: *mut u8) {
+        if !r#type.as_ref().inlineable {
+            let data = data as *mut usize;
+            if let Some(copy) = self.mark(*data) {
+                *data = transmute::<Gc<()>, usize>(copy);
+            }
+        } else {
+            todo!()
+        }
     }
 }
 

@@ -20,20 +20,26 @@ impl Header {
     }
 
     pub fn r#type(&self) -> Gc<Type> {
-        unsafe {
-            Gc::new_unchecked(
-                NonNull::new_unchecked((self.0 & !Self::TAG_BITS) as *mut Type)
-            )
-        }
+        unsafe { Gc::new_unchecked(NonNull::new_unchecked((self.0 & !Self::TAG_BITS) as *mut Type)) }
     }
-
-    pub fn is_marked(&self) -> bool { (self.0 & Self::MARK_BIT) == 1 }
 
     pub unsafe fn initialize_indexed<T>(obj: NonNull<T>, header: Self, len: usize) {
         let header_ptr = (obj.as_ptr() as *mut Header).offset(-1);
         let header_len = (header_ptr as *mut usize).offset(-1);
         header_len.write(len);
         header_ptr.write(header);
+    }
+
+    pub fn forwarding_address(&self) -> Option<Gc<()>> {
+        if (self.0 & Self::MARK_BIT) == 1 {
+            Some(unsafe { Gc::new_unchecked(NonNull::new_unchecked((self.0 & !Self::TAG_BITS) as *mut ())) })
+        } else {
+            None
+        }
+    }
+
+    pub unsafe fn set_forwarding_address(&mut self, copy: Gc<()>) {
+        self.0 = (copy.as_ptr() as usize) | Self::MARK_BIT;
     }
 }
 

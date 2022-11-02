@@ -271,13 +271,23 @@ impl TryFrom<ORef> for Gc<()> {
 impl<T> Gc<T> {
     pub unsafe fn new_unchecked(ptr: NonNull<T>) -> Self { Self(ptr) }
 
+    pub fn as_ptr(self) -> *const T { self.0.as_ptr() }
+
     pub unsafe fn as_ref(&self) -> &T { self.0.as_ref() }
 
     fn header(&self) -> &Header { unsafe { &*((self.0.as_ptr() as *const Header).offset(-1)) } }
 
+    fn header_mut(self) -> *mut Header { unsafe { (self.0.as_ptr() as *mut Header).offset(-1) } }
+
     pub fn r#type(self) -> Gc<Type> { self.header().r#type() }
 
-    pub fn is_marked(self) -> bool { self.header().is_marked() }
+    pub fn forwarding_address(self) -> Option<Gc<T>> {
+        self.header().forwarding_address().map(|obj| unsafe { obj.unchecked_cast::<T>() })
+    }
+
+    pub unsafe fn set_forwarding_address(self, copy: Gc<T>) {
+        (*self.header_mut()).set_forwarding_address(copy.unchecked_cast::<()>());
+    }
 
     pub unsafe fn unchecked_cast<R>(self) -> Gc<R> { Gc::<R>(self.0.cast()) }
 
