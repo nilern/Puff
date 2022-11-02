@@ -80,6 +80,11 @@ pub struct Mutator {
     stack: Vec<ORef>
 }
 
+enum Trampoline {
+    Answer(Answer),
+    Terminate {retc: usize}
+}
+
 impl Mutator {
     pub fn new(heap_size: usize, debug: bool) -> Option<Self> {
         let mut heap = Heap::new(heap_size);
@@ -379,7 +384,7 @@ impl Mutator {
         unsafe { self.handles.root_t(obj) }
     }
 
-    fn tailcall(&mut self, argc: usize) -> Option<usize> {
+    fn tailcall(&mut self, argc: usize) -> Option<Trampoline> {
         let callee = self.regs[self.regs.len() - argc];
         if let Some(callee) = callee.try_cast::<Closure>(self) {
             let code = unsafe { callee.as_ref().code };
@@ -438,16 +443,13 @@ impl Mutator {
             }
 
             // Call:
-            match unsafe { (callee.as_ref().code)(self) } {
-                Answer::Ret {retc} => self.ret(retc), // FIXME: Consumes native stack
-                Answer::TailCall {argc} => self.tailcall(argc) // FIXME: Consumes native stack
-            }
+            Some(Trampoline::Answer(unsafe { (callee.as_ref().code)(self) }))
         } else {
             todo!()
         }
     }
 
-    fn ret(&mut self, retc: usize) -> Option<usize> {
+    fn ret(&mut self, retc: usize) -> Option<Trampoline> {
         if self.stack.len() > 0 {
             let rip =
                 unsafe { isize::from(Fixnum::from_oref_unchecked(self.stack.pop().unwrap())) as usize };
@@ -495,7 +497,7 @@ impl Mutator {
                     // Ensure register space, reclaim garbage regs prefix and extend regs if necessary:
                     self.regs.ensure(unsafe { code.as_ref().max_regs });
 
-                    self.tailcall(retc + 1)
+                    Some(Trampoline::Answer(Answer::TailCall {argc: retc + 1}))
                 },
 
                 _ => unreachable!()
@@ -503,7 +505,7 @@ impl Mutator {
         } else {
             self.regs.enter(retc);
 
-            Some(retc)
+            Some(Trampoline::Terminate {retc})
         }
     }
 
@@ -511,7 +513,17 @@ impl Mutator {
         {
             let argc = self.regs.len();
             assert!(argc > 0);
-            self.tailcall(argc);
+            
+            let mut trampoline = self.tailcall(argc);
+            while let Some(tramp) = trampoline {
+                trampoline = match tramp {
+                    Trampoline::Answer(Answer::TailCall {argc}) => self.tailcall(argc),
+
+                    Trampoline::Answer(Answer::Ret {retc}) => self.ret(retc),
+
+                    Trampoline::Terminate {retc} => return &self.regs.as_slice()[self.regs.len() - retc..]
+                };
+            }
         }
 
         loop {
@@ -738,7 +750,16 @@ impl Mutator {
                         self.stack.push(Fixnum::try_from(frame_len as isize).unwrap().into());
                         self.stack.push(Fixnum::try_from(self.pc as isize).unwrap().into());
 
-                        self.tailcall(argc);
+                        let mut trampoline = self.tailcall(argc);
+                        while let Some(tramp) = trampoline {
+                            trampoline = match tramp {
+                                Trampoline::Answer(Answer::TailCall {argc}) => self.tailcall(argc),
+
+                                Trampoline::Answer(Answer::Ret {retc}) => self.ret(retc),
+
+                                Trampoline::Terminate {retc} => return &self.regs.as_slice()[self.regs.len() - retc..]
+                            };
+                        }
                     },
 
                     Opcode::CheckOneReturnValue | Opcode::IgnoreReturnValues | Opcode::TailCallWithValues =>
@@ -747,15 +768,30 @@ impl Mutator {
                     Opcode::TailCall => {
                         let argc = self.peek_oparg();
 
-                        if let Some(retc) = self.tailcall(argc) {
-                            return &self.regs.as_slice()[self.regs.len() - retc..];
+                        let mut trampoline = self.tailcall(argc);
+                        while let Some(tramp) = trampoline {
+                            trampoline = match tramp {
+                                Trampoline::Answer(Answer::TailCall {argc}) => self.tailcall(argc),
+
+                                Trampoline::Answer(Answer::Ret {retc}) => self.ret(retc),
+
+                                Trampoline::Terminate {retc} => return &self.regs.as_slice()[self.regs.len() - retc..]
+                            };
                         }
                     },
 
-                    Opcode::Ret =>
-                        if let Some(retc) = self.ret(1) {
-                            return &self.regs.as_slice()[self.regs.len() - retc..];
+                    Opcode::Ret => {
+                        let mut trampoline = self.ret(1);
+                        while let Some(tramp) = trampoline {
+                            trampoline = match tramp {
+                                Trampoline::Answer(Answer::TailCall {argc}) => self.tailcall(argc),
+
+                                Trampoline::Answer(Answer::Ret {retc}) => self.ret(retc),
+
+                                Trampoline::Terminate {retc} => return &self.regs.as_slice()[self.regs.len() - retc..]
+                            };
                         }
+                    }
                 }
             } else {
                 todo!()
