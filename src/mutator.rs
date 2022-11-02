@@ -107,6 +107,7 @@ impl Mutator {
             type_nptr.as_ptr().write(IndexedType::new_unchecked(Type {
                 min_size: min_size_of_indexed::<Type>(),
                 align: align_of_indexed::<Type>(),
+                is_bits: false,
                 has_indexed: true,
                 inlineable: false
             }));
@@ -117,6 +118,7 @@ impl Mutator {
             field_type_nptr.as_ptr().write(NonIndexedType::new_unchecked(Type {
                 min_size: size_of::<Field::<()>>(),
                 align: align_of::<Field::<()>>(),
+                is_bits: false,
                 has_indexed: false,
                 inlineable: true
             }));
@@ -162,6 +164,10 @@ impl Mutator {
                         offset: 2 * size_of::<usize>() + size_of::<bool>()
                     },
                     Field {
+                        r#type: bool.as_type(),
+                        offset: 2 * size_of::<usize>() + 2 * size_of::<bool>()
+                    },
+                    Field {
                         r#type: field_type.as_type(),
                         offset: min_size_of_indexed::<Type>()
                     }
@@ -177,6 +183,7 @@ impl Mutator {
                 Type {
                     min_size: size_of::<ORef>(),
                     align: align_of::<ORef>(),
+                    is_bits: false,
                     has_indexed: false,
                     inlineable: false
                 },
@@ -188,6 +195,7 @@ impl Mutator {
                 IndexedType::new_unchecked(Type {
                     min_size: min_size_of_indexed::<Symbol>(),
                     align: align_of_indexed::<Symbol>(),
+                    is_bits: false,
                     has_indexed: true,
                     inlineable: false
                 }),
@@ -201,12 +209,13 @@ impl Mutator {
                 IndexedType::new_unchecked(Type {
                     min_size: min_size_of_indexed::<String>(),
                     align: align_of_indexed::<String>(),
+                    is_bits: false,
                     has_indexed: true,
                     inlineable: false
                 }),
                 &[Field {r#type: u8_type.as_type(), offset: min_size_of_indexed::<String>()}])?;
 
-            let pair = Type::bootstrap_new(&mut heap, r#type, NonIndexedType::from_static::<Pair>(false), &[
+            let pair = Type::bootstrap_new(&mut heap, r#type, NonIndexedType::from_static::<Pair>(false, false), &[
                 Field { r#type: any, offset: 0 },
                 Field {
                     r#type: any,
@@ -214,24 +223,26 @@ impl Mutator {
                 }
             ])?;
 
-            let empty_list = Type::bootstrap_new(&mut heap, r#type, NonIndexedType::from_static::<EmptyList>(false), &[])?;
+            let empty_list = Type::bootstrap_new(&mut heap, r#type,
+                NonIndexedType::from_static::<EmptyList>(false, false), &[])?;
 
             let vector_of_any = Type::bootstrap_new(&mut heap, r#type,
                 IndexedType::new_unchecked(Type {
                     min_size: min_size_of_indexed::<Vector::<ORef>>(),
                     align: align_of_indexed::<Vector::<ORef>>(),
+                    is_bits: false,
                     has_indexed: true,
                     inlineable: false
                 }),
                 &[Field { r#type: any, offset: 0 }])?;
 
-            let pos = Type::bootstrap_new(&mut heap, r#type, NonIndexedType::from_static::<Pos>(false), &[
+            let pos = Type::bootstrap_new(&mut heap, r#type, NonIndexedType::from_static::<Pos>(false, false), &[
                 Field { r#type: any, offset: 0 },
                 Field { r#type: any, offset: size_of::<ORef>() },
                 Field { r#type: any, offset: 2 * size_of::<ORef>() }
             ])?;
 
-            let syntax = Type::bootstrap_new(&mut heap, r#type, NonIndexedType::from_static::<Syntax>(false),
+            let syntax = Type::bootstrap_new(&mut heap, r#type, NonIndexedType::from_static::<Syntax>(false, false),
                 &[Field { r#type: any, offset: 0 },
                   Field { r#type: any, offset: size_of::<ORef>() }])?;
 
@@ -239,6 +250,7 @@ impl Mutator {
                 IndexedType::new_unchecked(Type {
                     min_size: min_size_of_indexed::<Bytecode>(),
                     align: align_of_indexed::<Bytecode>(),
+                    is_bits: false,
                     has_indexed: true,
                     inlineable: false
                 }),
@@ -258,6 +270,7 @@ impl Mutator {
                 IndexedType::new_unchecked(Type {
                     min_size: min_size_of_indexed::<Closure>(),
                     align: align_of_indexed::<Closure>(),
+                    is_bits: false,
                     has_indexed: true,
                     inlineable: false
                 }),
@@ -269,16 +282,17 @@ impl Mutator {
 
             let fn_ptr = Type::bootstrap_new(&mut heap, r#type, BitsType::from_static::<native_fn::Code>(true), &[])?;
 
-            let native_fn = Type::bootstrap_new(&mut heap, r#type, NonIndexedType::from_static::<NativeFn>(false), &[
+            let native_fn = Type::bootstrap_new(&mut heap, r#type,
+                NonIndexedType::from_static::<NativeFn>(false, false), &[
                 Field { r#type: bytecode.as_type(), offset: 0 },
                 Field { r#type: bool.as_type(), offset: size_of::<usize>() },
                 Field { r#type: fn_ptr.as_type(), offset: 2* size_of::<usize>() }
             ])?;
 
-            let r#box = Type::bootstrap_new(&mut heap, r#type, NonIndexedType::from_static::<Box>(false),
+            let r#box = Type::bootstrap_new(&mut heap, r#type, NonIndexedType::from_static::<Box>(false, false),
                 &[Field { r#type: any, offset: 0 }])?;
 
-            let var = Type::bootstrap_new(&mut heap, r#type, NonIndexedType::from_static::<Var>(false),
+            let var = Type::bootstrap_new(&mut heap, r#type, NonIndexedType::from_static::<Var>(false, false),
                 &[Field { r#type: any, offset: 0 }])?;
 
             // Create singleton instances:

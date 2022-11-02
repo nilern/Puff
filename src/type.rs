@@ -40,8 +40,9 @@ impl<T> Field<T> {
 pub struct Type {
     pub align: usize,
     pub min_size: usize,
+    pub is_bits: bool,
     pub has_indexed: bool,
-    pub inlineable: bool
+    pub inlineable: bool,
 }
 
 impl Type {
@@ -68,7 +69,7 @@ impl Type {
         })
     }
 
-    fn fields(&self) -> &[Field<Type>] { self.indexed_field() }
+    pub fn fields(&self) -> &[Field<Type>] { self.indexed_field() }
 }
 
 unsafe impl HeapObj for Type {}
@@ -85,10 +86,11 @@ unsafe impl HeapObj for NonIndexedType {}
 impl NonIndexedType {
     pub fn new_unchecked(r#type: Type) -> Self { Self(r#type) }
     
-    pub fn from_static<T>(inlineable: bool) -> Self {
+    pub fn from_static<T>(is_bits: bool, inlineable: bool) -> Self {
         Self(Type {
             align: align_of::<T>(),
             min_size: size_of::<T>(),
+            is_bits,
             has_indexed: false,
             inlineable
         })
@@ -98,9 +100,7 @@ impl NonIndexedType {
 
     pub fn min_size(&self) -> usize { self.0.min_size }
 
-    pub fn stride(&self) -> usize {
-        (self.min_size() + self.align() - 1) & !(self.align() - 1)
-    }
+    pub fn stride(&self) -> usize { (self.min_size() + self.align() - 1) & !(self.align() - 1) }
 
     pub fn layout(&self) -> Layout {
         unsafe {
@@ -119,6 +119,7 @@ impl BitsType {
         Self(Type {
             align: align_of::<T>(),
             min_size: size_of::<T>(),
+            is_bits: false,
             has_indexed: false,
             inlineable
         })

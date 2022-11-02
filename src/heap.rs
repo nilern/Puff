@@ -164,14 +164,41 @@ impl Heap {
         None // Null (= uninitialized) or tagged scalar
     }
 
-    pub unsafe fn scan_field(&mut self, r#type: Gc<Type>, data: *mut u8) {
+    // TODO: Avoid scan_field & scan_fields mutual recursion (although it is unlikely to be very deep):
+    unsafe fn scan_field(&mut self, r#type: Gc<Type>, data: *mut u8) {
         if !r#type.as_ref().inlineable {
             let data = data as *mut usize;
             if let Some(copy) = self.mark(*data) {
                 *data = transmute::<Gc<()>, usize>(copy);
             }
         } else {
-            todo!()
+            self.scan_fields(r#type, data);
+        }
+    }
+
+    unsafe fn scan_fields(&mut self, r#type: Gc<Type>, data: *mut u8) {
+        if !r#type.as_ref().is_bits {
+            if !r#type.as_ref().has_indexed {
+                for field in r#type.as_ref().fields() {
+                    self.scan_field(field.r#type, data.add(field.offset));
+                }
+            } else {
+                let fields = r#type.as_ref().fields();
+                let last_index = fields.len() - 1; // At least the indexed field, so len() > 0
+
+                for field in &fields[0..last_index] {
+                    self.scan_field(field.r#type, data.add(field.offset));
+                }
+
+                let len = *((data as *const Header).offset(-1) as *const usize).offset(-1);
+                let indexed_field = fields[last_index];
+                let stride = indexed_field.r#type.unchecked_cast::<NonIndexedType>().as_ref().stride();
+                let mut data = data.add(indexed_field.offset);
+                for _ in 0..len {
+                    self.scan_field(indexed_field.r#type, data);
+                    data = data.add(stride);
+                }
+            }
         }
     }
 }
