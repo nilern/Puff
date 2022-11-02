@@ -83,3 +83,10 @@
       (if (pair? tail)
         (car tail)
         (error "list-ref: out of bounds" list k)))))
+
+(define list-set!
+  (lambda (list k obj)
+    (letrec ((tail (list-tail list k)))
+      (if (pair? tail)
+        (set-car! tail obj)
+        (error "list-set!: out of bounds" list k)))))
