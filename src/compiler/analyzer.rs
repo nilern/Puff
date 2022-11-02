@@ -70,6 +70,7 @@ pub fn analyze(cmp: &mut Compiler, expr: ORef) -> anf::PosExpr {
                 } else if unsafe { callee_sym.as_ref().name() == "set!" } {
                     return analyze_set(cmp, env, unsafe { ls.as_ref().cdr() }, pos);
                 } else if unsafe { callee_sym.as_ref().name() == "call-with-values*" } {
+                    // TODO: Manually assemble bytecode for `call-with-values` instead.
                     return analyze_call_with_values(cmp, env, unsafe { ls.as_ref().cdr() }, pos);
                 }
             }
