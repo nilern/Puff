@@ -13,6 +13,7 @@ fn eval_string(mt: &mut Mutator, s: &str) -> ORef {
     let mut reader = Reader::new(s, None);
 
     let res = reader.next(mt).unwrap();
+    assert!(reader.next(mt).is_none());
     let sv = res.unwrap();
     let code = compile(mt, (*sv).into(), mt.cfg().debug);
 
@@ -23,9 +24,8 @@ fn eval_string(mt: &mut Mutator, s: &str) -> ORef {
     mt.pop();
     mt.push(f.into());
     let v = *mt.invoke().get(0).unwrap();
-
-    assert!(reader.next(mt).is_none());
-
+    assert_eq!(mt.regs().len(), 1);
+    mt.regs_mut().truncate(0);
     v
 }
 
