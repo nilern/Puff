@@ -439,8 +439,8 @@ impl Mutator {
 
             // Call:
             match unsafe { (callee.as_ref().code)(self) } {
-                Answer::Ret {retc} => self.ret(retc),
-                Answer::TailCall {argc} => self.tailcall(argc) // trampoline
+                Answer::Ret {retc} => self.ret(retc), // FIXME: Consumes native stack
+                Answer::TailCall {argc} => self.tailcall(argc) // FIXME: Consumes native stack
             }
         } else {
             todo!()
@@ -471,22 +471,35 @@ impl Mutator {
 
                     self.regs.re_enter(&self.stack[start..], retc);
                     self.stack.truncate(start);
+
+                    // Ensure register space, reclaim garbage regs prefix and extend regs if necessary:
+                    self.regs.ensure(unsafe { code.as_ref().max_regs });
+
+                    None
                 },
 
                 Opcode::IgnoreReturnValues => {
                     self.regs.re_enter(&self.stack[start..], 0);
                     self.stack.truncate(start);
+
+                    // Ensure register space, reclaim garbage regs prefix and extend regs if necessary:
+                    self.regs.ensure(unsafe { code.as_ref().max_regs });
+
+                    None
                 },
 
-                Opcode::TailCallWithValues => todo!(),
+                Opcode::TailCallWithValues => {
+                    self.regs.re_enter(&self.stack[start..], retc);
+                    self.stack.truncate(start);
+
+                    // Ensure register space, reclaim garbage regs prefix and extend regs if necessary:
+                    self.regs.ensure(unsafe { code.as_ref().max_regs });
+
+                    self.tailcall(retc + 1)
+                },
 
                 _ => unreachable!()
             }
-
-            // Ensure register space, reclaim garbage regs prefix and extend regs if necessary:
-            self.regs.ensure(unsafe { code.as_ref().max_regs });
-
-            None
         } else {
             self.regs.enter(retc);
 
