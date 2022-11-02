@@ -32,6 +32,7 @@ pub enum Err {
 
     BranchOut(usize),
     MissingTerminator,
+    MissingReturnValuesHandler,
 
     ConstsOverrun(usize),
     RegsOverrun(usize),
@@ -52,13 +53,19 @@ pub fn verify(mt: &Mutator, code: &Bytecode) -> Result<(), IndexedErr<Vec<usize>
     fn verify_in(mt: &Mutator, bp: &[usize], clovers: &[AbstractType], code: &Bytecode)
         -> Result<(), IndexedErr<Vec<usize>>>
     {
+        enum Continue {
+            Stmt,
+            Transfer,
+            Block
+        }
+
         fn verify_stmt<'a, I>(mt: &Mutator, code: &'a Bytecode, bp: &[usize], clovers: &[AbstractType],
-            cfg: &'a CFG, amt: &mut AbstractMutator, stmts: &mut I
-        ) -> Result<bool, IndexedErr<Vec<usize>>> where I: Iterator<Item=&'a DecodedInstr<'a>>
+            cfg: &'a CFG, amt: &mut AbstractMutator, stmts: &mut I, transfer: &Transfer
+        ) -> Result<Continue, IndexedErr<Vec<usize>>> where I: Iterator<Item=&'a DecodedInstr<'a>>
         {
             let stmt = match stmts.next() {
                 Some(stmt) => stmt,
-                None => return Ok(false)
+                None => return Ok(Continue::Transfer)
             };
 
             match stmt {
@@ -272,21 +279,39 @@ pub fn verify(mt: &Mutator, code: &Bytecode) -> Result<(), IndexedErr<Vec<usize>
 
                     amt.pc += 2 + mask_len;
 
-                    let stmt = match stmts.next() {
-                        Some(stmt) => stmt,
-                        None => return Err(IndexedErr {err: Err::MissingTerminator, byte_index: byte_path(bp, amt.pc)})
-                    };
-                    match stmt {
-                        &DecodedInstr::CheckOneReturnValue => {
-                            amt.push(AbstractType::Any)?; // Return value
-                            amt.pc += 1;
-                        },
+                    match stmts.next() {
+                        Some(stmt) =>
+                            match stmt {
+                                &DecodedInstr::CheckOneReturnValue => {
+                                    amt.push(AbstractType::Any)?; // Return value
+                                    amt.pc += 1;
+                                },
 
-                        &DecodedInstr::IgnoreReturnValues => amt.pc += 1,
+                                &DecodedInstr::IgnoreReturnValues => amt.pc += 1,
 
-                        &DecodedInstr::TailCallWithValues => todo!(),
+                                _ => return Err(IndexedErr {
+                                    err: Err::UnexpectedInstr,
+                                    byte_index: byte_path(bp, amt.pc)
+                                })
+                            },
 
-                        _ => return Err(IndexedErr {err: Err::UnexpectedInstr, byte_index: byte_path(bp, amt.pc)})
+                        None =>
+                            match transfer {
+                                &Transfer::TailCallWithValues =>
+                                    if amt.regs.len() < 2 { // Not even 'self' closure and consumer fn
+                                        return Err(IndexedErr {
+                                            err: Err::RegsUnderflow,
+                                            byte_index: byte_path(bp, amt.pc)
+                                        });
+                                    } else {
+                                        return Ok(Continue::Block);
+                                    }
+
+                                _ => return Err(IndexedErr {
+                                    err: Err::MissingReturnValuesHandler,
+                                    byte_index: byte_path(bp, amt.pc)
+                                })
+                            }
                     }
                 },
 
@@ -298,7 +323,7 @@ pub fn verify(mt: &Mutator, code: &Bytecode) -> Result<(), IndexedErr<Vec<usize>
                     unreachable!()
             }
 
-            Ok(true)
+            Ok(Continue::Stmt)
         }
 
         fn verify_transfer(bp: &[usize], amt: &mut AbstractMutator, transfer: &Transfer)
@@ -358,11 +383,16 @@ pub fn verify(mt: &Mutator, code: &Bytecode) -> Result<(), IndexedErr<Vec<usize>
             };
 
             let mut stmts = block.stmts.iter();
-            while verify_stmt(mt, code, bp, clovers, &cfg, &mut amt, &mut stmts)? {
-                // Empty body
+            loop {
+                match verify_stmt(mt, code, bp, clovers, &cfg, &mut amt, &mut stmts, &block.transfer)? {
+                    Continue::Stmt => (),
+                    Continue::Transfer => {
+                        verify_transfer(bp, &mut amt, &block.transfer)?;
+                        break;
+                    },
+                    Continue::Block => break
+                }
             }
-
-            verify_transfer(bp, &mut amt, &block.transfer)?;
 
             amts.insert(leader_index, amt);
         }

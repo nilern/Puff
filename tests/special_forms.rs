@@ -22,7 +22,7 @@ fn eval_string(mt: &mut Mutator, s: &str) -> ORef {
     let f = Closure::new(mt, 0);
     mt.pop();
     mt.push(f.into());
-    let v = mt.invoke();
+    let v = *mt.invoke().get(0).unwrap();
 
     assert!(reader.next(mt).is_none());
 
