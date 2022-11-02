@@ -91,6 +91,20 @@
         (set-car! tail obj)
         (error "list-set!: out of bounds" list k)))))
 
+(define member
+  (lambda (obj list compare)
+    (letrec ((memq (lambda (ls)
+                     (if (pair? ls)
+                       (if (compare (car ls) obj)
+                         ls
+                         (memq (cdr ls)))
+                       (if (null? ls)
+                         #f
+                         (error "member: improper list" list))))))
+      (memq list))))
+
+(define memq (lambda (obj list) (member obj list eq?)))
+
 (define list-copy
   (lambda (list)
     (if (pair? list)
