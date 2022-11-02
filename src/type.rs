@@ -46,7 +46,7 @@ pub struct Type {
 }
 
 impl Type {
-    pub const TYPE_LEN: usize = 3;
+    pub const TYPE_LEN: usize = 6;
 
     pub const TYPE_SIZE: usize = min_size_of_indexed::<Type>()
         + Self::TYPE_LEN * item_stride::<Type>();

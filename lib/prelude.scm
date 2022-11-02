@@ -1,6 +1,9 @@
 (define call-with-values (lambda (producer consumer) (call-with-values* producer consumer)))
 
 (define + fx+)
+(define - fx-)
+
+(define zero? (lambda (n) (eq? n 0)))
 
 (define not (lambda (obj) (if obj #f #t)))
 
@@ -61,3 +64,22 @@
 (define append (lambda (list1 list2) (fold-right cons list2 list1)))
 
 (define reverse (lambda (list1) (fold cons '() list1)))
+
+(define list-tail
+  (lambda (list k)
+    (letrec ((list-tail (lambda (ls i)
+                          (if (zero? i)
+                            ls
+                            (if (pair? ls)
+                              (list-tail (cdr ls) (- i 1))
+                              (if (null? ls)
+                                (error "list-tail: out of bounds" list k)
+                                (error "list-tail: improper list" list)))))))
+      (list-tail list k))))
+
+(define list-ref
+  (lambda (list k)
+    (letrec ((tail (list-tail list k)))
+      (if (pair? tail)
+        (car tail)
+        (error "list-ref: out of bounds" list k)))))
