@@ -1,6 +1,7 @@
 use std::alloc::{Layout, alloc, dealloc};
 use std::mem::{size_of, align_of, transmute, swap};
 use std::ptr::{self, NonNull};
+use std::iter;
 
 use crate::oref::{AsType, Gc, ORef};
 use crate::r#type::{NonIndexedType, IndexedType, Type};
@@ -60,7 +61,7 @@ impl Heap {
             fromspace: Semispace::new(semi_size),
             tospace,
             free,
-            starts: Vec::with_capacity(semi_size / size_of::<Granule>()),
+            starts: iter::repeat(false).take(semi_size / size_of::<Granule>()).collect(),
             scan: free
         }
     }
@@ -157,22 +158,25 @@ impl Heap {
 
     pub unsafe fn collect(&mut self) {
         while let Some(obj) = self.next_grey() {
-            self.scan_fields(obj.r#type(), obj.as_ptr() as *mut u8);
+            self.mark((obj.as_ptr() as *mut Gc<Type>).offset(-1) as *mut usize); // type
+            self.scan_fields(obj.r#type(), obj.as_ptr() as *mut u8); // data
         }
     }
 
     unsafe fn next_grey(&mut self) -> Option<Gc<()>> {
         if self.scan > self.free {
             let mut granule_index = (self.scan as usize - self.tospace.start as usize) / size_of::<Granule>();
-            while !self.starts[granule_index] {
+            while granule_index > 0 {
                 granule_index -= 1;
-            }
 
-            self.scan = (self.tospace.start as *mut Granule).add(granule_index) as *mut u8;
-            Some(Gc::new_unchecked(NonNull::new_unchecked(self.scan as *mut ())))
-        } else {
-            None
+                if self.starts[granule_index] {
+                    self.scan = (self.tospace.start as *mut Granule).add(granule_index) as *mut u8;
+                    return Some(Gc::new_unchecked(NonNull::new_unchecked(self.scan as *mut ())));
+                }
+            }
         }
+
+        None
     }
 
     pub unsafe fn mark(&mut self, field: *mut usize) {

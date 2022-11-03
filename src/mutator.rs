@@ -507,6 +507,8 @@ impl Mutator {
         self.mark_roots();
 
         self.heap.collect();
+
+        todo!(); // self.symbols; treated as weak references
     }
 
     fn tailcall(&mut self, argc: usize) -> Option<Trampoline> {
