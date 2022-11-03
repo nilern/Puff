@@ -461,9 +461,7 @@ impl Mutator {
 
     unsafe fn mark_roots(&mut self) {
         self.handles.for_each_root(|oref|
-            if let Some(obj) = self.heap.mark(transmute::<ORef, usize>(*oref)) {
-                *oref = obj.into();
-            }
+            self.heap.mark(transmute::<&mut ORef, *mut usize>(oref))
         );
 
         let types = slice::from_raw_parts_mut(
@@ -471,9 +469,7 @@ impl Mutator {
             size_of::<Types>() / size_of::<Gc<Type>>()
         );
         for r#type in types {
-            if let Some(obj) = self.heap.mark(transmute::<Gc<Type>, usize>(*r#type)) {
-                *r#type = obj.unchecked_cast::<Type>();
-            }
+            self.heap.mark(transmute::<&mut Gc<Type>, *mut usize>(r#type));
         }
 
         let singletons = slice::from_raw_parts_mut(
@@ -481,39 +477,27 @@ impl Mutator {
             size_of::<Singletons>() / size_of::<ORef>()
         );
         for singleton in singletons {
-            if let Some(obj) = self.heap.mark(transmute::<ORef, usize>(*singleton)) {
-                *singleton = obj.into();
-            }
+            self.heap.mark(transmute::<&mut ORef, *mut usize>(singleton));
         }
 
         for ns in self.ns.iter_mut() {
-            if let Some(obj) = self.heap.mark(transmute::<Gc<Namespace>, usize>(*ns)) {
-                *ns = obj.unchecked_cast::<Namespace>();
-            }
+            self.heap.mark(transmute::<&mut Gc<Namespace>, *mut usize>(ns));
         }
 
         for code in self.code.iter_mut() {
-            if let Some(obj) = self.heap.mark(transmute::<Gc<Bytecode>, usize>(*code)) {
-                *code = obj.unchecked_cast::<Bytecode>();
-            }
+            self.heap.mark(transmute::<&mut Gc<Bytecode>, *mut usize>(code));
         }
 
         for consts in self.consts.iter_mut() {
-            if let Some(obj) = self.heap.mark(transmute::<Gc<Vector<ORef>>, usize>(*consts)) {
-                *consts = obj.unchecked_cast::<Vector<ORef>>();
-            }
+            self.heap.mark(transmute::<&mut Gc<Vector<ORef>>, *mut usize>(consts));
         }
 
         for reg in self.regs.as_mut_slice().iter_mut() {
-            if let Some(obj) = self.heap.mark(transmute::<ORef, usize>(*reg)) {
-                *reg = obj.into();
-            }
+            self.heap.mark(transmute::<&mut ORef, *mut usize>(reg));
         }
 
         for slot in self.stack.iter_mut() {
-            if let Some(obj) = self.heap.mark(transmute::<ORef, usize>(*slot)) {
-                *slot = obj.into();
-            }
+            self.heap.mark(transmute::<&mut ORef, *mut usize>(slot));
         }
     }
 
@@ -522,7 +506,7 @@ impl Mutator {
 
         self.mark_roots();
 
-        todo!()
+        self.heap.collect();
     }
 
     fn tailcall(&mut self, argc: usize) -> Option<Trampoline> {

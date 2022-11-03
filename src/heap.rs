@@ -155,7 +155,13 @@ impl Heap {
         self.scan = self.free;
     }
 
-    pub unsafe fn next_grey(&mut self) -> Option<Gc<()>> {
+    pub unsafe fn collect(&mut self) {
+        while let Some(obj) = self.next_grey() {
+            self.scan_fields(obj.r#type(), obj.as_ptr() as *mut u8);
+        }
+    }
+
+    unsafe fn next_grey(&mut self) -> Option<Gc<()>> {
         if self.scan > self.free {
             let mut granule_index = (self.scan as usize - self.tospace.start as usize) / size_of::<Granule>();
             while !self.starts[granule_index] {
@@ -169,12 +175,14 @@ impl Heap {
         }
     }
 
-    pub unsafe fn mark(&mut self, oref: usize) -> Option<Gc<()>> {
-        if oref != 0 {
+    pub unsafe fn mark(&mut self, field: *mut usize) {
+        let oref = *field;
+
+        if oref != 0 { // Initialized?
             let oref = transmute::<usize, ORef>(oref);
 
-            if let Ok(obj) = Gc::<()>::try_from(oref) {
-                return Some(match obj.forwarding_address() {
+            if let Ok(obj) = Gc::<()>::try_from(oref) { // Heap object?
+                *field = transmute::<Gc<()>, usize>(match obj.forwarding_address() {
                     None => {
                         let copy = self.shallow_copy(obj).unwrap().into();
                         obj.set_forwarding_address(copy);
@@ -188,17 +196,12 @@ impl Heap {
                 });
             }
         }
-
-        None // Null (= uninitialized) or tagged scalar
     }
 
     // TODO: Avoid scan_field & scan_fields mutual recursion (although it is unlikely to be very deep):
     unsafe fn scan_field(&mut self, r#type: Gc<Type>, data: *mut u8) {
         if !r#type.as_ref().inlineable {
-            let data = data as *mut usize;
-            if let Some(copy) = self.mark(*data) {
-                *data = transmute::<Gc<()>, usize>(copy);
-            }
+            self.mark(data as *mut usize);
         } else {
             self.scan_fields(r#type, data);
         }
