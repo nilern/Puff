@@ -12,7 +12,7 @@ use crate::heap_obj::{NonIndexed, Indexed, Singleton, Header, min_size_of_indexe
 use crate::handle::{Handle, HandleT, HandlePool, Root, root};
 use crate::list::{EmptyList, Pair};
 use crate::bytecode::{Opcode, Bytecode, decode_prune_mask};
-use crate::vector::Vector;
+use crate::vector::{Vector, VectorMut};
 use crate::closure::Closure;
 use crate::regs::Regs;
 use crate::r#box::Box;
@@ -57,12 +57,14 @@ pub struct Types {
     pub pair: Gc<NonIndexedType>,
     pub empty_list: Gc<NonIndexedType>,
     pub vector_of_any: Gc<IndexedType>,
+    pub vector_mut_of_any: Gc<IndexedType>,
     pub pos: Gc<NonIndexedType>,
     pub syntax: Gc<NonIndexedType>,
     pub bytecode: Gc<IndexedType>,
     pub closure: Gc<IndexedType>,
     pub native_fn: Gc<NonIndexedType>,
     pub r#box: Gc<NonIndexedType>,
+    pub namespace: Gc<NonIndexedType>,
     pub var: Gc<NonIndexedType>
 }
 
@@ -82,7 +84,7 @@ pub struct Mutator {
     types: Types,
     singletons: Singletons,
     symbols: SymbolTable,
-    ns: Namespace,
+    ns: Option<Gc<Namespace>>,
 
     code: Option<Gc<Bytecode>>,
     consts: Option<Gc<Vector<ORef>>>,
@@ -239,6 +241,16 @@ impl Mutator {
                 }),
                 &[Field { r#type: any, offset: 0 }])?;
 
+            let vector_mut_of_any = Type::bootstrap_new(&mut heap, r#type,
+                IndexedType::new_unchecked(Type {
+                    min_size: min_size_of_indexed::<VectorMut::<ORef>>(),
+                    align: align_of_indexed::<VectorMut::<ORef>>(),
+                    is_bits: false,
+                    has_indexed: true,
+                    inlineable: false
+                }),
+                &[Field { r#type: any, offset: 0 }])?;
+
             let pos = Type::bootstrap_new(&mut heap, r#type, NonIndexedType::from_static::<Pos>(false, false), &[
                 Field { r#type: any, offset: 0 },
                 Field { r#type: any, offset: size_of::<ORef>() },
@@ -295,6 +307,14 @@ impl Mutator {
             let r#box = Type::bootstrap_new(&mut heap, r#type, NonIndexedType::from_static::<Box>(false, false),
                 &[Field { r#type: any, offset: 0 }])?;
 
+            let namespace = Type::bootstrap_new(&mut heap, r#type,
+                NonIndexedType::from_static::<Namespace>(false, false), &[
+                    Field { r#type: usize_type.as_type(), offset: 0 },
+                    Field { r#type: usize_type.as_type(), offset: size_of::<usize>() },
+                    Field { r#type: vector_mut_of_any.as_type(), offset: 2 * size_of::<usize>() },
+                    Field { r#type: vector_mut_of_any.as_type(), offset: 3 * size_of::<usize>() }
+                ])?;
+
             let var = Type::bootstrap_new(&mut heap, r#type, NonIndexedType::from_static::<Var>(false, false),
                 &[Field { r#type: any, offset: 0 }])?;
 
@@ -322,10 +342,10 @@ impl Mutator {
                 handles: HandlePool::new(),
 
                 types: Types { r#type, bool, symbol, string, pair, empty_list, pos, syntax, bytecode, vector_of_any,
-                    closure, native_fn, r#box, var },
+                    vector_mut_of_any, closure, native_fn, r#box, namespace, var },
                 singletons: Singletons { r#true, r#false, empty_list: empty_list_inst },
                 symbols: SymbolTable::new(),
-                ns: Namespace::new(),
+                ns: None,
 
                 code: None,
                 consts: None,
@@ -333,6 +353,7 @@ impl Mutator {
                 regs: Regs::with_capacity((1 << 20 /* 1 MiB */) / size_of::<ORef>()),
                 stack: Vec::new()
             };
+            mt.ns = Some(Namespace::new(&mut mt));
 
             // Create builtins:
             // -----------------------------------------------------------------
@@ -345,10 +366,10 @@ impl Mutator {
                 ("eval-syntax", builtins::EVAL_SYNTAX), ("load", builtins::LOAD),
                 ("apply", builtins::APPLY), ("values", builtins::VALUES)
             ] {
-                let name = Symbol::new(&mut mt, name);
+                let name = root!(&mut mt, Symbol::new(&mut mt, name));
                 let f = root!(&mut mt, NativeFn::new(&mut mt, f));
-                let var = Var::new(&mut mt, f.into());
-                mt.ns.add(name, var);
+                let var = root!(&mut mt, Var::new(&mut mt, f.into()));
+                mt.ns.unwrap().as_ref().add(&mut mt, name, var);
             }
 
             // -----------------------------------------------------------------
@@ -401,7 +422,7 @@ impl Mutator {
     pub fn push_global(&mut self, name: &str) {
         let name = Symbol::new(self, name);
 
-        if let Some(var) = self.ns.get(name) {
+        if let Some(var) = unsafe { self.ns.unwrap().as_ref().get(name) } {
             unsafe { self.regs.push(var.as_ref().value()); }
         } else {
             todo!()
@@ -465,7 +486,11 @@ impl Mutator {
             }
         }
 
-        todo!(); // self.ns
+        for ns in self.ns.iter_mut() {
+            if let Some(obj) = self.heap.mark(transmute::<Gc<Namespace>, usize>(*ns)) {
+                *ns = obj.unchecked_cast::<Namespace>();
+            }
+        }
 
         for code in self.code.iter_mut() {
             if let Some(obj) = self.heap.mark(transmute::<Gc<Bytecode>, usize>(*code)) {
@@ -648,8 +673,9 @@ impl Mutator {
                     Opcode::Define => {
                         let i = self.next_oparg();
 
-                        let name = unsafe { self.consts().as_ref().indexed_field()[i].unchecked_cast::<Symbol>() };
-                        if let Some(var) = self.ns.get(name) {
+                        let name = root!(self,
+                            unsafe { self.consts().as_ref().indexed_field()[i].unchecked_cast::<Symbol>() });
+                        if let Some(var) = unsafe { self.ns.unwrap().as_ref().get(*name) } {
                             let v = self.regs.pop().unwrap();
                             unsafe {
                                 var.as_ref().redefine(v);
@@ -657,10 +683,10 @@ impl Mutator {
                             }
                         } else {
                             unsafe {
-                                let var = Var::new_uninitialized(self); // Avoids allocating a HandleT<Var>
-                                self.ns.add(name, var);
+                                let var = root!(self, Var::new_uninitialized(self));
+                                self.ns.unwrap().as_ref().add(self, name, var.clone());
                                 let v = self.regs.pop().unwrap();
-                                var.as_ref().init(v);
+                                var.as_ref().init(v); // Avoids allocating a Handle for `v`
                                 self.regs.push_unchecked(v); // HACK?
                             }
                         }
@@ -670,7 +696,7 @@ impl Mutator {
                         let i = self.next_oparg();
 
                         let name = unsafe { self.consts().as_ref().indexed_field()[i].unchecked_cast::<Symbol>() };
-                        if let Some(var) = self.ns.get(name) {
+                        if let Some(var) = unsafe { self.ns.unwrap().as_ref().get(name) } {
                             let v = self.regs.pop().unwrap();
                             unsafe {
                                 var.as_ref().set(v);
@@ -685,7 +711,7 @@ impl Mutator {
                         let i = self.next_oparg();
 
                         let name = unsafe { self.consts().as_ref().indexed_field()[i].unchecked_cast::<Symbol>() };
-                        if let Some(var) = self.ns.get(name) {
+                        if let Some(var) = unsafe { self.ns.unwrap().as_ref().get(name) } {
                             unsafe { self.regs.push_unchecked(var.as_ref().value()); }
                         } else {
                             unsafe { todo!("Unbound {}", name.as_ref().name()); }

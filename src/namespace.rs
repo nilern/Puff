@@ -1,14 +1,12 @@
-use std::alloc::{Layout, alloc, dealloc};
-use std::mem::{size_of, align_of};
-use std::slice;
 use std::cell::Cell;
 
 use crate::symbol::Symbol;
-use crate::oref::{Reify, Gc, ORef};
+use crate::oref::{Reify, Gc, ORef, Fixnum};
 use crate::mutator::Mutator;
-use crate::handle::Handle;
-use crate::heap_obj::NonIndexed;
+use crate::handle::{Handle, HandleT, Root, root};
+use crate::heap_obj::{NonIndexed, Indexed};
 use crate::r#type::NonIndexedType;
+use crate::vector::VectorMut;
 
 #[repr(C)]
 pub struct Var {
@@ -43,140 +41,122 @@ impl Var {
     pub fn set(&self, v: ORef) { self.value.set(v); }
 }
 
-type Key = Option<Gc<Symbol>>;
-type Value = Option<Gc<Var>>;
-
+#[repr(C)]
 pub struct Namespace {
-    len: usize,
-    capacity: usize,
-    keys: *mut Key,
-    values: *mut Value
+    len: Cell<usize>,
+    capacity: Cell<usize>,
+    keys: Cell<Gc<VectorMut<ORef>>>,
+    values: Cell<Gc<VectorMut<ORef>>>
 }
 
-impl Drop for Namespace {
-    fn drop(&mut self) {
-        unsafe {
-            dealloc(self.keys as *mut u8, Layout::from_size_align_unchecked(
-                self.capacity * size_of::<Key>(), align_of::<Key>()));
-            dealloc(self.values as *mut u8, Layout::from_size_align_unchecked(
-                self.capacity * size_of::<Value>(), align_of::<Value>()))
-        }
-    }
+impl Reify for Namespace {
+    type Kind = NonIndexedType;
+
+    fn reify(mt: &Mutator) -> Gc<NonIndexedType> { mt.types().namespace }
 }
+
+unsafe impl NonIndexed for Namespace {}
 
 impl Namespace {
-    pub fn new() -> Self {
+    pub fn new(mt: &mut Mutator) -> Gc<Self> {
         let capacity = 2;
 
-        let keys = unsafe {
-            let size = capacity * size_of::<Key>();
-            let keys = alloc(Layout::from_size_align_unchecked(size, align_of::<Key>()));
-            keys.write_bytes(0, size);
-            keys as *mut Key
-        };
-        let values = unsafe {
-            let size = capacity * size_of::<Value>();
-            let values = alloc(Layout::from_size_align_unchecked(size, align_of::<Value>()));
-            values.write_bytes(0, size);
-            values as *mut Value
-        };
+        let keys = root!(mt, VectorMut::<ORef>::zeros(mt, capacity));
+        let values = root!(mt, VectorMut::<ORef>::zeros(mt, capacity));
 
-        Self { len: 0, capacity, keys, values }
+        unsafe {
+            let nptr = mt.alloc_static::<Self>();
+
+            nptr.as_ptr().write(Self {
+                len: Cell::new(0),
+                capacity: Cell::new(capacity),
+                keys: Cell::new(*keys),
+                values: Cell::new(*values)
+            });
+
+            Gc::new_unchecked(nptr)
+        }
     }
 
     pub fn get(&self, name: Gc<Symbol>) -> Option<Gc<Var>> {
         let hash = unsafe { name.as_ref().hash() };
 
-        let max_index = self.capacity - 1;
+        let max_index = self.capacity.get() - 1;
         let mut collisions = 0;
         let mut i = (isize::from(hash) as usize) & max_index;
         loop {
-            match unsafe { *self.keys.add(i) } {
-                Some(k) if k == name => return unsafe { *self.values.add(i) },
-                Some(_) => {
-                    collisions += 1;
-                    i = (i + collisions) & max_index;
-                },
-                None => return None
+            let k = unsafe { self.keys.get().as_ref().indexed_field()[i].get() };
+
+            if k == name.into() {
+                return Some(unsafe { self.values.get().as_ref().indexed_field()[i].get().unchecked_cast::<Var>() });
+            } else if k != Fixnum::from(0u8).into() {
+                collisions += 1;
+                i = (i + collisions) & max_index;
+            } else {
+                return None;
             }
         }
     }
 
-    pub fn add(&mut self, name: Gc<Symbol>, v: Gc<Var>) {
+    pub fn add(&self, mt: &mut Mutator, name: HandleT<Symbol>, v: HandleT<Var>) {
         let hash = unsafe { name.as_ref().hash() };
 
         loop {
-            let max_index = self.capacity - 1;
+            let max_index = self.capacity.get() - 1;
             let mut collisions = 0;
             let mut i = (isize::from(hash) as usize) & max_index;
             loop {
-                match unsafe { *self.keys.add(i) } {
-                    Some(k) => {
-                        debug_assert!(k != name);
-                        collisions += 1;
-                        i = (i + collisions) & max_index;
-                    },
-                    None =>
-                        if (self.len + 1) * 2 > self.capacity {
-                            self.rehash();
-                            break; // continue outer loop
-                        } else {
-                            self.len += 1;
-                            unsafe {
-                                *self.keys.add(i) = Some(name);
-                                *self.values.add(i) = Some(v);
-                            }
-                            return;
+                let k = unsafe { self.keys.get().as_ref().indexed_field()[i].get() };
+
+                if k != Fixnum::from(0u8).into() {
+                    debug_assert!(k != (*name).into());
+                    collisions += 1;
+                    i = (i + collisions) & max_index;
+                } else {
+                    if (self.len.get() + 1) * 2 > self.capacity.get() {
+                        self.rehash(mt);
+                        break; // continue outer loop
+                    } else {
+                        self.len.set(self.len.get() + 1);
+                        unsafe {
+                            self.keys.get().as_ref().indexed_field()[i].set((*name).into());
+                            self.values.get().as_ref().indexed_field()[i].set((*v).into());
                         }
+                        return;
+                    }
                 }
             }
         }
     }
 
-    fn rehash(&mut self) {
-        let new_capacity = self.capacity * 2;
+    fn rehash(&self, mt: &mut Mutator) {
+        let new_capacity = self.capacity.get() * 2;
 
-        let new_keys = unsafe {
-            let size = new_capacity * size_of::<Key>();
-            let new_keys = alloc(Layout::from_size_align_unchecked(size, align_of::<Key>()));
-            new_keys.write_bytes(0, size);
-            slice::from_raw_parts_mut(new_keys as *mut Key, new_capacity)
-        };
-        let new_values = unsafe {
-            let size = new_capacity * size_of::<Value>();
-            let new_values = alloc(Layout::from_size_align_unchecked(size, align_of::<Value>()));
-            new_values.write_bytes(0, size);
-            slice::from_raw_parts_mut(new_values as *mut Value, new_capacity)
-        };
+        let new_keys = root!(mt, VectorMut::<ORef>::zeros(mt, new_capacity));
+        let new_values = VectorMut::<ORef>::zeros(mt, new_capacity);
+        let new_keys = *new_keys;
 
-        unsafe { slice::from_raw_parts(self.keys, self.capacity).iter() }
-            .enumerate()
-            .filter_map(|(old_i, &ok)| ok.map(|k| (old_i, k)))
-            .for_each(|(old_i, k)| {
-                let hash = isize::from(unsafe { k.as_ref().hash() }) as usize;
+        unsafe {
+            for (old_i, k) in self.keys.get().as_ref().indexed_field().iter().enumerate() {
+                if let Some(k) = k.get().try_cast::<Symbol>(mt) {
+                    let hash = isize::from(k.as_ref().hash()) as usize;
 
-                let max_index = new_capacity - 1;
-                let mut collisions = 0;
-                let mut i = hash & max_index;
-                while new_keys[i].is_some() {
-                    collisions += 1;
-                    i = (i + collisions) & max_index;
+                    let max_index = new_capacity - 1;
+                    let mut collisions = 0;
+                    let mut i = hash & max_index;
+                    while new_keys.as_ref().indexed_field()[i].get() != Fixnum::from(0u8).into() {
+                        collisions += 1;
+                        i = (i + collisions) & max_index;
+                    }
+                    new_keys.as_ref().indexed_field()[i].set(k.into());
+                    new_values.as_ref().indexed_field()[i].set(self.values.get().as_ref().indexed_field()[old_i].get());
                 }
-                new_keys[i] = Some(k);
-                new_values[i] = unsafe { *self.values.add(old_i) };
-            });
+            }
+        }
 
-        self.capacity = new_capacity;
-        unsafe { dealloc(
-            self.keys as *mut u8,
-            Layout::from_size_align_unchecked (self.capacity * size_of::<Key>(), align_of::<Key>())
-        ) };
-        self.keys = new_keys.as_mut_ptr();
-        unsafe { dealloc(
-            self.values as *mut u8,
-            Layout::from_size_align_unchecked (self.capacity * size_of::<Value>(), align_of::<Value>())
-        ) };
-        self.values = new_values.as_mut_ptr();
+        self.capacity.set(new_capacity);
+        self.keys.set(new_keys);
+        self.values.set(new_values);
     }
 }
 
@@ -189,31 +169,34 @@ mod tests {
     #[test]
     fn test_add_get() {
         let mut mt = Mutator::new(1 << 20, false).unwrap();
-        let mut ns = Namespace::new();
+        let mut ns = Namespace::new(&mut mt);
 
-        let foo = Symbol::new(&mut mt, "foo");
-        let bar = Symbol::new(&mut mt, "bar");
-        let baz = Symbol::new(&mut mt, "baz");
+        let foo = root!(&mut mt, Symbol::new(&mut mt, "foo"));
+        let bar = root!(&mut mt, Symbol::new(&mut mt, "bar"));
+        let baz = root!(&mut mt, Symbol::new(&mut mt, "baz"));
 
         let one = root!(&mut mt, ORef::from(Fixnum::from(1u8)));
         let two = root!(&mut mt, ORef::from(Fixnum::from(2u8)));
         let three = root!(&mut mt, ORef::from(Fixnum::from(3u8)));
 
-        assert_eq!(ns.get(foo), None);
+        assert_eq!(unsafe { ns.as_ref().get(*foo) }, None);
 
-        ns.add(foo, Var::new(&mut mt, one.clone()));
-        assert_eq!(unsafe { ns.get(foo).unwrap().as_ref().value() }, *one);
-        assert_eq!(ns.get(bar), None);
-        assert_eq!(ns.get(baz), None);
+        let var = root!(&mut mt, Var::new(&mut mt, one.clone()));
+        unsafe { ns.as_ref().add(&mut mt, foo.clone(), var); }
+        assert_eq!(unsafe { ns.as_ref().get(*foo).unwrap().as_ref().value() }, *one);
+        assert_eq!(unsafe { ns.as_ref().get(*bar) }, None);
+        assert_eq!(unsafe { ns.as_ref().get(*baz) }, None);
 
-        ns.add(bar, Var::new(&mut mt, two.clone()));
-        assert_eq!(unsafe { ns.get(foo).unwrap().as_ref().value() }, *one);
-        assert_eq!(unsafe { ns.get(bar).unwrap().as_ref().value() }, *two);
-        assert_eq!(ns.get(baz), None);
+        let var = root!(&mut mt, Var::new(&mut mt, two.clone()));
+        unsafe { ns.as_ref().add(&mut mt, bar.clone(), var); }
+        assert_eq!(unsafe { ns.as_ref().get(*foo).unwrap().as_ref().value() }, *one);
+        assert_eq!(unsafe { ns.as_ref().get(*bar).unwrap().as_ref().value() }, *two);
+        assert_eq!(unsafe { ns.as_ref().get(*baz) }, None);
 
-        ns.add(baz, Var::new(&mut mt, three.clone()));
-        assert_eq!(unsafe { ns.get(foo).unwrap().as_ref().value() }, *one);
-        assert_eq!(unsafe { ns.get(bar).unwrap().as_ref().value() }, *two);
-        assert_eq!(unsafe { ns.get(baz).unwrap().as_ref().value() }, *three);
+        let var = root!(&mut mt, Var::new(&mut mt, three.clone()));
+        unsafe { ns.as_ref().add(&mut mt, baz.clone(), var); }
+        assert_eq!(unsafe { ns.as_ref().get(*foo).unwrap().as_ref().value() }, *one);
+        assert_eq!(unsafe { ns.as_ref().get(*bar).unwrap().as_ref().value() }, *two);
+        assert_eq!(unsafe { ns.as_ref().get(*baz).unwrap().as_ref().value() }, *three);
     }
 }
