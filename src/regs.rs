@@ -100,6 +100,8 @@ impl<T: Copy> Regs<T> {
 
     pub fn as_slice(&self) -> &[T] { unsafe { slice::from_raw_parts(self.base, self.len()) } }
 
+    pub fn as_mut_slice(&mut self) -> &mut [T] { unsafe { slice::from_raw_parts_mut(self.base, self.len()) } }
+
     pub unsafe fn pop_unchecked(&mut self) -> T {
         self.top = self.top.sub(1);
         debug_assert!(self.top >= self.base);

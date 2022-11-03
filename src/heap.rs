@@ -61,7 +61,7 @@ impl Heap {
         }
     }
 
-    unsafe fn flip(&mut self) {
+    pub unsafe fn flip(&mut self) {
         swap(&mut self.fromspace, &mut self.tospace);
         self.free = self.tospace.end;
     }

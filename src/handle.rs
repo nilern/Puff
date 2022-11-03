@@ -171,7 +171,7 @@ impl HandlePool {
         }
     }
 
-    fn for_each_root<F: FnMut(&mut ORef)>(&mut self, mut f: F) {
+    pub fn for_each_root<F: FnMut(&mut ORef)>(&mut self, mut f: F) {
         let mut prev: Option<NonNull<LiveHandleImpl>> = None;
         let mut curr = self.live;
 

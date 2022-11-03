@@ -1,6 +1,7 @@
 use std::ptr::NonNull;
-use std::mem::{align_of, size_of};
+use std::mem::{align_of, size_of, transmute};
 use std::alloc::Layout;
+use std::slice;
 
 use crate::heap::Heap;
 use crate::oref::{AsType, ORef, Gc, Fixnum};
@@ -47,6 +48,7 @@ pub struct Cfg {
     pub debug: bool
 }
 
+#[repr(C)]
 pub struct Types {
     pub r#type: Gc<IndexedType>,
     pub bool: Gc<BitsType>,
@@ -64,6 +66,7 @@ pub struct Types {
     pub var: Gc<NonIndexedType>
 }
 
+#[repr(C)]
 pub struct Singletons {
     pub r#true: Gc<Bool>,
     pub r#false: Gc<Bool>,
@@ -410,15 +413,17 @@ impl Mutator {
     pub fn dump_regs(&self) { self.regs.dump(self); }
 
     pub unsafe fn alloc_nonindexed(&mut self, r#type: Gc<NonIndexedType>) -> NonNull<u8> {
-        self.heap.alloc_nonindexed(r#type).unwrap_or_else(||
-            todo!() // Need to GC, then retry
-        )
+        self.heap.alloc_nonindexed(r#type).unwrap_or_else(|| {
+            self.collect();
+            self.heap.alloc_nonindexed(r#type).expect("out of memory")
+        })
     }
 
     pub unsafe fn alloc_indexed(&mut self, r#type: Gc<IndexedType>, len: usize) -> NonNull<u8> {
-        self.heap.alloc_indexed(r#type, len).unwrap_or_else(||
-            todo!() // Need to GC, then retry
-        )
+        self.heap.alloc_indexed(r#type, len).unwrap_or_else(|| {
+            self.collect();
+            self.heap.alloc_indexed(r#type, len).expect("out of memory")
+        })
     }
 
     pub unsafe fn alloc_static<T: NonIndexed>(&mut self) -> NonNull<T> {
@@ -431,6 +436,68 @@ impl Mutator {
 
     pub fn root_t<T>(&mut self, obj: Gc<T>) -> HandleT<T> {
         unsafe { self.handles.root_t(obj) }
+    }
+
+    unsafe fn mark_roots(&mut self) {
+        self.handles.for_each_root(|oref|
+            if let Some(obj) = self.heap.mark(transmute::<ORef, usize>(*oref)) {
+                *oref = obj.into();
+            }
+        );
+
+        let types = slice::from_raw_parts_mut(
+            transmute::<&mut Types, &mut Gc<Type>>(&mut self.types),
+            size_of::<Types>() / size_of::<Gc<Type>>()
+        );
+        for r#type in types {
+            if let Some(obj) = self.heap.mark(transmute::<Gc<Type>, usize>(*r#type)) {
+                *r#type = obj.unchecked_cast::<Type>();
+            }
+        }
+
+        let singletons = slice::from_raw_parts_mut(
+            transmute::<&mut Singletons, &mut ORef>(&mut self.singletons),
+            size_of::<Singletons>() / size_of::<ORef>()
+        );
+        for singleton in singletons {
+            if let Some(obj) = self.heap.mark(transmute::<ORef, usize>(*singleton)) {
+                *singleton = obj.into();
+            }
+        }
+
+        todo!(); // self.ns
+
+        for code in self.code.iter_mut() {
+            if let Some(obj) = self.heap.mark(transmute::<Gc<Bytecode>, usize>(*code)) {
+                *code = obj.unchecked_cast::<Bytecode>();
+            }
+        }
+
+        for consts in self.consts.iter_mut() {
+            if let Some(obj) = self.heap.mark(transmute::<Gc<Vector<ORef>>, usize>(*consts)) {
+                *consts = obj.unchecked_cast::<Vector<ORef>>();
+            }
+        }
+
+        for reg in self.regs.as_mut_slice().iter_mut() {
+            if let Some(obj) = self.heap.mark(transmute::<ORef, usize>(*reg)) {
+                *reg = obj.into();
+            }
+        }
+
+        for slot in self.stack.iter_mut() {
+            if let Some(obj) = self.heap.mark(transmute::<ORef, usize>(*slot)) {
+                *slot = obj.into();
+            }
+        }
+    }
+
+    unsafe fn collect(&mut self) {
+        self.heap.flip();
+
+        self.mark_roots();
+
+        todo!()
     }
 
     fn tailcall(&mut self, argc: usize) -> Option<Trampoline> {
