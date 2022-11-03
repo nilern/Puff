@@ -1,5 +1,5 @@
 use std::alloc::{Layout, alloc, dealloc};
-use std::mem::{align_of, transmute, swap};
+use std::mem::{size_of, align_of, transmute, swap};
 use std::ptr::{self, NonNull};
 
 use crate::oref::{AsType, Gc, ORef};
@@ -45,7 +45,9 @@ impl Drop for Semispace {
 pub struct Heap {
     fromspace: Semispace,
     tospace: Semispace,
-    free: *mut u8
+    free: *mut u8,
+    starts: Vec<bool>, // OPTIMIZE: Use a bitmap
+    scan: *mut u8
 }
 
 impl Heap {
@@ -57,13 +59,10 @@ impl Heap {
         Self {
             fromspace: Semispace::new(semi_size),
             tospace,
-            free
+            free,
+            starts: Vec::with_capacity(semi_size / size_of::<Granule>()),
+            scan: free
         }
-    }
-
-    pub unsafe fn flip(&mut self) {
-        swap(&mut self.fromspace, &mut self.tospace);
-        self.free = self.tospace.end;
     }
 
     pub unsafe fn alloc_raw(&mut self, layout: Layout, indexed: bool)
@@ -149,6 +148,27 @@ impl Heap {
         }
     }
 
+    pub unsafe fn flip(&mut self) {
+        swap(&mut self.fromspace, &mut self.tospace);
+        self.free = self.tospace.end;
+        self.starts.fill(false);
+        self.scan = self.free;
+    }
+
+    pub unsafe fn next_grey(&mut self) -> Option<Gc<()>> {
+        if self.scan > self.free {
+            let mut granule_index = (self.scan as usize - self.tospace.start as usize) / size_of::<Granule>();
+            while !self.starts[granule_index] {
+                granule_index -= 1;
+            }
+
+            self.scan = (self.tospace.start as *mut Granule).add(granule_index) as *mut u8;
+            Some(Gc::new_unchecked(NonNull::new_unchecked(self.scan as *mut ())))
+        } else {
+            None
+        }
+    }
+
     pub unsafe fn mark(&mut self, oref: usize) -> Option<Gc<()>> {
         if oref != 0 {
             let oref = transmute::<usize, ORef>(oref);
@@ -158,6 +178,9 @@ impl Heap {
                     None => {
                         let copy = self.shallow_copy(obj).unwrap().into();
                         obj.set_forwarding_address(copy);
+                        let granule_index =
+                            (copy.as_ptr() as usize - self.tospace.start as usize) / size_of::<Granule>();
+                        self.starts[granule_index] = true;
                         copy
                     },
 

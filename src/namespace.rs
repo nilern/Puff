@@ -169,7 +169,7 @@ mod tests {
     #[test]
     fn test_add_get() {
         let mut mt = Mutator::new(1 << 20, false).unwrap();
-        let mut ns = Namespace::new(&mut mt);
+        let ns = Namespace::new(&mut mt);
 
         let foo = root!(&mut mt, Symbol::new(&mut mt, "foo"));
         let bar = root!(&mut mt, Symbol::new(&mut mt, "bar"));
