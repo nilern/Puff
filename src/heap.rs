@@ -1,5 +1,5 @@
 use std::alloc::{Layout, alloc, dealloc};
-use std::mem::{align_of, transmute};
+use std::mem::{align_of, transmute, swap};
 use std::ptr::{self, NonNull};
 
 use crate::oref::{AsType, Gc, ORef};
@@ -52,13 +52,18 @@ impl Heap {
     pub fn new(size: usize) -> Self {
         let semi_size = size / 2;
 
-        let fromspace = Semispace::new(semi_size);
-        let free = fromspace.end;
+        let tospace = Semispace::new(semi_size);
+        let free = tospace.end;
         Self {
-            fromspace,
-            tospace: Semispace::new(semi_size),
+            fromspace: Semispace::new(semi_size),
+            tospace,
             free
         }
+    }
+
+    unsafe fn flip(&mut self) {
+        swap(&mut self.fromspace, &mut self.tospace);
+        self.free = self.tospace.end;
     }
 
     pub unsafe fn alloc_raw(&mut self, layout: Layout, indexed: bool)
@@ -80,7 +85,7 @@ impl Heap {
             addr = (header as *mut usize).offset(-1) as usize;
         }
 
-        if addr >= self.fromspace.start as usize {
+        if addr >= self.tospace.start as usize {
             self.free = addr as *mut u8;
 
             Some(NonNull::new_unchecked(obj))
@@ -218,7 +223,7 @@ mod tests {
         let mut heap = Heap::new(1 << 20 /* 1 MiB */);
 
         unsafe {
-            let mut r#type = BitsType::from_static::<usize>();
+            let mut r#type = BitsType::from_static::<usize>(true);
             let r#type = Gc::new_unchecked(
                 NonNull::new_unchecked(&mut r#type as *mut BitsType)
             ).as_nonindexed();
@@ -228,7 +233,7 @@ mod tests {
             assert!(v.is_some());
             let obj = Gc::new_unchecked(v.unwrap().cast::<usize>());
             assert_eq!(obj.r#type(), r#type.as_type());
-            assert_eq!(obj.is_marked(), false);
+            assert!(obj.forwarding_address().is_none());
             assert_eq!(*obj.as_ref(), 0usize);
         }
     }
