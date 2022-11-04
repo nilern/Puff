@@ -502,6 +502,8 @@ impl Mutator {
     }
 
     unsafe fn collect(&mut self) {
+        print!("collect...");
+
         self.heap.flip();
 
         self.mark_roots();
@@ -509,6 +511,8 @@ impl Mutator {
         self.heap.collect();
 
         self.symbols.scan();
+
+        println!(" collected");
     }
 
     fn tailcall(&mut self, argc: usize) -> Option<Trampoline> {

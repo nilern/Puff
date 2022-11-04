@@ -1,8 +1,10 @@
 use std::mem::{transmute, size_of, align_of};
 use std::alloc::Layout;
+use std::marker::PhantomData;
+use std::ptr::NonNull;
 
 use crate::heap::Heap;
-use crate::oref::Gc;
+use crate::oref::{Gc, ORef};
 use crate::heap_obj::{HeapObj, Indexed, min_size_of_indexed, align_of_indexed,
     item_stride};
 
@@ -154,4 +156,83 @@ impl IndexedType {
             )
         }
    }
+}
+
+pub struct BootstrapTypeBuilder<T> {
+    align: usize,
+    min_size: usize,
+    is_bits: bool,
+    has_indexed: bool,
+    inlineable: bool,
+    fields: Vec<Field<Type>>,
+    phantom: PhantomData<T>
+}
+
+impl BootstrapTypeBuilder<NonIndexedType> {
+    pub fn new() -> Self {
+        BootstrapTypeBuilder {
+            align: 1,
+            min_size: 0,
+            is_bits: false,
+            has_indexed: false,
+            inlineable: true,
+            fields: Vec::new(),
+            phantom: PhantomData::default()
+        }
+    }
+}
+
+impl BootstrapTypeBuilder<NonIndexedType> {
+    pub unsafe fn field(mut self, r#type: Gc<Type>) -> Self {
+        let field_type = r#type.as_ref();
+
+        let (field_align, field_size) = if !field_type.inlineable {
+            (align_of::<ORef>(), size_of::<ORef>())
+        } else {
+            (field_type.align, field_type.min_size)
+        };
+        let offset = (self.min_size + field_align - 1) & !(field_align - 1);
+
+        self.align = self.align.max(field_align);
+        self.min_size = offset + field_size;
+        self.fields.push(Field {r#type, offset});
+
+        self
+    }
+    
+    pub unsafe fn indexed_field(self, r#type: Gc<Type>) -> BootstrapTypeBuilder<IndexedType> {
+        let this = self.field(r#type);
+
+        BootstrapTypeBuilder {
+            align: this.align,
+            min_size: this.min_size,
+            is_bits: this.is_bits,
+            has_indexed: true,
+            inlineable: false,
+            fields: this.fields,
+            phantom: PhantomData::default()
+        }
+    }
+}
+
+impl<T: Indexed<Item=Field<Type>>> BootstrapTypeBuilder<T> {
+    pub unsafe fn build<F: FnOnce(usize) -> NonNull<T>>(self, alloc_type: F) -> Gc<T> {
+        let mut t = alloc_type(self.fields.len());
+
+        t.as_ptr().cast::<Type>().write(Type {
+            align: self.align,
+            min_size: self.min_size,
+            is_bits: self.is_bits,
+            has_indexed: self.has_indexed,
+            inlineable: self.inlineable
+        });
+
+        let mut dest_field = t.as_mut().indexed_field_ptr_mut();
+        for field in self.fields {
+            dest_field.write(field);
+            dest_field = dest_field.add(1);
+        }
+
+        Gc::new_unchecked(t)
+    }
 }
