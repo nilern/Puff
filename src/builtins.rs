@@ -223,7 +223,7 @@ pub const SET_CDR: NativeFn = NativeFn {
 };
 
 fn eval_syntax(mt: &mut Mutator) -> Answer {
-    let expr = mt.regs()[mt.regs().len() - 1];
+    let expr = root!(mt, mt.regs()[mt.regs().len() - 1]);
 
     if mt.cfg().debug {
         println!("{}", expr.within(&mt));

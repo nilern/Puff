@@ -11,8 +11,8 @@ mod to_cfg;
 mod emit;
 
 use crate::bytecode::Bytecode;
-use crate::oref::{ORef, Gc};
-use crate::handle::HandleT;
+use crate::oref::Gc;
+use crate::handle::{Handle, HandleT};
 use crate::mutator::Mutator;
 use crate::symbol::Symbol;
 use analyzer::analyze;
@@ -63,16 +63,10 @@ pub struct Compiler<'a> {
 }
 
 impl<'a> Compiler<'a> {
-    fn new(mt: &'a mut Mutator) -> Self {
-        Self {
-            mt,
-            id_counter: 0,
-            names: HashMap::new()
-        }
-    }
+    fn new(mt: &'a mut Mutator) -> Self { Self { mt, id_counter: 0, names: HashMap::new() } }
 }
 
-pub fn compile(mt: &mut Mutator, expr: ORef, debug: bool) -> Gc<Bytecode> {
+pub fn compile(mt: &mut Mutator, expr: Handle, debug: bool) -> Gc<Bytecode> {
     let mut cmp = Compiler::new(mt);
 
     let mut anf = analyze(&mut cmp, expr);

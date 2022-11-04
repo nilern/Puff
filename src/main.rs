@@ -28,7 +28,6 @@ use rustyline::error::ReadlineError;
 use rustyline;
 
 use oref::ORef;
-use handle::Handle;
 use reader::Reader;
 use mutator::Mutator;
 use compiler::compile;
@@ -65,13 +64,13 @@ fn main() {
 
                 while let Some(res) = reader.next(&mut mt) {
                     match res {
-                        Ok(sv) => {
+                        Ok(stx) => {
                             if debug {
-                                println!("{}", Handle::from(sv.clone()).within(&mt));
+                                println!("{}", ORef::from(*stx).within(&mt));
                                 println!("");
                             }
 
-                            let code = compile(&mut mt, (*sv).into(), debug);
+                            let code = compile(&mut mt, stx.into(), debug);
 
                             if debug {
                                 println!("{}", code.within(&mt));

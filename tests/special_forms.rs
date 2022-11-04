@@ -14,8 +14,8 @@ fn eval_string(mt: &mut Mutator, s: &str) -> ORef {
 
     let res = reader.next(mt).unwrap();
     assert!(reader.next(mt).is_none());
-    let sv = res.unwrap();
-    let code = compile(mt, (*sv).into(), mt.cfg().debug);
+    let stx = res.unwrap();
+    let code = compile(mt, stx.into(), mt.cfg().debug);
 
     unsafe { verify(&mt, code.as_ref()) }.unwrap();
 
