@@ -508,7 +508,7 @@ impl Mutator {
 
         self.heap.collect();
 
-        todo!(); // self.symbols; treated as weak references
+        self.symbols.scan();
     }
 
     fn tailcall(&mut self, argc: usize) -> Option<Trampoline> {

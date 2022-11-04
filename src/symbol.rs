@@ -2,7 +2,6 @@ use std::str;
 use std::collections::hash_map::DefaultHasher;
 use std::alloc::{Layout, alloc, dealloc};
 use std::mem::{size_of, align_of};
-use std::ptr;
 use std::slice;
 
 use crate::oref::{Reify,  Gc, Fixnum};
@@ -11,20 +10,22 @@ use crate::mutator::Mutator;
 use crate::util::hash;
 use crate::r#type::IndexedType;
 
+#[derive(Clone, Copy)]
+enum SymbolTableEntry {
+    Present(Gc<Symbol>),
+    Vacant,
+    Tombstone
+}
+
 pub struct SymbolTable {
     len: usize,
     capacity: usize,
-    symbols: *mut Option<Gc<Symbol>>
+    symbols: *mut SymbolTableEntry
 }
 
 impl Drop for SymbolTable {
     fn drop(&mut self) {
-        unsafe {
-            dealloc(self.symbols as *mut u8, Layout::from_size_align_unchecked (
-                self.capacity * size_of::<Option<Gc<Symbol>>>(),
-                align_of::<Option<Gc<Symbol>>>()
-            ))
-        }
+        unsafe { dealloc(self.symbols as *mut u8, Self::entries_layout(self.capacity)); }
     }
 }
 
@@ -32,56 +33,77 @@ impl SymbolTable {
     pub fn new() -> Self {
         let capacity = 2;
 
-        let symbols = unsafe {
-            let size = capacity * size_of::<Option<Gc<Symbol>>>();
-            let symbols = alloc(Layout::from_size_align_unchecked(
-                size,
-                align_of::<Option<Gc<Symbol>>>()
-            ));
-            ptr::write_bytes(symbols, 0, size);
-            symbols as *mut Option<Gc<Symbol>>
-        };
+        Self { len: 0, capacity, symbols: Self::new_entries(capacity) }
+    }
 
-        Self { len: 0, capacity, symbols }
+    fn entries_layout(capacity: usize) -> Layout {
+        unsafe {
+            Layout::from_size_align_unchecked(capacity * size_of::<SymbolTableEntry>(), align_of::<SymbolTableEntry>())
+        }
+    }
+
+    fn new_entries(capacity: usize) -> *mut SymbolTableEntry {
+        unsafe {
+            let entries = alloc(Self::entries_layout(capacity)) as *mut SymbolTableEntry;
+
+            let mut entry = entries;
+            for _ in 0..capacity {
+                entry.write(SymbolTableEntry::Vacant);
+                entry = entry.add(1);
+            }
+
+            entries
+        }
     }
 
     fn rehash(&mut self) {
+        let mut new_len = 0;
         let new_capacity = self.capacity * 2;
 
-        let new_symbols: &mut [Option<Gc<Symbol>>] = unsafe {
-            let size = new_capacity * size_of::<Option<Gc<Symbol>>>();
-            let new_symbols = alloc(Layout::from_size_align_unchecked(
-                size,
-                align_of::<Option<Gc<Symbol>>>()
-            ));
-            ptr::write_bytes(new_symbols, 0, size);
-            slice::from_raw_parts_mut(new_symbols as _, new_capacity)
-        };
+        let new_symbols = unsafe { slice::from_raw_parts_mut(Self::new_entries(new_capacity), new_capacity) };
 
-        unsafe { slice::from_raw_parts(self.symbols, self.capacity).iter() }
-            .filter_map(|&osym| osym)
-            .for_each(|sym| {
+        for entry in unsafe { slice::from_raw_parts(self.symbols, self.capacity).iter() } {
+            if let SymbolTableEntry::Present(sym) = *entry {
                 let hash = isize::from(unsafe { sym.as_ref().hash }) as usize;
 
                 let max_index = new_capacity - 1;
                 let mut collisions = 0;
                 let mut i = hash & max_index;
-                while new_symbols[i].is_some() {
-                    collisions += 1;
-                    i = (i + collisions) & max_index;
-                }
-                new_symbols[i] = Some(sym);
-            });
+                loop {
+                    match new_symbols[i] {
+                        SymbolTableEntry::Present(_) => {
+                            collisions += 1;
+                            i = (i + collisions) & max_index;
+                        },
 
+                        SymbolTableEntry::Vacant => {
+                            new_symbols[i] = SymbolTableEntry::Present(sym);
+                            new_len += 1;
+                            break;
+                        },
+
+                        SymbolTableEntry::Tombstone => unreachable!()
+                    }
+                }
+            }
+        }
+
+        unsafe { dealloc(self.symbols as *mut u8, Self::entries_layout(self.capacity)); }
+
+        self.len = new_len;
         self.capacity = new_capacity;
-        unsafe { dealloc(
-            self.symbols as *mut u8,
-            Layout::from_size_align_unchecked (
-                self.capacity * size_of::<Option<Gc<Symbol>>>(),
-                align_of::<Option<Gc<Symbol>>>()
-            )
-        ) };
         self.symbols = new_symbols.as_mut_ptr();
+    }
+
+    pub unsafe fn scan(&mut self) {
+        for entry in slice::from_raw_parts_mut(self.symbols, self.capacity).iter_mut() {
+            if let SymbolTableEntry::Present(sym) = *entry {
+                *entry = match sym.forwarding_address() {
+                    Some(copy) => SymbolTableEntry::Present(copy),
+                    None => SymbolTableEntry::Tombstone
+                };
+            }
+        }
     }
 }
 
@@ -109,48 +131,50 @@ impl Symbol {
 
         loop {
             unsafe {
-                let symbols_slice =
-                    slice::from_raw_parts_mut((*symbols).symbols,
-                        (*symbols).capacity);
+                let entries = (*symbols).symbols;
 
                 let max_index = (*symbols).capacity - 1;
                 let mut collisions = 0;
                 let mut i = (isize::from(hash) as usize) & max_index;
                 loop {
-                    match symbols_slice[i] {
-                        Some(isymbol) =>
-                            if isymbol.as_ref().hash == hash
-                                && isymbol.as_ref().name() == cs
-                            {
+                    match *entries.add(i) {
+                        SymbolTableEntry::Present(isymbol) =>
+                            if isymbol.as_ref().hash == hash && isymbol.as_ref().name() == cs {
                                 return isymbol
                             } else {
-                                // continue inner loop
+                                collisions += 1;
+                                i = (i + collisions) & max_index;
                             },
-                        None => 
+
+                        SymbolTableEntry::Vacant =>
                             if ((*symbols).len + 1) * 2 > (*symbols).capacity {
                                 (*symbols).rehash();
                                 break; // continue outer loop
                             } else {
-                                let len = cs.len();
-
-                                let nptr = mt.alloc_indexed(mt.types().symbol, len).cast::<Self>();
-                                let ptr = nptr.as_ptr();
-
-                                ptr.write(Symbol { hash });
-                                (*ptr).indexed_field_mut()
-                                    .copy_from_slice(cs.as_bytes());
+                                let mut nptr = mt.alloc_indexed(Self::reify(mt), cs.len()).cast::<Self>();
+                                nptr.as_ptr().write(Symbol { hash });
+                                nptr.as_mut().indexed_field_mut().copy_from_slice(cs.as_bytes());
 
                                 let sym = Gc::new_unchecked(nptr);
 
                                 (*symbols).len += 1;
-                                symbols_slice[i] = Some(sym);
+                                *entries.add(i) = SymbolTableEntry::Present(sym);
 
                                 return sym;
-                            }
-                    }
+                            },
 
-                    collisions += 1;
-                    i = (i + collisions) & max_index;
+                        SymbolTableEntry::Tombstone => {
+                            let mut nptr = mt.alloc_indexed(Self::reify(mt), cs.len()).cast::<Self>();
+                            nptr.as_ptr().write(Symbol { hash });
+                            nptr.as_mut().indexed_field_mut().copy_from_slice(cs.as_bytes());
+
+                            let sym = Gc::new_unchecked(nptr);
+
+                            *entries.add(i) = SymbolTableEntry::Present(sym);
+
+                            return sym;
+                        }
+                    }
                 }
             }
         }
