@@ -166,7 +166,7 @@ impl Heap {
     unsafe fn next_grey(&mut self) -> Option<Gc<()>> {
         if self.scan > self.free {
             let mut granule_index = (self.scan as usize - self.tospace.start as usize) / size_of::<Granule>();
-            while granule_index > 0 {
+            while granule_index > 0 { // OPTIMIZE: Goes past self.scan all the way to start of tospace
                 granule_index -= 1;
 
                 if self.starts[granule_index] {
@@ -225,6 +225,7 @@ impl Heap {
                     self.scan_field(field.r#type, data.add(field.offset));
                 }
 
+                // OPTIMIZE: If indexed_field.type is_bits (or otherwise pointer-free) this loops over items uselessly:
                 let len = *((data as *const Header).offset(-1) as *const usize).offset(-1);
                 let indexed_field = fields[last_index];
                 let stride = indexed_field.r#type.unchecked_cast::<NonIndexedType>().as_ref().stride();
