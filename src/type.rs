@@ -201,15 +201,18 @@ impl BootstrapTypeBuilder<NonIndexedType> {
     }
     
     pub unsafe fn indexed_field(self, r#type: Gc<Type>) -> BootstrapTypeBuilder<IndexedType> {
-        let this = self.field(r#type);
+        let field_type = r#type.as_ref();
+
+        let field_align = if !field_type.inlineable { align_of::<ORef>() } else { field_type.align };
+        let offset = (self.min_size + field_align - 1) & !(field_align - 1);
 
         BootstrapTypeBuilder {
-            align: this.align,
-            min_size: this.min_size,
-            is_bits: this.is_bits,
+            align: self.align.max(field_align),
+            min_size: offset,
+            is_bits: self.is_bits,
             has_indexed: true,
             inlineable: false,
-            fields: this.fields,
+            fields: self.fields,
             phantom: PhantomData::default()
         }
     }
