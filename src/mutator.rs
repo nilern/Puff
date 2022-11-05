@@ -450,13 +450,11 @@ impl Mutator {
         self.symbols.scan();
 
         if self.cfg.debug {
+            println!("GC finished.");
+
             self.heap.zero_fromspace();
 
-            if let Err(err) = self.verify_objects() {
-                println!("HeapVerificationError: {:?}", err);
-            }
-
-            println!("GC finished.");
+            self.verify_objects().unwrap();
         }
     }
 
