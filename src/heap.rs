@@ -30,6 +30,8 @@ impl Semispace {
             }
         }
     }
+
+    fn size(&self) -> usize { self.end as usize - self.start as usize }
 }
 
 impl Drop for Semispace {
@@ -237,6 +239,10 @@ impl Heap {
                 }
             }
         }
+    }
+
+    pub unsafe fn zero_fromspace(&mut self) {
+        self.fromspace.start.write_bytes(0, self.fromspace.size());
     }
 }
 

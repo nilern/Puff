@@ -437,7 +437,9 @@ impl Mutator {
     }
 
     unsafe fn collect(&mut self) {
-        print!("collect...");
+        if self.cfg.debug {
+            println!("GC starting.");
+        }
 
         self.heap.flip();
 
@@ -447,7 +449,11 @@ impl Mutator {
 
         self.symbols.scan();
 
-        println!(" collected");
+        if self.cfg.debug {
+            self.heap.zero_fromspace();
+
+            println!("GC finished.");
+        }
     }
 
     fn tailcall(&mut self, argc: usize) -> Option<Trampoline> {
