@@ -110,7 +110,7 @@ impl SymbolTable {
     pub unsafe fn verify(&self, heap: &Heap) -> Result<(), heap::VerificationError> {
         for entry in slice::from_raw_parts(self.symbols, self.capacity).iter() {
             if let SymbolTableEntry::Present(sym) = *entry {
-                heap.verify_root(sym.into())?;
+                heap.verify_oref(sym.into())?;
             }
         }
 

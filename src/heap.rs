@@ -264,19 +264,11 @@ impl Heap {
         Ok(())
     }
 
-    pub unsafe fn verify_root(&self, oref: ORef) -> Result<(), VerificationError> {
+    pub unsafe fn verify_oref(&self, oref: ORef) -> Result<(), VerificationError> {
         match Gc::<()>::try_from(oref) {
             Ok(obj) if !self.tospace.contains(obj.as_ptr()) => Err(VerificationError::ObjectNotInTospace),
             _ => Ok(())
         }
-    }
-
-    unsafe fn verify_object(&self, obj: Gc<()>) -> Result<(), VerificationError> {
-        if !self.tospace.contains(obj.as_ptr()) {
-            return Err(VerificationError::ObjectNotInTospace);
-        }
-
-        self.verify_tospace_object(obj.unchecked_cast::<()>())
     }
 
     unsafe fn verify_tospace_object(&self, obj: Gc<()>) -> Result<(), VerificationError> {
@@ -294,14 +286,14 @@ impl Heap {
             return Err(VerificationError::TypeNotInTospace);
         }
 
-        self.verify_fields(r#type.as_ref(), data)
+        self.verify_fields(obj, r#type.as_ref(), data)
     }
 
-    unsafe fn verify_fields(&self, r#type: &Type, data: *const u8) -> Result<(), VerificationError> {
+    unsafe fn verify_fields(&self, obj: Gc<()>, r#type: &Type, data: *const u8) -> Result<(), VerificationError> {
         if !r#type.is_bits {
             if !r#type.has_indexed {
                 for field_descr in r#type.fields() {
-                    self.verify_field(r#type, field_descr, data.add(field_descr.offset))?;
+                    self.verify_field(obj, field_descr, data.add(field_descr.offset))?;
                 }
 
                 Ok(())
@@ -310,7 +302,7 @@ impl Heap {
                 let last_index = field_descrs.len() - 1; // At least the indexed field, so len() > 0
 
                 for field_descr in &field_descrs[0..last_index] {
-                    self.verify_field(r#type, field_descr, data.add(field_descr.offset))?;
+                    self.verify_field(obj, field_descr, data.add(field_descr.offset))?;
                 }
 
                 let indexed_field_descr = &field_descrs[last_index];
@@ -320,7 +312,7 @@ impl Heap {
                     let len = *((data as *const Header).offset(-1) as *const usize).offset(-1);
                     let mut data = data.add(indexed_field_descr.offset);
                     for _ in 0..len {
-                        self.verify_field(r#type, indexed_field_descr, data)?;
+                        self.verify_field(obj, indexed_field_descr, data)?;
                         data = data.add(stride);
                     }
                 }
@@ -332,10 +324,12 @@ impl Heap {
         }
     }
 
-    unsafe fn verify_field(&self, obj_type: &Type, descr: &Field<Type>, data: *const u8)
+    unsafe fn verify_field(&self, obj: Gc<()>, descr: &Field<Type>, data: *const u8)
         -> Result<(), VerificationError>
     {
-        if descr.offset > obj_type.min_size {
+        let obj_size = obj.size();
+
+        if descr.offset > obj_size {
             return Err(VerificationError::FieldOffsetBounds);
         }
 
@@ -343,7 +337,7 @@ impl Heap {
             return Err(VerificationError::MisalignedField);
         }
 
-        if descr.offset + descr.r#type.as_ref().min_size > obj_type.min_size {
+        if descr.offset + descr.r#type.as_ref().min_size > obj_size {
             return Err(VerificationError::ObjectOverrun);
         }
 
@@ -352,11 +346,9 @@ impl Heap {
         }
 
         if !descr.r#type.as_ref().inlineable {
-            if let Ok(obj) = Gc::<()>::try_from(*(data.add(descr.offset) as *const ORef)) {
-                self.verify_object(obj)?;
-            }
+            self.verify_oref(*(data.add(descr.offset) as *const ORef))?;
         } else {
-            self.verify_fields(descr.r#type.as_ref(), data)?;
+            self.verify_fields(obj, descr.r#type.as_ref(), data)?;
         }
 
         Ok(())

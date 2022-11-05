@@ -455,15 +455,17 @@ impl Mutator {
             self.heap.zero_fromspace();
 
             self.verify_objects().unwrap();
+
+            println!("Heap verified.");
         }
     }
 
     unsafe fn verify_objects(&mut self) -> Result<(), heap::VerificationError> {
-        self.verify_roots()?;
+        self.verify_orefs()?;
         self.heap.verify()
     }
 
-    unsafe fn verify_roots(&self) -> Result<(), heap::VerificationError> {
+    unsafe fn verify_orefs(&self) -> Result<(), heap::VerificationError> {
         self.handles.verify(&self.heap)?;
 
         let types = slice::from_raw_parts(
@@ -471,7 +473,7 @@ impl Mutator {
             size_of::<Types>() / size_of::<Gc<Type>>()
         );
         for &r#type in types {
-            self.heap.verify_root(r#type.into())?;
+            self.heap.verify_oref(r#type.into())?;
         }
 
         let singletons = slice::from_raw_parts(
@@ -479,27 +481,27 @@ impl Mutator {
             size_of::<Singletons>() / size_of::<ORef>()
         );
         for &singleton in singletons {
-            self.heap.verify_root(singleton)?;
+            self.heap.verify_oref(singleton)?;
         }
 
         for &ns in self.ns.iter() {
-            self.heap.verify_root(ns.into())?;
+            self.heap.verify_oref(ns.into())?;
         }
 
         for &code in self.code.iter() {
-            self.heap.verify_root(code.into())?;
+            self.heap.verify_oref(code.into())?;
         }
 
         for &consts in self.consts.iter() {
-            self.heap.verify_root(consts.into())?;
+            self.heap.verify_oref(consts.into())?;
         }
 
         for &reg in self.regs.as_slice().iter() {
-            self.heap.verify_root(reg)?;
+            self.heap.verify_oref(reg)?;
         }
 
         for &slot in self.stack.iter() {
-            self.heap.verify_root(slot)?;
+            self.heap.verify_oref(slot)?;
         }
 
         self.symbols.verify(&self.heap)?;

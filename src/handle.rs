@@ -214,7 +214,7 @@ impl HandlePool {
             let curr_ref = curr_ptr.as_ref();
 
             if curr_ref.rc.get() > 0 {
-                heap.verify_root(curr_ref.oref)?;
+                heap.verify_oref(curr_ref.oref)?;
             }
 
             curr = curr_ref.next;
