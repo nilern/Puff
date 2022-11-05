@@ -9,6 +9,7 @@ use crate::heap_obj::{HeapObj, Indexed};
 use crate::mutator::Mutator;
 use crate::util::hash;
 use crate::r#type::IndexedType;
+use crate::heap::{self, Heap};
 
 #[derive(Clone, Copy)]
 enum SymbolTableEntry {
@@ -104,6 +105,16 @@ impl SymbolTable {
                 };
             }
         }
+    }
+
+    pub unsafe fn verify(&self, heap: &Heap) -> Result<(), heap::VerificationError> {
+        for entry in slice::from_raw_parts(self.symbols, self.capacity).iter() {
+            if let SymbolTableEntry::Present(sym) = *entry {
+                heap.verify_root(sym.into())?;
+            }
+        }
+
+        Ok(())
     }
 }
 

@@ -7,6 +7,7 @@ use std::marker::PhantomData;
 
 use crate::oref::{ORef, Gc};
 use crate::mutator::Mutator;
+use crate::heap::{self, Heap};
 
 struct LiveHandleImpl {
     oref: ORef,
@@ -171,7 +172,7 @@ impl HandlePool {
         }
     }
 
-    pub fn for_each_root<F: FnMut(&mut ORef)>(&mut self, mut f: F) {
+    pub fn for_each_mut_root_freeing<F: FnMut(&mut ORef)>(&mut self, mut f: F) {
         let mut prev: Option<NonNull<LiveHandleImpl>> = None;
         let mut curr = self.live;
 
@@ -204,6 +205,22 @@ impl HandlePool {
         let free = (curr as *mut LiveHandleImpl) as *mut FreeHandleImpl;
         free.write(FreeHandleImpl {next: self.free});
         self.free = Some(NonNull::new_unchecked(free));
+    }
+
+    pub unsafe fn verify(&self, heap: &Heap) -> Result<(), heap::VerificationError> {
+        let mut curr = self.live;
+
+        while let Some(curr_ptr) = curr {
+            let curr_ref = curr_ptr.as_ref();
+
+            if curr_ref.rc.get() > 0 {
+                heap.verify_root(curr_ref.oref)?;
+            }
+
+            curr = curr_ref.next;
+        }
+
+        Ok(())
     }
 }
 

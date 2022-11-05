@@ -232,6 +232,19 @@ impl<T: HeapObj> Gc<T> {
             None
         }
     }
+
+    pub fn size(self) -> usize {
+        unsafe {
+            let r#type = self.as_ref().r#type();
+
+            if let Ok(r#type) = Gc::<IndexedType>::try_from(r#type) {
+                let len = *((self.as_ptr() as *const Header).offset(-1) as *const usize).offset(-1);
+                r#type.as_ref().size(len)
+            } else {
+                r#type.as_ref().min_size
+            }
+        }
+    }
 }
 
 impl<T> Debug for Gc<T> {

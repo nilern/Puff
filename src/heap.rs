@@ -4,7 +4,7 @@ use std::ptr::{self, NonNull};
 use std::iter;
 
 use crate::oref::{AsType, Gc, ORef};
-use crate::r#type::{NonIndexedType, IndexedType, Type};
+use crate::r#type::{NonIndexedType, IndexedType, Type, Field};
 use crate::heap_obj::Header;
 
 struct Granule(usize);
@@ -32,6 +32,11 @@ impl Semispace {
     }
 
     fn size(&self) -> usize { self.end as usize - self.start as usize }
+
+    fn contains<T>(&self, ptr: *const T) -> bool {
+        let addr = ptr as usize;
+        self.start as usize <= addr && addr < self.end as usize
+    }
 }
 
 impl Drop for Semispace {
@@ -244,6 +249,127 @@ impl Heap {
     pub unsafe fn zero_fromspace(&mut self) {
         self.fromspace.start.write_bytes(0, self.fromspace.size());
     }
+
+    pub unsafe fn verify(&mut self) -> Result<(), VerificationError> {
+        self.scan = self.tospace.end; // HACK: Using self.scan instead of an external iterator
+        while let Some(obj) = self.next_grey() {
+            self.verify_tospace_object(obj)?;
+        }
+
+        Ok(())
+    }
+
+    pub unsafe fn verify_root(&self, oref: ORef) -> Result<(), VerificationError> {
+        match Gc::<()>::try_from(oref) {
+            Ok(obj) if !self.tospace.contains(obj.as_ptr()) => Err(VerificationError::ObjectNotInTospace),
+            _ => Ok(())
+        }
+    }
+
+    unsafe fn verify_object(&self, obj: Gc<()>) -> Result<(), VerificationError> {
+        if !self.tospace.contains(obj.as_ptr()) {
+            return Err(VerificationError::ObjectNotInTospace);
+        }
+
+        self.verify_tospace_object(obj.unchecked_cast::<()>())
+    }
+
+    unsafe fn verify_tospace_object(&self, obj: Gc<()>) -> Result<(), VerificationError> {
+        let r#type = obj.r#type();
+
+        let data = obj.as_ptr() as *const u8;
+        if data as usize % r#type.as_ref().align != 0 {
+            return Err(VerificationError::MisalignedObject);
+        }
+        if !self.tospace.contains(data.add(obj.size())) {
+            return Err(VerificationError::TospaceOverrun);
+        }
+
+        if !self.tospace.contains(r#type.as_ptr()) {
+            return Err(VerificationError::TypeNotInTospace);
+        }
+
+        self.verify_fields(r#type.as_ref(), data)
+    }
+
+    unsafe fn verify_fields(&self, r#type: &Type, data: *const u8) -> Result<(), VerificationError> {
+        if !r#type.is_bits {
+            if !r#type.has_indexed {
+                for field_descr in r#type.fields() {
+                    self.verify_field(r#type, field_descr, data.add(field_descr.offset))?;
+                }
+
+                Ok(())
+            } else {
+                let field_descrs = r#type.fields();
+                let last_index = field_descrs.len() - 1; // At least the indexed field, so len() > 0
+
+                for field_descr in &field_descrs[0..last_index] {
+                    self.verify_field(r#type, field_descr, data.add(field_descr.offset))?;
+                }
+
+                let indexed_field_descr = &field_descrs[last_index];
+                let indexed_field_type = indexed_field_descr.r#type;
+                if !indexed_field_type.as_ref().is_bits {
+                    let stride = indexed_field_type.unchecked_cast::<NonIndexedType>().as_ref().stride();
+                    let len = *((data as *const Header).offset(-1) as *const usize).offset(-1);
+                    let mut data = data.add(indexed_field_descr.offset);
+                    for _ in 0..len {
+                        self.verify_field(r#type, indexed_field_descr, data)?;
+                        data = data.add(stride);
+                    }
+                }
+
+                Ok(())
+            }
+        } else {
+            Ok(())
+        }
+    }
+
+    unsafe fn verify_field(&self, obj_type: &Type, descr: &Field<Type>, data: *const u8)
+        -> Result<(), VerificationError>
+    {
+        if descr.offset > obj_type.min_size {
+            return Err(VerificationError::FieldOffsetBounds);
+        }
+
+        if descr.offset % descr.r#type.as_ref().align != 0 {
+            return Err(VerificationError::MisalignedField);
+        }
+
+        if descr.offset + descr.r#type.as_ref().min_size > obj_type.min_size {
+            return Err(VerificationError::ObjectOverrun);
+        }
+
+        if !self.tospace.contains(descr.r#type.as_ptr()) {
+            return Err(VerificationError::FieldTypeNotInTospace);
+        }
+
+        if !descr.r#type.as_ref().inlineable {
+            if let Ok(obj) = Gc::<()>::try_from(*(data.add(descr.offset) as *const ORef)) {
+                self.verify_object(obj)?;
+            }
+        } else {
+            self.verify_fields(descr.r#type.as_ref(), data)?;
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+pub enum VerificationError {
+    TypeNotInTospace,
+
+    MisalignedObject,
+    TospaceOverrun,
+
+    FieldTypeNotInTospace,
+    FieldOffsetBounds,
+    MisalignedField,
+    ObjectOverrun,
+    ObjectNotInTospace
 }
 
 #[cfg(test)]

@@ -141,6 +141,18 @@ unsafe impl Indexed for IndexedType {
     type Item = Field<Type>;
 }
 
+impl TryFrom<Gc<Type>> for Gc<IndexedType> {
+    type Error = ();
+
+    fn try_from(r#type: Gc<Type>) -> Result<Self, Self::Error> {
+        if unsafe { r#type.as_ref().has_indexed } {
+            Ok(unsafe { r#type.unchecked_cast::<IndexedType>() })
+        } else {
+            Err(())
+        }
+    }
+}
+
 impl IndexedType {
     pub fn new_unchecked(r#type: Type) -> Self { Self(r#type) }
 
@@ -155,14 +167,13 @@ impl IndexedType {
         ) }
     }
 
+    pub fn size(&self, len: usize) -> usize {
+        let item_stride = unsafe { self.indexed_field().r#type.as_ref().stride() };
+        self.min_size() + len * item_stride
+    }
+
     pub fn layout(&self, len: usize) -> Layout {
-        unsafe {
-            let item_stride = self.indexed_field().r#type.as_ref().stride();
-            Layout::from_size_align_unchecked(
-                self.min_size() + len * item_stride,
-                self.align()
-            )
-        }
+        unsafe { Layout::from_size_align_unchecked(self.size(len), self.align()) }
    }
 }
 

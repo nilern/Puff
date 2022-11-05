@@ -3,7 +3,7 @@ use std::mem::{align_of, size_of, transmute};
 use std::alloc::Layout;
 use std::slice;
 
-use crate::heap::Heap;
+use crate::heap::{self, Heap};
 use crate::oref::{AsType, ORef, Gc, Fixnum};
 use crate::r#type::{Type, Field, IndexedType, NonIndexedType, BitsType, BootstrapTypeBuilder};
 use crate::symbol::{Symbol, SymbolTable};
@@ -395,7 +395,7 @@ impl Mutator {
     }
 
     unsafe fn mark_roots(&mut self) {
-        self.handles.for_each_root(|oref|
+        self.handles.for_each_mut_root_freeing(|oref|
             self.heap.mark(transmute::<&mut ORef, *mut usize>(oref))
         );
 
@@ -452,8 +452,61 @@ impl Mutator {
         if self.cfg.debug {
             self.heap.zero_fromspace();
 
+            if let Err(err) = self.verify_objects() {
+                println!("HeapVerificationError: {:?}", err);
+            }
+
             println!("GC finished.");
         }
+    }
+
+    unsafe fn verify_objects(&mut self) -> Result<(), heap::VerificationError> {
+        self.verify_roots()?;
+        self.heap.verify()
+    }
+
+    unsafe fn verify_roots(&self) -> Result<(), heap::VerificationError> {
+        self.handles.verify(&self.heap)?;
+
+        let types = slice::from_raw_parts(
+            transmute::<&Types, &Gc<Type>>(&self.types),
+            size_of::<Types>() / size_of::<Gc<Type>>()
+        );
+        for &r#type in types {
+            self.heap.verify_root(r#type.into())?;
+        }
+
+        let singletons = slice::from_raw_parts(
+            transmute::<&Singletons, &ORef>(&self.singletons),
+            size_of::<Singletons>() / size_of::<ORef>()
+        );
+        for &singleton in singletons {
+            self.heap.verify_root(singleton)?;
+        }
+
+        for &ns in self.ns.iter() {
+            self.heap.verify_root(ns.into())?;
+        }
+
+        for &code in self.code.iter() {
+            self.heap.verify_root(code.into())?;
+        }
+
+        for &consts in self.consts.iter() {
+            self.heap.verify_root(consts.into())?;
+        }
+
+        for &reg in self.regs.as_slice().iter() {
+            self.heap.verify_root(reg)?;
+        }
+
+        for &slot in self.stack.iter() {
+            self.heap.verify_root(slot)?;
+        }
+
+        self.symbols.verify(&self.heap)?;
+
+        Ok(())
     }
 
     fn tailcall(&mut self, argc: usize) -> Option<Trampoline> {
