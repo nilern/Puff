@@ -293,6 +293,7 @@ impl Mutator {
             // Create builtins:
             // -----------------------------------------------------------------
 
+            let ns = root!(&mut mt, mt.ns.unwrap());
             for (name, f) in [("eq?", builtins::EQ),
                 ("fx+", builtins::FX_ADD), ("fx-", builtins::FX_SUB), ("fx*", builtins::FX_MUL),
                 ("pair?", builtins::IS_PAIR), ("null?", builtins::IS_NULL), ("cons", builtins::CONS),
@@ -304,7 +305,7 @@ impl Mutator {
                 let name = root!(&mut mt, Symbol::new(&mut mt, name));
                 let f = root!(&mut mt, NativeFn::new(&mut mt, f));
                 let var = root!(&mut mt, Var::new(&mut mt, f.into()));
-                mt.ns.unwrap().as_ref().add(&mut mt, name, var);
+                ns.clone().add(&mut mt, name, var);
             }
 
             // -----------------------------------------------------------------
@@ -670,7 +671,7 @@ impl Mutator {
                         } else {
                             unsafe {
                                 let var = root!(self, Var::new_uninitialized(self));
-                                self.ns.unwrap().as_ref().add(self, name, var.clone());
+                                root!(self, self.ns.unwrap()).add(self, name, var.clone());
                                 let v = self.regs.pop().unwrap();
                                 var.as_ref().init(v); // Avoids allocating a Handle for `v`
                                 self.regs.push_unchecked(v); // HACK?

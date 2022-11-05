@@ -97,30 +97,32 @@ impl Namespace {
             }
         }
     }
+}
 
-    pub fn add(&self, mt: &mut Mutator, name: HandleT<Symbol>, v: HandleT<Var>) {
+impl HandleT<Namespace> {
+    pub fn add(self, mt: &mut Mutator, name: HandleT<Symbol>, v: HandleT<Var>) {
         let hash = unsafe { name.as_ref().hash() };
 
         loop {
-            let max_index = self.capacity.get() - 1;
+            let max_index = unsafe { self.as_ref().capacity.get() } - 1;
             let mut collisions = 0;
             let mut i = (isize::from(hash) as usize) & max_index;
             loop {
-                let k = unsafe { self.keys.get().as_ref().indexed_field()[i].get() };
+                let k = unsafe { self.as_ref().keys.get().as_ref().indexed_field()[i].get() };
 
                 if k != Fixnum::from(0u8).into() {
                     debug_assert!(k != (*name).into());
                     collisions += 1;
                     i = (i + collisions) & max_index;
                 } else {
-                    if (self.len.get() + 1) * 2 > self.capacity.get() {
-                        self.rehash(mt);
+                    if unsafe { (self.as_ref().len.get() + 1) * 2 > self.as_ref().capacity.get() } {
+                        unsafe { self.clone().rehash(mt); }
                         break; // continue outer loop
                     } else {
-                        self.len.set(self.len.get() + 1);
                         unsafe {
-                            self.keys.get().as_ref().indexed_field()[i].set((*name).into());
-                            self.values.get().as_ref().indexed_field()[i].set((*v).into());
+                            self.as_ref().len.set(self.as_ref().len.get() + 1);
+                            self.as_ref().keys.get().as_ref().indexed_field()[i].set((*name).into());
+                            self.as_ref().values.get().as_ref().indexed_field()[i].set((*v).into());
                         }
                         return;
                     }
@@ -129,34 +131,33 @@ impl Namespace {
         }
     }
 
-    fn rehash(&self, mt: &mut Mutator) {
-        let new_capacity = self.capacity.get() * 2;
+    unsafe fn rehash(self, mt: &mut Mutator) {
+        let new_capacity = self.as_ref().capacity.get() * 2;
 
         let new_keys = root!(mt, VectorMut::<ORef>::zeros(mt, new_capacity));
         let new_values = VectorMut::<ORef>::zeros(mt, new_capacity);
         let new_keys = *new_keys;
 
-        unsafe {
-            for (old_i, k) in self.keys.get().as_ref().indexed_field().iter().enumerate() {
-                if let Some(k) = k.get().try_cast::<Symbol>(mt) {
-                    let hash = isize::from(k.as_ref().hash()) as usize;
+        for (old_i, k) in self.as_ref().keys.get().as_ref().indexed_field().iter().enumerate() {
+            if let Some(k) = k.get().try_cast::<Symbol>(mt) {
+                let hash = isize::from(k.as_ref().hash()) as usize;
 
-                    let max_index = new_capacity - 1;
-                    let mut collisions = 0;
-                    let mut i = hash & max_index;
-                    while new_keys.as_ref().indexed_field()[i].get() != Fixnum::from(0u8).into() {
-                        collisions += 1;
-                        i = (i + collisions) & max_index;
-                    }
-                    new_keys.as_ref().indexed_field()[i].set(k.into());
-                    new_values.as_ref().indexed_field()[i].set(self.values.get().as_ref().indexed_field()[old_i].get());
+                let max_index = new_capacity - 1;
+                let mut collisions = 0;
+                let mut i = hash & max_index;
+                while new_keys.as_ref().indexed_field()[i].get() != Fixnum::from(0u8).into() {
+                    collisions += 1;
+                    i = (i + collisions) & max_index;
                 }
+                new_keys.as_ref().indexed_field()[i].set(k.into());
+                new_values.as_ref().indexed_field()[i]
+                    .set(self.as_ref().values.get().as_ref().indexed_field()[old_i].get());
             }
         }
 
-        self.capacity.set(new_capacity);
-        self.keys.set(new_keys);
-        self.values.set(new_values);
+        self.as_ref().capacity.set(new_capacity);
+        self.as_ref().keys.set(new_keys);
+        self.as_ref().values.set(new_values);
     }
 }
 
