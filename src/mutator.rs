@@ -369,16 +369,18 @@ impl Mutator {
     pub fn dump_regs(&self) { self.regs.dump(self); }
 
     pub unsafe fn alloc_nonindexed(&mut self, r#type: Gc<NonIndexedType>) -> NonNull<u8> {
+        let type_hdl = root!(self, r#type);
         self.heap.alloc_nonindexed(r#type).unwrap_or_else(|| {
             self.collect();
-            self.heap.alloc_nonindexed(r#type).expect("out of memory")
+            self.heap.alloc_nonindexed(*type_hdl).expect("out of memory")
         })
     }
 
     pub unsafe fn alloc_indexed(&mut self, r#type: Gc<IndexedType>, len: usize) -> NonNull<u8> {
+        let type_hdl = root!(self, r#type);
         self.heap.alloc_indexed(r#type, len).unwrap_or_else(|| {
             self.collect();
-            self.heap.alloc_indexed(r#type, len).expect("out of memory")
+            self.heap.alloc_indexed(*type_hdl, len).expect("out of memory")
         })
     }
 
