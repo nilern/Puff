@@ -164,15 +164,14 @@ impl Heap {
     }
 
     unsafe fn next_grey(&mut self) -> Option<Gc<()>> {
-        if self.scan > self.free {
-            let mut granule_index = (self.scan as usize - self.tospace.start as usize) / size_of::<Granule>();
-            while granule_index > 0 { // OPTIMIZE: Goes past self.scan all the way to start of tospace
-                granule_index -= 1;
+        // When self.scan <= self.free granule_index is computed redundantly -- but only once per collection:
+        let mut granule_index = (self.scan as usize - self.tospace.start as usize) / size_of::<Granule>();
+        while self.scan > self.free {
+            granule_index -= 1;
+            self.scan = (self.tospace.start as *mut Granule).add(granule_index) as *mut u8;
 
-                if self.starts[granule_index] {
-                    self.scan = (self.tospace.start as *mut Granule).add(granule_index) as *mut u8;
-                    return Some(Gc::new_unchecked(NonNull::new_unchecked(self.scan as *mut ())));
-                }
+            if self.starts[granule_index] {
+                return Some(Gc::new_unchecked(NonNull::new_unchecked(self.scan as *mut ())));
             }
         }
 
@@ -225,14 +224,16 @@ impl Heap {
                     self.scan_field(field.r#type, data.add(field.offset));
                 }
 
-                // OPTIMIZE: If indexed_field.type is_bits (or otherwise pointer-free) this loops over items uselessly:
-                let len = *((data as *const Header).offset(-1) as *const usize).offset(-1);
                 let indexed_field = fields[last_index];
-                let stride = indexed_field.r#type.unchecked_cast::<NonIndexedType>().as_ref().stride();
-                let mut data = data.add(indexed_field.offset);
-                for _ in 0..len {
-                    self.scan_field(indexed_field.r#type, data);
-                    data = data.add(stride);
+                let indexed_field_type = indexed_field.r#type;
+                if !indexed_field_type.as_ref().is_bits {
+                    let stride = indexed_field_type.unchecked_cast::<NonIndexedType>().as_ref().stride();
+                    let len = *((data as *const Header).offset(-1) as *const usize).offset(-1);
+                    let mut data = data.add(indexed_field.offset);
+                    for _ in 0..len {
+                        self.scan_field(indexed_field_type, data);
+                        data = data.add(stride);
+                    }
                 }
             }
         }
