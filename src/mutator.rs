@@ -464,11 +464,11 @@ impl Mutator {
     }
 
     unsafe fn verify_objects(&mut self) -> Result<(), heap::VerificationError> {
-        self.verify_orefs()?;
+        self.verify_roots()?;
         self.heap.verify()
     }
 
-    unsafe fn verify_orefs(&self) -> Result<(), heap::VerificationError> {
+    unsafe fn verify_roots(&self) -> Result<(), heap::VerificationError> {
         self.handles.verify(&self.heap)?;
 
         let types = slice::from_raw_parts(
