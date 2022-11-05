@@ -5,14 +5,14 @@ use std::slice;
 
 use crate::heap::Heap;
 use crate::oref::{AsType, ORef, Gc, Fixnum};
-use crate::r#type::{Type, Field, IndexedType, NonIndexedType, BitsType};
+use crate::r#type::{Type, Field, IndexedType, NonIndexedType, BitsType, BootstrapTypeBuilder};
 use crate::symbol::{Symbol, SymbolTable};
 use crate::heap_obj::{NonIndexed, Indexed, Singleton, Header, min_size_of_indexed,
     align_of_indexed};
 use crate::handle::{Handle, HandleT, HandlePool, Root, root};
 use crate::list::{EmptyList, Pair};
 use crate::bytecode::{Opcode, Bytecode, decode_prune_mask};
-use crate::vector::{Vector, VectorMut};
+use crate::vector::Vector;
 use crate::closure::Closure;
 use crate::regs::Regs;
 use crate::r#box::Box;
@@ -20,8 +20,6 @@ use crate::namespace::{Namespace, Var};
 use crate::native_fn::{self, NativeFn, Answer};
 use crate::builtins;
 use crate::bool::Bool;
-use crate::string::String;
-use crate::syntax::{Syntax, Pos};
 
 const USIZE_TYPE_SIZE: usize = min_size_of_indexed::<Type>();
 
@@ -141,45 +139,27 @@ impl Mutator {
             // Initialize Fields of strongly connected bootstrap types:
             // -----------------------------------------------------------------
 
-            {
-                let fields = [
-                    Field { r#type: r#type.as_type(), offset: 0 },
-                    Field {
-                        r#type: usize_type.as_type(),
-                        offset: size_of::<Gc<()>>()
-                    }
-                ];
-                (*field_type_nptr.cast::<Type>().as_ptr()).indexed_field_ptr_mut()
-                    .copy_from_nonoverlapping(fields.as_ptr(), fields.len());
-            }
+            // `.min_size` etc. get reinitialized redundantly but that should not matter much:
 
-            {
-                let fields = [
-                    Field { r#type: usize_type.as_type(), offset: 0 },
-                    Field {
-                        r#type: usize_type.as_type(),
-                        offset: size_of::<usize>()
-                    },
-                    Field {
-                        r#type: bool.as_type(),
-                        offset: 2 * size_of::<usize>()
-                    },
-                    Field {
-                        r#type: bool.as_type(),
-                        offset: 2 * size_of::<usize>() + size_of::<bool>()
-                    },
-                    Field {
-                        r#type: bool.as_type(),
-                        offset: 2 * size_of::<usize>() + 2 * size_of::<bool>()
-                    },
-                    Field {
-                        r#type: field_type.as_type(),
-                        offset: min_size_of_indexed::<Type>()
-                    }
-                ];
-                (*type_nptr.cast::<Type>().as_ptr()).indexed_field_ptr_mut()
-                    .copy_from_nonoverlapping(fields.as_ptr(), fields.len());
-            }
+            BootstrapTypeBuilder::<NonIndexedType>::new()
+                .field(r#type.as_type(), false)
+                .field(usize_type.as_type(), false)
+                .build(|len| {
+                    debug_assert!(len == Field::<()>::TYPE_LEN);
+                    Some(field_type_nptr)
+                });
+
+            BootstrapTypeBuilder::<NonIndexedType>::new()
+                .field(usize_type.as_type(), false)
+                .field(usize_type.as_type(), false)
+                .field(bool.as_type(), false)
+                .field(bool.as_type(), false)
+                .field(bool.as_type(), false)
+                .indexed_field(field_type.as_type(), false)
+                .build(|len| {
+                    debug_assert!(len == Type::TYPE_LEN);
+                    Some(type_nptr)
+                });
 
             // Create other `.types`:
             // -----------------------------------------------------------------
@@ -194,129 +174,84 @@ impl Mutator {
                 },
                 &[])?;
 
-            let u8_type = Type::bootstrap_new(&mut heap, r#type, BitsType::from_static::<u8>(true), &[])?;
+            let u8_type = BootstrapTypeBuilder::<BitsType>::new::<u8>()
+                .build(|| heap.alloc_indexed(r#type, 0).map(NonNull::cast))?;
 
-            let symbol = Type::bootstrap_new(&mut heap, r#type,
-                IndexedType::new_unchecked(Type {
-                    min_size: min_size_of_indexed::<Symbol>(),
-                    align: align_of_indexed::<Symbol>(),
-                    is_bits: false,
-                    has_indexed: true,
-                    inlineable: false
-                }),
-                &[Field { r#type: usize_type.as_type(), offset: 0 },
-                  Field {
-                      r#type: u8_type.as_type(),
-                      offset: size_of::<usize>()
-                  }])?;
+            let symbol = BootstrapTypeBuilder::<NonIndexedType>::new()
+                .field(usize_type.as_type(), false)
+                .indexed_field(u8_type.as_type(), false)
+                .build(|len| heap.alloc_indexed(r#type, len).map(NonNull::cast))?;
 
-            let string = Type::bootstrap_new(&mut heap, r#type,
-                IndexedType::new_unchecked(Type {
-                    min_size: min_size_of_indexed::<String>(),
-                    align: align_of_indexed::<String>(),
-                    is_bits: false,
-                    has_indexed: true,
-                    inlineable: false
-                }),
-                &[Field {r#type: u8_type.as_type(), offset: min_size_of_indexed::<String>()}])?;
+            let string = BootstrapTypeBuilder::<NonIndexedType>::new()
+                .indexed_field(u8_type.as_type(), false)
+                .build(|len| heap.alloc_indexed(r#type, len).map(NonNull::cast))?;
 
-            let pair = Type::bootstrap_new(&mut heap, r#type, NonIndexedType::from_static::<Pair>(false, false), &[
-                Field { r#type: any, offset: 0 },
-                Field {
-                    r#type: any,
-                    offset: size_of::<Gc<()>>()
-                }
-            ])?;
+            let pair = BootstrapTypeBuilder::<NonIndexedType>::new()
+                .field(any, true)
+                .field(any, true)
+                .build(|len| heap.alloc_indexed(r#type, len).map(NonNull::cast))?;
 
-            let empty_list = Type::bootstrap_new(&mut heap, r#type,
-                NonIndexedType::from_static::<EmptyList>(false, false), &[])?;
+            let empty_list = BootstrapTypeBuilder::<NonIndexedType>::new()
+                .build(|len| heap.alloc_indexed(r#type, len).map(NonNull::cast))?;
 
-            let vector_of_any = Type::bootstrap_new(&mut heap, r#type,
-                IndexedType::new_unchecked(Type {
-                    min_size: min_size_of_indexed::<Vector::<ORef>>(),
-                    align: align_of_indexed::<Vector::<ORef>>(),
-                    is_bits: false,
-                    has_indexed: true,
-                    inlineable: false
-                }),
-                &[Field { r#type: any, offset: 0 }])?;
+            let vector_of_any = BootstrapTypeBuilder::<NonIndexedType>::new()
+                .indexed_field(any, false)
+                .build(|len| heap.alloc_indexed(r#type, len).map(NonNull::cast))?;
 
-            let vector_mut_of_any = Type::bootstrap_new(&mut heap, r#type,
-                IndexedType::new_unchecked(Type {
-                    min_size: min_size_of_indexed::<VectorMut::<ORef>>(),
-                    align: align_of_indexed::<VectorMut::<ORef>>(),
-                    is_bits: false,
-                    has_indexed: true,
-                    inlineable: false
-                }),
-                &[Field { r#type: any, offset: 0 }])?;
+            let vector_mut_of_any = BootstrapTypeBuilder::<NonIndexedType>::new()
+                .indexed_field(any, true)
+                .build(|len| heap.alloc_indexed(r#type, len).map(NonNull::cast))?;
 
-            let pos = Type::bootstrap_new(&mut heap, r#type, NonIndexedType::from_static::<Pos>(false, false), &[
-                Field { r#type: any, offset: 0 },
-                Field { r#type: any, offset: size_of::<ORef>() },
-                Field { r#type: any, offset: 2 * size_of::<ORef>() }
-            ])?;
+            let pos = BootstrapTypeBuilder::<NonIndexedType>::new()
+                .field(any, false)
+                .field(any, false)
+                .field(any, false)
+                .build(|len| heap.alloc_indexed(r#type, len).map(NonNull::cast))?;
 
-            let syntax = Type::bootstrap_new(&mut heap, r#type, NonIndexedType::from_static::<Syntax>(false, false),
-                &[Field { r#type: any, offset: 0 },
-                  Field { r#type: any, offset: size_of::<ORef>() }])?;
+            let syntax = BootstrapTypeBuilder::<NonIndexedType>::new()
+                .field(any, false)
+                .field(any, false)
+                .build(|len| heap.alloc_indexed(r#type, len).map(NonNull::cast))?;
 
-            let bytecode = Type::bootstrap_new(&mut heap, r#type,
-                IndexedType::new_unchecked(Type {
-                    min_size: min_size_of_indexed::<Bytecode>(),
-                    align: align_of_indexed::<Bytecode>(),
-                    is_bits: false,
-                    has_indexed: true,
-                    inlineable: false
-                }),
-                &[Field { r#type: usize_type.as_type(), offset: 0 },
-                  Field { r#type: bool.as_type(), offset: size_of::<usize>() },
-                  Field { r#type: usize_type.as_type(), offset: 2 * size_of::<usize>() },
-                  Field { r#type: usize_type.as_type(), offset: 3 * size_of::<usize>() },
-                  Field { r#type: vector_of_any.as_type(), offset: 4 * size_of::<usize>() },
-                  Field { r#type: vector_of_any.as_type(), offset: 5 * size_of::<usize>() },
-                  Field { r#type: vector_of_any.as_type(), offset: 6 * size_of::<usize>() },
-                  Field {
-                      r#type: u8_type.as_type(),
-                      offset: min_size_of_indexed::<Bytecode>()
-                  }])?;
+            let bytecode = BootstrapTypeBuilder::<NonIndexedType>::new()
+                .field(usize_type.as_type(), false)
+                .field(bool.as_type(), false)
+                .field(usize_type.as_type(), false)
+                .field(usize_type.as_type(), false)
+                .field(vector_of_any.as_type(), false)
+                .field(vector_of_any.as_type(), false)
+                .field(vector_of_any.as_type(), false)
+                .indexed_field(u8_type.as_type(), false)
+                .build(|len| heap.alloc_indexed(r#type, len).map(NonNull::cast))?;
 
-            let closure = Type::bootstrap_new(&mut heap, r#type,
-                IndexedType::new_unchecked(Type {
-                    min_size: min_size_of_indexed::<Closure>(),
-                    align: align_of_indexed::<Closure>(),
-                    is_bits: false,
-                    has_indexed: true,
-                    inlineable: false
-                }),
-                &[Field { r#type: bytecode.as_type(), offset: 0 },
-                  Field {
-                      r#type: any,
-                      offset: min_size_of_indexed::<Closure>()
-                  }])?;
+            let closure = BootstrapTypeBuilder::<NonIndexedType>::new()
+                .field(bytecode.as_type(), false)
+                .indexed_field(any, false)
+                .build(|len| heap.alloc_indexed(r#type, len).map(NonNull::cast))?;
 
-            let fn_ptr = Type::bootstrap_new(&mut heap, r#type, BitsType::from_static::<native_fn::Code>(true), &[])?;
+            let fn_ptr = BootstrapTypeBuilder::<BitsType>::new::<native_fn::Code>()
+                .build(|| heap.alloc_indexed(r#type, 0).map(NonNull::cast))?;
 
-            let native_fn = Type::bootstrap_new(&mut heap, r#type,
-                NonIndexedType::from_static::<NativeFn>(false, false), &[
-                Field { r#type: bytecode.as_type(), offset: 0 },
-                Field { r#type: bool.as_type(), offset: size_of::<usize>() },
-                Field { r#type: fn_ptr.as_type(), offset: 2* size_of::<usize>() }
-            ])?;
+            let native_fn = BootstrapTypeBuilder::<NonIndexedType>::new()
+                .field(usize_type.as_type(), false)
+                .field(bool.as_type(), false)
+                .field(fn_ptr.as_type(), false)
+                .build(|len| heap.alloc_indexed(r#type, len).map(NonNull::cast))?;
 
-            let r#box = Type::bootstrap_new(&mut heap, r#type, NonIndexedType::from_static::<Box>(false, false),
-                &[Field { r#type: any, offset: 0 }])?;
+            let r#box = BootstrapTypeBuilder::<NonIndexedType>::new()
+                .field(any, true)
+                .build(|len| heap.alloc_indexed(r#type, len).map(NonNull::cast))?;
 
-            let namespace = Type::bootstrap_new(&mut heap, r#type,
-                NonIndexedType::from_static::<Namespace>(false, false), &[
-                    Field { r#type: usize_type.as_type(), offset: 0 },
-                    Field { r#type: usize_type.as_type(), offset: size_of::<usize>() },
-                    Field { r#type: vector_mut_of_any.as_type(), offset: 2 * size_of::<usize>() },
-                    Field { r#type: vector_mut_of_any.as_type(), offset: 3 * size_of::<usize>() }
-                ])?;
+            let namespace = BootstrapTypeBuilder::<NonIndexedType>::new()
+                .field(usize_type.as_type(), true)
+                .field(usize_type.as_type(), true)
+                .field(vector_mut_of_any.as_type(), true)
+                .field(vector_mut_of_any.as_type(), true)
+                .build(|len| heap.alloc_indexed(r#type, len).map(NonNull::cast))?;
 
-            let var = Type::bootstrap_new(&mut heap, r#type, NonIndexedType::from_static::<Var>(false, false),
-                &[Field { r#type: any, offset: 0 }])?;
+            let var = BootstrapTypeBuilder::<NonIndexedType>::new()
+                .field(any, true)
+                .build(|len| heap.alloc_indexed(r#type, len).map(NonNull::cast))?;
 
             // Create singleton instances:
             // -----------------------------------------------------------------

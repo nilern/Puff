@@ -85,6 +85,10 @@ pub struct NonIndexedType(Type);
 
 unsafe impl HeapObj for NonIndexedType {}
 
+unsafe impl Indexed for NonIndexedType {
+    type Item = Field<Type>;
+}
+
 impl NonIndexedType {
     pub fn new_unchecked(r#type: Type) -> Self { Self(r#type) }
     
@@ -133,6 +137,10 @@ pub struct IndexedType(Type);
 
 unsafe impl HeapObj for IndexedType {}
 
+unsafe impl Indexed for IndexedType {
+    type Item = Field<Type>;
+}
+
 impl IndexedType {
     pub fn new_unchecked(r#type: Type) -> Self { Self(r#type) }
 
@@ -168,6 +176,20 @@ pub struct BootstrapTypeBuilder<T> {
     phantom: PhantomData<T>
 }
 
+impl BootstrapTypeBuilder<BitsType> {
+    pub fn new<T>() -> Self {
+        BootstrapTypeBuilder {
+            align: align_of::<T>(),
+            min_size: size_of::<T>(),
+            is_bits: true,
+            has_indexed: false,
+            inlineable: true,
+            fields: Vec::new(),
+            phantom: PhantomData::default()
+        }
+    }
+}
+
 impl BootstrapTypeBuilder<NonIndexedType> {
     pub fn new() -> Self {
         BootstrapTypeBuilder {
@@ -183,7 +205,7 @@ impl BootstrapTypeBuilder<NonIndexedType> {
 }
 
 impl BootstrapTypeBuilder<NonIndexedType> {
-    pub unsafe fn field(mut self, r#type: Gc<Type>) -> Self {
+    pub unsafe fn field(mut self, r#type: Gc<Type>, mutable: bool) -> Self {
         let field_type = r#type.as_ref();
 
         let (field_align, field_size) = if !field_type.inlineable {
@@ -196,15 +218,18 @@ impl BootstrapTypeBuilder<NonIndexedType> {
         self.align = self.align.max(field_align);
         self.min_size = offset + field_size;
         self.fields.push(Field {r#type, offset});
+        self.inlineable = self.inlineable && !mutable;
 
         self
     }
     
-    pub unsafe fn indexed_field(self, r#type: Gc<Type>) -> BootstrapTypeBuilder<IndexedType> {
+    pub unsafe fn indexed_field(mut self, r#type: Gc<Type>, mutable: bool) -> BootstrapTypeBuilder<IndexedType> {
         let field_type = r#type.as_ref();
 
         let field_align = if !field_type.inlineable { align_of::<ORef>() } else { field_type.align };
         let offset = (self.min_size + field_align - 1) & !(field_align - 1);
+
+        self.fields.push(Field {r#type, offset});
 
         BootstrapTypeBuilder {
             align: self.align.max(field_align),
@@ -219,23 +244,39 @@ impl BootstrapTypeBuilder<NonIndexedType> {
 }
 
 impl<T: Indexed<Item=Field<Type>>> BootstrapTypeBuilder<T> {
-    pub unsafe fn build<F: FnOnce(usize) -> NonNull<T>>(self, alloc_type: F) -> Gc<T> {
-        let mut t = alloc_type(self.fields.len());
+    pub unsafe fn build<F: FnOnce(usize) -> Option<NonNull<T>>>(self, alloc_type: F) -> Option<Gc<T>> {
+        alloc_type(self.fields.len()).map(|mut t| {
+            t.as_ptr().cast::<Type>().write(Type {
+                align: self.align,
+                min_size: self.min_size,
+                is_bits: self.is_bits,
+                has_indexed: self.has_indexed,
+                inlineable: self.inlineable
+            });
 
-        t.as_ptr().cast::<Type>().write(Type {
-            align: self.align,
-            min_size: self.min_size,
-            is_bits: self.is_bits,
-            has_indexed: self.has_indexed,
-            inlineable: self.inlineable
-        });
+            let mut dest_field = t.as_mut().indexed_field_ptr_mut();
+            for field in self.fields {
+                dest_field.write(field);
+                dest_field = dest_field.add(1);
+            }
 
-        let mut dest_field = t.as_mut().indexed_field_ptr_mut();
-        for field in self.fields {
-            dest_field.write(field);
-            dest_field = dest_field.add(1);
-        }
+            Gc::new_unchecked(t)
+        })
+    }
+}
 
-        Gc::new_unchecked(t)
+impl BootstrapTypeBuilder<BitsType> {
+    pub unsafe fn build<F: FnOnce() -> Option<NonNull<BitsType>>>(self, alloc_type: F) -> Option<Gc<BitsType>> {
+        alloc_type().map(|t| {
+            t.as_ptr().cast::<Type>().write(Type {
+                align: self.align,
+                min_size: self.min_size,
+                is_bits: self.is_bits,
+                has_indexed: self.has_indexed,
+                inlineable: self.inlineable
+            });
+
+            Gc::new_unchecked(t)
+        })
     }
 }
