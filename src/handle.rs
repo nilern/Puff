@@ -266,7 +266,7 @@ mod tests {
     }
 
     #[test]
-    fn for_each_root() {
+    fn for_each_mut_root_freeing() {
         let mut handles = HandlePool::new();
 
         unsafe {
@@ -282,7 +282,7 @@ mod tests {
 
             // Only called on live roots:
             let mut roots = Vec::<ORef>::new();
-            handles.for_each_root(|&mut oref| roots.push(oref));
+            handles.for_each_mut_root_freeing(|&mut oref| roots.push(oref));
             assert_eq!(roots, vec![
                 Fixnum::try_from(5isize).unwrap().into(),
                 Fixnum::try_from(1isize).unwrap().into()
