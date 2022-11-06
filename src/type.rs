@@ -91,16 +91,6 @@ unsafe impl Indexed for NonIndexedType {
 
 impl NonIndexedType {
     pub fn new_unchecked(r#type: Type) -> Self { Self(r#type) }
-    
-    pub fn from_static<T>(is_bits: bool, inlineable: bool) -> Self {
-        Self(Type {
-            align: align_of::<T>(),
-            min_size: size_of::<T>(),
-            is_bits,
-            has_indexed: false,
-            inlineable
-        })
-    }
 
     pub fn align(&self) -> usize { self.0.align }
 
