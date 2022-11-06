@@ -257,8 +257,10 @@ impl Heap {
 
     pub unsafe fn verify(&mut self) -> Result<(), VerificationError> {
         self.scan = self.tospace.end; // HACK: Using self.scan instead of an external iterator
+        let mut next_obj = None;
         while let Some(obj) = self.next_grey() {
-            self.verify_tospace_object(obj)?;
+            self.verify_tospace_object(obj, next_obj)?;
+            next_obj = Some(obj);
         }
 
         Ok(())
@@ -273,15 +275,30 @@ impl Heap {
         }
     }
 
-    unsafe fn verify_tospace_object(&self, obj: Gc<()>) -> Result<(), VerificationError> {
+    unsafe fn verify_tospace_object(&self, obj: Gc<()>, next_obj: Option<Gc<()>>) -> Result<(), VerificationError> {
         let r#type = obj.r#type();
 
         let data = obj.as_ptr() as *const u8;
         if data as usize % r#type.as_ref().align != 0 {
             return Err(VerificationError::MisalignedObject);
         }
-        if !self.tospace.contains_end(data.add(obj.size())) {
-            return Err(VerificationError::TospaceOverrun);
+        match next_obj {
+            Some(next_obj) => {
+                let next_obj_header_start = if !next_obj.r#type().as_ref().has_indexed {
+                    ((next_obj.as_ptr() as *const Header).offset(-1) as *const usize).offset(-1) as usize
+                } else {
+                    (next_obj.as_ptr() as *const Header).offset(-1) as usize
+                };
+
+                if data.add(obj.size()) as usize > next_obj_header_start {
+                    return Err(VerificationError::OverlappingObjects);
+                }
+            },
+
+            None =>
+                if !self.tospace.contains_end(data.add(obj.size())) {
+                    return Err(VerificationError::TospaceOverrun);
+                }
         }
 
         if !self.tospace.contains(r#type.as_ptr()) {
@@ -365,6 +382,7 @@ pub enum VerificationError {
     TypeNotInTospace,
 
     MisalignedObject,
+    OverlappingObjects,
     TospaceOverrun,
 
     FieldTypeNotInTospace,
