@@ -58,11 +58,10 @@ impl ORef {
         } else if let Some(vector) = self.try_cast::<Vector<ORef>>(mt) {
             let vector = root!(mt, vector);
 
-            let vs: Vec<Handle> = unsafe {
-                vector.as_ref().indexed_field().iter()
-                    .map(|v| root!(mt, v.to_datum(mt)))
-                    .collect()
-            };
+            let mut vs = Vec::new();
+            for i in 0..unsafe { vector.as_ref().indexed_field().len() } {
+                vs.push(root!(mt, unsafe { vector.as_ref().indexed_field()[i].to_datum(mt) }));
+            }
 
             if unsafe { vector.as_ref().indexed_field().iter().zip(vs.iter()).all(|(v, u)| *v == **u) } {
                 (*vector).into()
