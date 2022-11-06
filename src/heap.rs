@@ -266,7 +266,9 @@ impl Heap {
 
     pub unsafe fn verify_oref(&self, oref: ORef) -> Result<(), VerificationError> {
         match Gc::<()>::try_from(oref) {
-            Ok(obj) if !self.tospace.contains(obj.as_ptr()) => Err(VerificationError::ObjectNotInTospace),
+            Ok(obj) if !self.tospace.contains(obj.as_ptr()) => Err(VerificationError::ObjectNotInTospace {
+                obj, tospace_start: self.tospace.start, tospace_end: self.tospace.end
+            }),
             _ => Ok(())
         }
     }
@@ -369,7 +371,7 @@ pub enum VerificationError {
     FieldOffsetBounds,
     MisalignedField,
     ObjectOverrun,
-    ObjectNotInTospace
+    ObjectNotInTospace {obj: Gc<()>, tospace_start: *const u8, tospace_end: *const u8}
 }
 
 #[cfg(test)]

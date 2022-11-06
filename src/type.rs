@@ -125,7 +125,7 @@ impl BitsType {
         Self(Type {
             align: align_of::<T>(),
             min_size: size_of::<T>(),
-            is_bits: false,
+            is_bits: true,
             has_indexed: false,
             inlineable
         })
