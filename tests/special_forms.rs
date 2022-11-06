@@ -79,44 +79,50 @@ fn test_quote() {
     assert_eq!(eval_string(&mut mt, "(quote a)"), (*a).into());
 
     let v1 = eval_string(&mut mt, "(quote #(a b c))");
+    let v1 = mt.root(v1);
     let v2 = eval_string(&mut mt, "#(a b c)");
-    assert_vector_equal(&mt, v1, v2);
+    assert_vector_equal(&mt, *v1, v2);
 
     let ls1 = eval_string(&mut mt, "(quote (+ 1 2))");
+    let ls1 = mt.root(ls1);
     let ls2 = Gc::<Pair>::new(&mut mt, two.clone(), empty_list.clone());
     let ls2 = mt.root(ls2.into());
     let ls2 = Gc::<Pair>::new(&mut mt, one.clone(), ls2);
     let ls2 = mt.root(ls2.into());
     let ls2 = Gc::<Pair>::new(&mut mt, plus.clone(), ls2);
-    assert_list_equal(&mt, ls1, ls2.into());
+    assert_list_equal(&mt, *ls1, ls2.into());
 
     assert_eq!(eval_string(&mut mt, "'a"), (*a).into());
 
     let v1 = eval_string(&mut mt, "'#(a b c)");
+    let v1 = mt.root(v1);
     let v2 = eval_string(&mut mt, "#(a b c)");
-    assert_vector_equal(&mt, v1, v2);
+    assert_vector_equal(&mt, *v1, v2);
 
     assert_eq!(eval_string(&mut mt, "'()"), EmptyList::instance(&mt).into());
 
     let ls1 = eval_string(&mut mt, "'(+ 1 2)");
+    let ls1 = mt.root(ls1);
     let ls2 = Gc::<Pair>::new(&mut mt, two, empty_list.clone());
     let ls2 = mt.root(ls2.into());
     let ls2 = Gc::<Pair>::new(&mut mt, one, ls2);
     let ls2 = mt.root(ls2.into());
     let ls2 = Gc::<Pair>::new(&mut mt, plus, ls2);
-    assert_list_equal(&mt, ls1, ls2.into());
+    assert_list_equal(&mt, *ls1, ls2.into());
 
     let ls1 = eval_string(&mut mt, "'(quote a)");
+    let ls1 = mt.root(ls1);
     let ls2 = Gc::<Pair>::new(&mut mt, a.clone(), empty_list.clone());
     let ls2 = mt.root(ls2.into());
     let ls2 = Gc::<Pair>::new(&mut mt, quote.clone(), ls2);
-    assert_list_equal(&mt, ls1, ls2.into());
+    assert_list_equal(&mt, *ls1, ls2.into());
 
     let ls1 = eval_string(&mut mt, "''a");
+    let ls1 = mt.root(ls1);
     let ls2 = Gc::<Pair>::new(&mut mt, a, empty_list);
     let ls2 = mt.root(ls2.into());
     let ls2 = Gc::<Pair>::new(&mut mt, quote, ls2);
-    assert_list_equal(&mt, ls1, ls2.into());
+    assert_list_equal(&mt, *ls1, ls2.into());
 }
 
 #[test]
@@ -131,12 +137,14 @@ fn test_lambda() {
     assert_eq!(eval_string(&mut mt, "((lambda (x) x) 42)"), Fixnum::try_from(42isize).unwrap().into());
 
     let ls1 = eval_string(&mut mt, "((lambda ls ls) 1 2 3)");
+    let ls1 = mt.root(ls1);
     let ls2 = eval_string(&mut mt, "'(1 2 3)");
-    assert_list_equal(&mt, ls1, ls2);
+    assert_list_equal(&mt, *ls1, ls2);
 
     let ls1 = eval_string(&mut mt, "((lambda (x . ls) ls) 1 2 3)");
+    let ls1 = mt.root(ls1);
     let ls2 = eval_string(&mut mt, "'(2 3)");
-    assert_list_equal(&mt, ls1, ls2);
+    assert_list_equal(&mt, *ls1, ls2);
 
     assert_eq!(eval_string(&mut mt, "(letrec ((f (lambda () 42))) (f))"), Fixnum::try_from(42isize).unwrap().into());
 }
