@@ -164,6 +164,9 @@ impl HandleT<Namespace> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use quickcheck_macros::quickcheck;
+
     use crate::oref::Fixnum;
     use crate::handle::{Root, root};
 
@@ -199,5 +202,18 @@ mod tests {
         assert_eq!(unsafe { ns.get(foo.oref()).unwrap().as_ref().value() }, one.oref());
         assert_eq!(unsafe { ns.get(bar.oref()).unwrap().as_ref().value() }, two.oref());
         assert_eq!(unsafe { ns.get(baz.oref()).unwrap().as_ref().value() }, three.oref());
+    }
+
+    #[quickcheck]
+    fn add_get(k: String, v: u8) -> bool {
+        let mut mt = Mutator::new(1 << 20, false).unwrap();
+        let ns = root!(&mut mt, Namespace::new(&mut mt));
+
+        let k = root!(&mut mt, Symbol::new(&mut mt, &k));
+        let v = root!(&mut mt, ORef::from(Fixnum::from(v)));
+        let var = root!(&mut mt, Var::new(&mut mt, v.clone()));
+        ns.clone().add(&mut mt, k.clone(), var);
+
+        unsafe { ns.get(k.oref()).unwrap().as_ref().value() == v.oref() }
     }
 }

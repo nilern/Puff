@@ -233,14 +233,12 @@ mod tests {
     }
 
     #[quickcheck]
-    fn interned(names: Vec<String>) -> bool {
+    fn interned(name: String) -> bool {
         let mut mt = Mutator::new(1 << 20 /* 1 MiB */, false).unwrap();
 
-        names.iter().all(|name| {
-            let sym1 = root!(&mut mt, Symbol::new(&mut mt, &name));
-            let sym2 = Symbol::new(&mut mt, &name);
+        let sym1 = root!(&mut mt, Symbol::new(&mut mt, &name));
+        let sym2 = Symbol::new(&mut mt, &name);
 
-            sym1.oref() == sym2
-        })
+        sym1.oref() == sym2
     }
 }
