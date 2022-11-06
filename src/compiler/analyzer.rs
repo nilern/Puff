@@ -93,10 +93,8 @@ pub fn analyze(cmp: &mut Compiler, expr: Handle) -> anf::PosExpr {
     }
 
     fn analyze_letrec(cmp: &mut Compiler, env: &Rc<Env>, args: Handle, pos: Handle) -> anf::PosExpr {
-        fn bindings(cmp: &mut Compiler, env: &Rc<Env>, bindings: ORef)
-            -> (Rc<Env>, Vec<(Id, HandleT<Symbol>, Handle)>)
-        {
-            fn binding(cmp: &mut Compiler, env: &Rc<Env>, binding: ORef) -> (Rc<Env>, (Id, HandleT<Symbol>, Handle)) {
+        fn bindings(cmp: &mut Compiler, env: &Rc<Env>, bindings: ORef) -> (Rc<Env>, Vec<(Id, Handle)>) {
+            fn binding(cmp: &mut Compiler, env: &Rc<Env>, binding: ORef) -> (Rc<Env>, (Id, Handle)) {
                 let stx = binding.try_cast::<Syntax>(cmp.mt).unwrap_or_else(|| {
                     todo!() // error
                 });
@@ -121,7 +119,7 @@ pub fn analyze(cmp: &mut Compiler, expr: Handle) -> anf::PosExpr {
                     }));
                 let id = Id::src_fresh(cmp, name.clone());
 
-                (Rc::new(Env::Binding(id, name.clone(), env.clone())), (id, name, val))
+                (Rc::new(Env::Binding(id, name, env.clone())), (id, val))
             }
 
             let mut anf_bs = Vec::new();
@@ -160,7 +158,7 @@ pub fn analyze(cmp: &mut Compiler, expr: Handle) -> anf::PosExpr {
 
         let (env, bindings) = bindings(cmp, env, sexpr_bindings);
         let bindings = bindings.into_iter()
-            .map(|(id, _, val_expr)| (id, analyze_expr(cmp, &env, val_expr)))
+            .map(|(id, val_expr)| (id, analyze_expr(cmp, &env, val_expr)))
             .collect();
         let body = analyze_expr(cmp, &env, body);
         PosExpr {expr: Letrec(bindings, boxed::Box::new(body)), pos}
@@ -403,7 +401,7 @@ pub fn analyze(cmp: &mut Compiler, expr: Handle) -> anf::PosExpr {
         let args = args.try_cast::<Pair>(cmp.mt).unwrap_or_else(|| {
             todo!() // error
         });
-        let definiend = root!(cmp.mt, unsafe { args.as_ref().car() });
+        let definiend = unsafe { args.as_ref().car() };
         let args = unsafe { args.as_ref().cdr() }.try_cast::<Pair>(cmp.mt).unwrap_or_else(|| {
             todo!() // error
         });
