@@ -170,7 +170,7 @@ mod tests {
     #[test]
     fn test_add_get() {
         let mut mt = Mutator::new(1 << 20, false).unwrap();
-        let ns = Namespace::new(&mut mt);
+        let ns = root!(&mut mt, Namespace::new(&mut mt));
 
         let foo = root!(&mut mt, Symbol::new(&mut mt, "foo"));
         let bar = root!(&mut mt, Symbol::new(&mut mt, "bar"));
@@ -183,19 +183,19 @@ mod tests {
         assert_eq!(unsafe { ns.as_ref().get(*foo) }, None);
 
         let var = root!(&mut mt, Var::new(&mut mt, one.clone()));
-        unsafe { ns.as_ref().add(&mut mt, foo.clone(), var); }
+        ns.clone().add(&mut mt, foo.clone(), var);
         assert_eq!(unsafe { ns.as_ref().get(*foo).unwrap().as_ref().value() }, *one);
         assert_eq!(unsafe { ns.as_ref().get(*bar) }, None);
         assert_eq!(unsafe { ns.as_ref().get(*baz) }, None);
 
         let var = root!(&mut mt, Var::new(&mut mt, two.clone()));
-        unsafe { ns.as_ref().add(&mut mt, bar.clone(), var); }
+        ns.clone().add(&mut mt, bar.clone(), var);
         assert_eq!(unsafe { ns.as_ref().get(*foo).unwrap().as_ref().value() }, *one);
         assert_eq!(unsafe { ns.as_ref().get(*bar).unwrap().as_ref().value() }, *two);
         assert_eq!(unsafe { ns.as_ref().get(*baz) }, None);
 
         let var = root!(&mut mt, Var::new(&mut mt, three.clone()));
-        unsafe { ns.as_ref().add(&mut mt, baz.clone(), var); }
+        ns.clone().add(&mut mt, baz.clone(), var);
         assert_eq!(unsafe { ns.as_ref().get(*foo).unwrap().as_ref().value() }, *one);
         assert_eq!(unsafe { ns.as_ref().get(*bar).unwrap().as_ref().value() }, *two);
         assert_eq!(unsafe { ns.as_ref().get(*baz).unwrap().as_ref().value() }, *three);
