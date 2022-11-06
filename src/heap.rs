@@ -346,7 +346,10 @@ impl Heap {
         }
 
         if !descr.r#type.as_ref().inlineable {
-            self.verify_oref(*(data.add(descr.offset) as *const ORef))?;
+            let oref = data.add(descr.offset) as *const usize;
+            if *oref != 0 {
+                self.verify_oref(*(oref as *const ORef))?;
+            }
         } else {
             self.verify_fields(obj, descr.r#type.as_ref(), data)?;
         }
