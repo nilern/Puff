@@ -78,9 +78,7 @@ impl Heap {
         }
     }
 
-    pub unsafe fn alloc_raw(&mut self, layout: Layout, indexed: bool)
-        -> Option<NonNull<u8>>
-    {
+    pub unsafe fn alloc_raw(&mut self, layout: Layout, indexed: bool) -> Option<NonNull<u8>> {
         let mut addr = self.free as usize;
 
         addr = addr.checked_sub(layout.size())?; // Bump by `size`
@@ -343,9 +341,7 @@ impl Heap {
         }
     }
 
-    unsafe fn verify_field(&self, obj: Gc<()>, descr: &Field<Type>, data: *const u8)
-        -> Result<(), VerificationError>
-    {
+    unsafe fn verify_field(&self, obj: Gc<()>, descr: &Field<Type>, data: *const u8) -> Result<(), VerificationError> {
         let obj_size = obj.size();
 
         if descr.offset > obj_size {
@@ -365,7 +361,7 @@ impl Heap {
         }
 
         if !descr.r#type.as_ref().inlineable {
-            let oref = data.add(descr.offset) as *const usize;
+            let oref = data as *const usize;
             if *oref != 0 {
                 self.verify_oref(*(oref as *const ORef))?;
             }
