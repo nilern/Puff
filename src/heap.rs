@@ -285,9 +285,9 @@ impl Heap {
         match next_obj {
             Some(next_obj) => {
                 let next_obj_header_start = if !next_obj.r#type().as_ref().has_indexed {
-                    ((next_obj.as_ptr() as *const Header).offset(-1) as *const usize).offset(-1) as usize
-                } else {
                     (next_obj.as_ptr() as *const Header).offset(-1) as usize
+                } else {
+                    ((next_obj.as_ptr() as *const Header).offset(-1) as *const usize).offset(-1) as usize
                 };
 
                 if data.add(obj.size()) as usize > next_obj_header_start {
