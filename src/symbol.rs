@@ -201,7 +201,11 @@ impl Symbol {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use quickcheck_macros::quickcheck;
+
     use crate::oref::AsType;
+    use crate::handle::{Root, root};
 
     #[test]
     fn symbol_new() {
@@ -226,5 +230,17 @@ mod tests {
         assert_eq!(sym3, sym3);
 
         assert_eq!(mt.symbols().len, bootstrap_symbols_len + 2);
+    }
+
+    #[quickcheck]
+    fn interned(names: Vec<String>) -> bool {
+        let mut mt = Mutator::new(1 << 20 /* 1 MiB */, false).unwrap();
+
+        names.iter().all(|name| {
+            let sym1 = root!(&mut mt, Symbol::new(&mut mt, &name));
+            let sym2 = Symbol::new(&mut mt, &name);
+
+            sym1.oref() == sym2
+        })
     }
 }
