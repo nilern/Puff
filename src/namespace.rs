@@ -216,4 +216,27 @@ mod tests {
 
         unsafe { ns.get(k.oref()).unwrap().as_ref().value() == v.oref() }
     }
+
+    #[quickcheck]
+    fn multi_add_get(mut kvs: Vec<(String, u8)>) -> bool {
+        let mut mt = Mutator::new(1 << 20, false).unwrap();
+        let ns = root!(&mut mt, Namespace::new(&mut mt));
+
+        // HACK:
+        kvs.sort_by_key(|(k, _)| k.clone());
+        kvs.dedup_by_key(|(k, _)| k.clone());
+
+        for (k, v) in kvs.iter() {
+            let k = root!(&mut mt, Symbol::new(&mut mt, k));
+            let v = root!(&mut mt, ORef::from(Fixnum::from(*v)));
+            let var = root!(&mut mt, Var::new(&mut mt, v.clone()));
+            ns.clone().add(&mut mt, k.clone(), var);
+        }
+
+        kvs.iter().all(|(k, v)| {
+            let k = root!(&mut mt, Symbol::new(&mut mt, k));
+            let v = root!(&mut mt, ORef::from(Fixnum::from(*v)));
+            unsafe { ns.get(k.oref()).unwrap().as_ref().value() == v.oref() }
+        })
+    }
 }
