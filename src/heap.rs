@@ -352,8 +352,14 @@ impl Heap {
             return Err(VerificationError::MisalignedField);
         }
 
-        if descr.offset + descr.r#type.as_ref().min_size > obj_size {
-            return Err(VerificationError::ObjectOverrun);
+        let field_size = if !descr.r#type.as_ref().inlineable {
+            size_of::<ORef>()
+        } else {
+            descr.r#type.as_ref().min_size
+        };
+        let field_end = descr.offset + field_size;
+        if field_end > obj_size {
+            return Err(VerificationError::ObjectOverrun {obj_size, field_end});
         }
 
         if !self.tospace.contains(descr.r#type.as_ptr()) {
@@ -384,7 +390,7 @@ pub enum VerificationError {
     FieldTypeNotInTospace,
     FieldOffsetBounds,
     MisalignedField,
-    ObjectOverrun,
+    ObjectOverrun {obj_size: usize, field_end: usize},
     ObjectNotInTospace {obj: Gc<()>, tospace_start: *const u8, tospace_end: *const u8}
 }
 
