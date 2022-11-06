@@ -226,7 +226,7 @@ fn eval_syntax(mt: &mut Mutator) -> Answer {
     let expr = root!(mt, mt.regs()[mt.regs().len() - 1]);
 
     if mt.cfg().debug {
-        println!("{}", expr.within(&mt));
+        println!("{}", expr.oref().within(&mt));
         println!("");
     }
 
@@ -276,7 +276,7 @@ fn load(mt: &mut Mutator) -> Answer {
                 if let Some((_, ref mut last_pair)) = builder {
                     let nil = root!(mt, ORef::from(EmptyList::instance(mt)));
                     let pair = Gc::<Pair>::new(mt, stx.into(), nil);
-                    unsafe { last_pair.as_ref().set_cdr(pair.into()); }
+                    last_pair.set_cdr(pair.into());
                     *last_pair = root!(mt, pair);
                 } else {
                     let nil = root!(mt, ORef::from(EmptyList::instance(mt)));
@@ -302,7 +302,7 @@ fn load(mt: &mut Mutator) -> Answer {
     let stx = root!(mt, Syntax::new(mt, sexpr.into(), Some(start)));
 
     mt.push_global("eval-syntax");
-    mt.push((*stx).into());
+    mt.push(stx.oref().into());
     Answer::TailCall {argc: 2}
 }
 

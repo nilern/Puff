@@ -5,7 +5,8 @@ use std::ops::{Deref, DerefMut};
 use std::ptr::NonNull;
 use std::marker::PhantomData;
 
-use crate::oref::{ORef, Gc};
+use crate::oref::{ORef, Gc, AsType, Reify};
+use crate::heap_obj::HeapObj;
 use crate::mutator::Mutator;
 use crate::heap::{self, Heap};
 
@@ -21,16 +22,6 @@ struct FreeHandleImpl {
 
 pub struct Handle(*mut LiveHandleImpl);
 
-impl Deref for Handle {
-    type Target = ORef;
-
-    fn deref(&self) -> &Self::Target { unsafe { &(*self.0).oref } }
-}
-
-impl DerefMut for Handle {
-    fn deref_mut(&mut self) -> &mut Self::Target { unsafe { &mut (*self.0).oref } }
-}
-
 impl Clone for Handle {
     fn clone(&self) -> Self {
         unsafe { (*self.0).rc.set((*self.0).rc.get() + 1); }
@@ -45,22 +36,35 @@ impl Drop for Handle {
     }
 }
 
+impl Handle {
+    pub fn oref(&self) -> ORef { unsafe { (*self.0).oref } }
+}
+
+impl Handle {
+    pub fn try_cast<U: Reify>(self, mt: &Mutator) -> Option<HandleT<U>> where Gc<U::Kind>: AsType {
+        match HandleT::<()>::try_from(self) {
+            Ok(obj_handle) => obj_handle.try_cast::<U>(mt),
+            Err(()) => None
+        }
+    }
+}
+
 pub struct HandleT<T> {
     handle: Handle,
     phantom: PhantomData<*const T>
 }
 
 impl<T> Deref for HandleT<T> {
-    type Target = Gc<T>;
+    type Target = T;
 
     fn deref(&self) -> &Self::Target {
-        unsafe { transmute::<_, &Self::Target>(&*self.handle) }
+        unsafe { transmute::<_, &Self::Target>((*self.handle.0).oref.unchecked_cast::<T>().as_ptr()) }
     }
 }
 
 impl<T> DerefMut for HandleT<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        unsafe { transmute::<_, &mut Self::Target>(&mut *self.handle) }
+        unsafe { transmute::<_, &mut Self::Target>((*self.handle.0).oref.unchecked_cast::<T>().as_ptr()) }
     }
 }
 
@@ -72,7 +76,7 @@ impl TryFrom<Handle> for HandleT<()> {
     type Error = ();
 
     fn try_from(handle: Handle) -> Result<Self, Self::Error> {
-        if handle.tag() == Gc::<()>::TAG {
+        if handle.oref().tag() == Gc::<()>::TAG {
             Ok(Self {handle, phantom: Default::default()})
         } else {
             Err(())
@@ -82,6 +86,22 @@ impl TryFrom<Handle> for HandleT<()> {
 
 impl<T> From<HandleT<T>> for Handle {
     fn from(typed: HandleT<T>) -> Self { typed.handle }
+}
+
+impl<T> HandleT<T> {
+    pub fn oref(&self) -> Gc<T> { unsafe { self.handle.oref().unchecked_cast::<T>() } }
+
+    unsafe fn unchecked_cast<U>(self) -> HandleT<U> { HandleT {handle: self.handle, phantom: PhantomData::default()} }
+}
+
+impl<T: HeapObj> HandleT<T> {
+    pub fn try_cast<U: Reify>(self, mt: &Mutator) -> Option<HandleT<U>> where Gc<U::Kind>: AsType {
+        if self.handle.oref().instance_of::<U>(mt) {
+            Some(unsafe { self.unchecked_cast::<U>() })
+        } else {
+            None
+        }
+    }
 }
  
 pub struct HandlePool {
@@ -383,7 +403,7 @@ mod tests {
         unsafe {
             let handle = handles.root(Fixnum::try_from(5isize).unwrap().into());
 
-            assert_eq!(*handle, ORef::from(Fixnum::try_from(5isize).unwrap()));
+            assert_eq!(handle.oref(), ORef::from(Fixnum::try_from(5isize).unwrap()));
         }
     }
 }

@@ -27,9 +27,9 @@ impl Syntax {
         unsafe {
             let nptr = mt.alloc_static::<Self>();
             nptr.as_ptr().write(Self {
-                expr: *expr,
+                expr: expr.oref(),
                 pos: match pos {
-                    Some(pos) => (*pos).into(),
+                    Some(pos) => pos.oref().into(),
                     None => Bool::instance(mt, false).into()
                 }
             });
@@ -47,11 +47,11 @@ impl ORef {
         } else if let Some(pair) = self.try_cast::<Pair>(mt) {
             let pair = root!(mt, pair);
 
-            let car = root!(mt, unsafe { pair.as_ref().car() }.to_datum(mt));
-            let cdr = root!(mt, unsafe { pair.as_ref().cdr() }.to_datum(mt));
+            let car = root!(mt, pair.car().to_datum(mt));
+            let cdr = root!(mt, pair.cdr().to_datum(mt));
 
-            if *car == unsafe { pair.as_ref().car() } && *cdr == unsafe { pair.as_ref().cdr() } {
-                (*pair).into()
+            if car.oref() == pair.car() && cdr.oref() == pair.cdr() {
+                pair.oref().into()
             } else {
                 Gc::<Pair>::new(mt, car, cdr).into()
             }
@@ -59,12 +59,12 @@ impl ORef {
             let vector = root!(mt, vector);
 
             let mut vs = Vec::new();
-            for i in 0..unsafe { vector.as_ref().indexed_field().len() } {
-                vs.push(root!(mt, unsafe { vector.as_ref().indexed_field()[i].to_datum(mt) }));
+            for i in 0..vector.indexed_field().len() {
+                vs.push(root!(mt, vector.indexed_field()[i].to_datum(mt)));
             }
 
-            if unsafe { vector.as_ref().indexed_field().iter().zip(vs.iter()).all(|(v, u)| *v == **u) } {
-                (*vector).into()
+            if vector.indexed_field().iter().zip(vs.iter()).all(|(v, u)| *v == u.oref()) {
+                vector.oref().into()
             } else {
                 Vector::<ORef>::from_handles(mt, &vs).into()
             }
@@ -95,7 +95,7 @@ impl Pos {
             let nptr = mt.alloc_static::<Self>();
             nptr.as_ptr().write(Self {
                 filename: match filename {
-                    Some(filename) => (*filename).into(),
+                    Some(filename) => filename.oref().into(),
                     None => Bool::instance(mt, false).into()
                 },
                 line, column

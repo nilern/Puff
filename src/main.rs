@@ -66,7 +66,7 @@ fn main() {
                     match res {
                         Ok(stx) => {
                             if debug {
-                                println!("{}", ORef::from(*stx).within(&mt));
+                                println!("{}", ORef::from(stx.oref()).within(&mt));
                                 println!("");
                             }
 

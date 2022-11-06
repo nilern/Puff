@@ -27,7 +27,7 @@ impl Var {
     pub fn new(mt: &mut Mutator, value: Handle) -> Gc<Self> {
         unsafe {
             let nptr = mt.alloc_static::<Self>();
-            nptr.as_ptr().write(Self { value: Cell::new(*value) });
+            nptr.as_ptr().write(Self { value: Cell::new(value.oref()) });
             Gc::new_unchecked(nptr)
         }
     }
@@ -70,8 +70,8 @@ impl Namespace {
             nptr.as_ptr().write(Self {
                 len: Cell::new(0),
                 capacity: Cell::new(capacity),
-                keys: Cell::new(*keys),
-                values: Cell::new(*values)
+                keys: Cell::new(keys.oref()),
+                values: Cell::new(values.oref())
             });
 
             Gc::new_unchecked(nptr)
@@ -101,28 +101,28 @@ impl Namespace {
 
 impl HandleT<Namespace> {
     pub fn add(self, mt: &mut Mutator, name: HandleT<Symbol>, v: HandleT<Var>) {
-        let hash = unsafe { name.as_ref().hash() };
+        let hash = name.hash();
 
         loop {
-            let max_index = unsafe { self.as_ref().capacity.get() } - 1;
+            let max_index = self.capacity.get() - 1;
             let mut collisions = 0;
             let mut i = (isize::from(hash) as usize) & max_index;
             loop {
-                let k = unsafe { self.as_ref().keys.get().as_ref().indexed_field()[i].get() };
+                let k = unsafe { self.keys.get().as_ref().indexed_field()[i].get() };
 
                 if k != Fixnum::from(0u8).into() {
-                    debug_assert!(k != (*name).into());
+                    debug_assert!(k != name.oref().into());
                     collisions += 1;
                     i = (i + collisions) & max_index;
                 } else {
-                    if unsafe { (self.as_ref().len.get() + 1) * 2 > self.as_ref().capacity.get() } {
+                    if (self.len.get() + 1) * 2 > self.capacity.get() {
                         unsafe { self.clone().rehash(mt); }
                         break; // continue outer loop
                     } else {
                         unsafe {
-                            self.as_ref().len.set(self.as_ref().len.get() + 1);
-                            self.as_ref().keys.get().as_ref().indexed_field()[i].set((*name).into());
-                            self.as_ref().values.get().as_ref().indexed_field()[i].set((*v).into());
+                            self.len.set(self.len.get() + 1);
+                            self.keys.get().as_ref().indexed_field()[i].set(name.oref().into());
+                            self.values.get().as_ref().indexed_field()[i].set(v.oref().into());
                         }
                         return;
                     }
@@ -132,13 +132,13 @@ impl HandleT<Namespace> {
     }
 
     unsafe fn rehash(self, mt: &mut Mutator) {
-        let new_capacity = self.as_ref().capacity.get() * 2;
+        let new_capacity = self.capacity.get() * 2;
 
         let new_keys = root!(mt, VectorMut::<ORef>::zeros(mt, new_capacity));
         let new_values = VectorMut::<ORef>::zeros(mt, new_capacity);
-        let new_keys = *new_keys;
+        let new_keys = new_keys.oref();
 
-        for (old_i, k) in self.as_ref().keys.get().as_ref().indexed_field().iter().enumerate() {
+        for (old_i, k) in self.keys.get().as_ref().indexed_field().iter().enumerate() {
             if let Some(k) = k.get().try_cast::<Symbol>(mt) {
                 let hash = isize::from(k.as_ref().hash()) as usize;
 
@@ -151,13 +151,13 @@ impl HandleT<Namespace> {
                 }
                 new_keys.as_ref().indexed_field()[i].set(k.into());
                 new_values.as_ref().indexed_field()[i]
-                    .set(self.as_ref().values.get().as_ref().indexed_field()[old_i].get());
+                    .set(self.values.get().as_ref().indexed_field()[old_i].get());
             }
         }
 
-        self.as_ref().capacity.set(new_capacity);
-        self.as_ref().keys.set(new_keys);
-        self.as_ref().values.set(new_values);
+        self.capacity.set(new_capacity);
+        self.keys.set(new_keys);
+        self.values.set(new_values);
     }
 }
 
@@ -180,24 +180,24 @@ mod tests {
         let two = root!(&mut mt, ORef::from(Fixnum::from(2u8)));
         let three = root!(&mut mt, ORef::from(Fixnum::from(3u8)));
 
-        assert_eq!(unsafe { ns.as_ref().get(*foo) }, None);
+        assert_eq!(ns.get(foo.oref()), None);
 
         let var = root!(&mut mt, Var::new(&mut mt, one.clone()));
         ns.clone().add(&mut mt, foo.clone(), var);
-        assert_eq!(unsafe { ns.as_ref().get(*foo).unwrap().as_ref().value() }, *one);
-        assert_eq!(unsafe { ns.as_ref().get(*bar) }, None);
-        assert_eq!(unsafe { ns.as_ref().get(*baz) }, None);
+        assert_eq!(unsafe { ns.get(foo.oref()).unwrap().as_ref().value() }, one.oref());
+        assert_eq!(ns.get(bar.oref()), None);
+        assert_eq!(ns.get(baz.oref()), None);
 
         let var = root!(&mut mt, Var::new(&mut mt, two.clone()));
         ns.clone().add(&mut mt, bar.clone(), var);
-        assert_eq!(unsafe { ns.as_ref().get(*foo).unwrap().as_ref().value() }, *one);
-        assert_eq!(unsafe { ns.as_ref().get(*bar).unwrap().as_ref().value() }, *two);
-        assert_eq!(unsafe { ns.as_ref().get(*baz) }, None);
+        assert_eq!(unsafe { ns.get(foo.oref()).unwrap().as_ref().value() }, one.oref());
+        assert_eq!(unsafe { ns.get(bar.oref()).unwrap().as_ref().value() }, two.oref());
+        assert_eq!(ns.get(baz.oref()), None);
 
         let var = root!(&mut mt, Var::new(&mut mt, three.clone()));
         ns.clone().add(&mut mt, baz.clone(), var);
-        assert_eq!(unsafe { ns.as_ref().get(*foo).unwrap().as_ref().value() }, *one);
-        assert_eq!(unsafe { ns.as_ref().get(*bar).unwrap().as_ref().value() }, *two);
-        assert_eq!(unsafe { ns.as_ref().get(*baz).unwrap().as_ref().value() }, *three);
+        assert_eq!(unsafe { ns.get(foo.oref()).unwrap().as_ref().value() }, one.oref());
+        assert_eq!(unsafe { ns.get(bar.oref()).unwrap().as_ref().value() }, two.oref());
+        assert_eq!(unsafe { ns.get(baz.oref()).unwrap().as_ref().value() }, three.oref());
     }
 }

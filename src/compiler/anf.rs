@@ -1,6 +1,7 @@
 use std::collections::hash_set::HashSet;
 use pretty::RcDoc;
 
+use crate::oref::ORef;
 use crate::handle::{Handle, HandleT};
 use crate::compiler::{Compiler, Id};
 use crate::symbol::Symbol;
@@ -61,14 +62,14 @@ impl Expr {
         match self {
             &Define(ref sym, ref val_expr) =>
                 RcDoc::text("(define")
-                    .append(RcDoc::line().append(RcDoc::as_string(Handle::from(sym.clone()).within(mt))).nest(2))
+                    .append(RcDoc::line().append(RcDoc::as_string(ORef::from(sym.oref()).within(mt))).nest(2))
                     .group()
                     .append(RcDoc::line().append(val_expr.to_doc(mt, cmp)).nest(2)).append(RcDoc::text(")"))
                     .group(),
 
             &GlobalSet(ref sym, ref val_expr) =>
                 RcDoc::text("(global-set!")
-                    .append(RcDoc::line().append(RcDoc::as_string(Handle::from(sym.clone()).within(mt))).nest(2))
+                    .append(RcDoc::line().append(RcDoc::as_string(ORef::from(sym.oref()).within(mt))).nest(2))
                     .group()
                     .append(RcDoc::line().append(val_expr.to_doc(mt, cmp)).nest(2)).append(RcDoc::text(")"))
                     .group(),
@@ -180,7 +181,7 @@ impl Expr {
                         .nest(1)).append(RcDoc::text(")"))
                     .group(),
 
-            &Global(ref sym) => RcDoc::as_string(Handle::from(sym.clone()).within(mt)),
+            &Global(ref sym) => RcDoc::as_string(ORef::from(sym.oref()).within(mt)),
 
             &CheckedUse {guard, id} =>
                 RcDoc::text("(checked-use").append(RcDoc::line())
@@ -190,7 +191,7 @@ impl Expr {
 
             &Triv(Use(id)) => id.to_doc(cmp),
 
-            &Triv(Const(ref c)) => c.to_doc(mt)
+            &Triv(Const(ref c)) => c.oref().to_doc(mt)
         }
     }
 }

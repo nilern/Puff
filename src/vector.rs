@@ -31,7 +31,7 @@ impl Vector<ORef> {
             nptr.as_ptr().write(Vector {phantom: Default::default()});
             let mut v = nptr.as_mut().indexed_field_ptr_mut();
             for handle in handles {
-                v.write(**handle);
+                v.write(handle.oref());
                 v = v.add(1);
             }
 

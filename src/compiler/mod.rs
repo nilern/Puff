@@ -50,7 +50,7 @@ impl Id {
 
     pub fn to_doc<'a>(self, cmp: &Compiler) -> RcDoc<'a, ()> {
         RcDoc::text(match cmp.names.get(&self) {
-            Some(sym) => unsafe { format!("{}${}", sym.as_ref().name(), self.0) },
+            Some(sym) => format!("{}${}", sym.name(), self.0),
             None => format!("${}", self.0)
         })
     }

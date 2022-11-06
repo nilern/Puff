@@ -57,11 +57,11 @@ impl Instr {
         use Instr::*;
 
         match self {
-            &Define(ref definiend) => unsafe { writeln!(fmt, "{}define {}", indent, definiend.as_ref().name()) },
-            &GlobalSet(ref name) => unsafe { writeln!(fmt, "{}global-set! {}", indent, name.as_ref().name()) },
-            &Global(ref name) => unsafe { writeln!(fmt, "{}global {}", indent, name.as_ref().name()) },
+            &Define(ref definiend) => writeln!(fmt, "{}define {}", indent, definiend.name()),
+            &GlobalSet(ref name) => writeln!(fmt, "{}global-set! {}", indent, name.name()),
+            &Global(ref name) => writeln!(fmt, "{}global {}", indent, name.name()),
 
-            &Const(ref c) => writeln!(fmt, "{}const {}", indent, c.within(mt)),
+            &Const(ref c) => writeln!(fmt, "{}const {}", indent, c.oref().within(mt)),
             &Local(reg) => writeln!(fmt, "{}local {}", indent, reg),
             &Clover(i) => writeln!(fmt, "{}clover {}", indent, i),
 
@@ -175,7 +175,7 @@ impl Fn {
     }
 
     pub fn fmt(&self, mt: &Mutator, fmt: &mut fmt::Formatter, indent: &str) -> fmt::Result {
-        write!(fmt, "{}(clovers {}) ", indent, unsafe { self.clover_names.as_ref().indexed_field().len() })?;
+        write!(fmt, "{}(clovers {}) ", indent, self.clover_names.indexed_field().len())?;
         if self.min_arity > 0 {
             write!(fmt, "(_")?;
 

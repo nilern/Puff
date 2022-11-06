@@ -290,7 +290,7 @@ impl<'i> Reader<'i> {
                     self.input.next();
 
                     match self.next(mt) {
-                        Some(res) => unsafe { last_pair.as_ref().set_cdr((*res?).into()); },
+                        Some(res) => last_pair.set_cdr(res?.oref().into()),
                         None => return Err(())
                     }
 
@@ -314,7 +314,7 @@ impl<'i> Reader<'i> {
                     match self.next(mt) {
                         Some(res) => {
                             let pair = Gc::<Pair>::new(mt, res?.into(), empty.clone());
-                            unsafe { last_pair.as_ref().set_cdr(pair.into()); }
+                            last_pair.set_cdr(pair.into());
                             last_pair = root!(mt, pair);
                         },
 

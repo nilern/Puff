@@ -342,9 +342,9 @@ impl Bytecode {
                 varargs,
                 max_regs,
                 clovers_len,
-                clover_names: *clover_names,
-                consts: *consts,
-                positions: *positions
+                clover_names: clover_names.oref(),
+                consts: consts.oref(),
+                positions: positions.oref()
             });
             nptr.as_mut().indexed_field_mut().copy_from_slice(instrs);
 
@@ -596,7 +596,7 @@ impl Builder {
             min_arity,
             varargs,
             max_regs,
-            clovers_len: unsafe { clover_names.as_ref().indexed_field().len() },
+            clovers_len: clover_names.indexed_field().len(),
             clover_names,
             consts: Vec::new(),
             instrs: Vec::new(),

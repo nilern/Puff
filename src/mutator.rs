@@ -371,18 +371,18 @@ impl Mutator {
 
     pub unsafe fn alloc_nonindexed(&mut self, r#type: Gc<NonIndexedType>) -> NonNull<u8> {
         let type_hdl = root!(self, r#type);
-        self.heap.alloc_nonindexed(r#type).unwrap_or_else(|| {
+        //self.heap.alloc_nonindexed(r#type).unwrap_or_else(|| {
             self.collect();
-            self.heap.alloc_nonindexed(*type_hdl).expect("out of memory")
-        })
+            self.heap.alloc_nonindexed(type_hdl.oref()).expect("out of memory")
+        //})
     }
 
     pub unsafe fn alloc_indexed(&mut self, r#type: Gc<IndexedType>, len: usize) -> NonNull<u8> {
         let type_hdl = root!(self, r#type);
-        self.heap.alloc_indexed(r#type, len).unwrap_or_else(|| {
+        //self.heap.alloc_indexed(r#type, len).unwrap_or_else(|| {
             self.collect();
-            self.heap.alloc_indexed(*type_hdl, len).expect("out of memory")
-        })
+            self.heap.alloc_indexed(type_hdl.oref(), len).expect("out of memory")
+        //})
     }
 
     pub unsafe fn alloc_static<T: NonIndexed>(&mut self) -> NonNull<T> {
@@ -662,7 +662,7 @@ impl Mutator {
 
                         let name = root!(self,
                             unsafe { self.consts().as_ref().indexed_field()[i].unchecked_cast::<Symbol>() });
-                        if let Some(var) = unsafe { self.ns.unwrap().as_ref().get(*name) } {
+                        if let Some(var) = unsafe { self.ns.unwrap().as_ref().get(name.oref()) } {
                             let v = self.regs.pop().unwrap();
                             unsafe {
                                 var.as_ref().redefine(v);
@@ -673,7 +673,7 @@ impl Mutator {
                                 let var = root!(self, Var::new_uninitialized(self));
                                 root!(self, self.ns.unwrap()).add(self, name, var.clone());
                                 let v = self.regs.pop().unwrap();
-                                var.as_ref().init(v); // Avoids allocating a Handle for `v`
+                                var.init(v); // Avoids allocating a Handle for `v`
                                 self.regs.push_unchecked(v); // HACK?
                             }
                         }

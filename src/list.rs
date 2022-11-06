@@ -49,7 +49,7 @@ impl Gc<Pair> {
     pub fn new(mt: &mut Mutator, car: Handle, cdr: Handle) -> Self {
         unsafe {
             let nptr = mt.alloc_static::<Pair>();
-            nptr.as_ptr().write(Pair::new(*car, *cdr));
+            nptr.as_ptr().write(Pair::new(car.oref(), cdr.oref()));
             Gc::new_unchecked(nptr)
         }
     }
