@@ -178,7 +178,7 @@ impl Mutator {
                 .build(|| heap.alloc_indexed(r#type, 0).map(NonNull::cast))?;
 
             let symbol = BootstrapTypeBuilder::<NonIndexedType>::new()
-                .field(usize_type.as_type(), false)
+                .field(any, false)
                 .indexed_field(u8_type.as_type(), false)
                 .build(|len| heap.alloc_indexed(r#type, len).map(NonNull::cast))?;
 
