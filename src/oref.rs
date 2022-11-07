@@ -10,6 +10,7 @@ use crate::list::{Pair, EmptyList};
 use crate::bool::Bool;
 use crate::fixnum::Fixnum;
 use crate::flonum::Flonum;
+use crate::char::Char;
 
 pub trait Tagged {
     const TAG: usize;
@@ -79,31 +80,9 @@ impl From<ORef> for ORefEnum {
             Gc::<()>::TAG => Self::Gc(unsafe { Gc(NonNull::new_unchecked(oref.0 as *mut ())) }),
             Fixnum::TAG => Self::Fixnum(unsafe { Fixnum::from_oref_unchecked(oref) }.into()),
             Flonum::TAG => Self::Flonum(unsafe { Flonum::from_oref_unchecked(oref) }.into()),
-            Char::TAG => Self::Char(Char(oref.0).into()),
+            Char::TAG => Self::Char(unsafe { Char::from_oref_unchecked(oref) }.into()),
             _ => unreachable!()
         }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Char(usize);
-
-impl Tagged for Char {
-    const TAG: usize = Flonum::TAG + 1;
-}
-
-impl From<Char> for ORef {
-    fn from(c: Char) -> Self { ORef(c.0) }
-}
-
-// `ORef::PAYLOAD_BITS >= 30` so even `char::MAX` always fits:
-impl From<char> for Char {
-    fn from(c: char) -> Self { Char(((c as usize) << ORef::SHIFT) | Char::TAG) }
-}
-
-impl From<Char> for char {
-    fn from(c: Char) -> Self {
-        unsafe { char::from_u32_unchecked((c.0 >> ORef::SHIFT) as u32) }
     }
 }
 
@@ -259,30 +238,5 @@ unsafe impl AsType for Gc<BitsType> {
 impl Gc<BitsType> {
     pub fn as_nonindexed(self) -> Gc<NonIndexedType> {
         unsafe { self.unchecked_cast::<NonIndexedType>() }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn char_from() {
-        assert_eq!(
-            char::from(Char::from(char::from_u32(0u32).unwrap())),
-            char::from_u32(0u32).unwrap()
-        );
-        assert!(ORef::from(Char::from(char::from_u32(0u32).unwrap()))
-            .is_tagged::<Char>());
-
-        assert_eq!(
-            char::from(Char::from(char::from_u32(5u32).unwrap())),
-            char::from_u32(5u32).unwrap()
-        );
-
-        assert_eq!(
-            char::from(Char::from(char::from_u32(char::MAX as u32).unwrap())),
-            char::from_u32(char::MAX as u32).unwrap()
-        );
     }
 }
