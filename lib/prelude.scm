@@ -7,6 +7,17 @@
 
 (define not (lambda (obj) (if obj #f #t)))
 
+(define extends?
+  (lambda (super sub)
+    (if (eq? sub super)
+      #t
+      (letrec ((sub* (supertype sub)))
+        (if sub*
+          (extends? super sub*)
+          #f)))))
+
+(define instance? (lambda (type obj) (extends? type (type-of obj))))
+
 (define null? (lambda (obj) (eq? obj '())))
 
 (define list (lambda ls ls))
