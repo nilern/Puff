@@ -5,10 +5,11 @@ use std::ops::{Deref, DerefMut};
 use std::ptr::NonNull;
 use std::marker::PhantomData;
 
-use crate::oref::{ORef, Gc, AsType, Reify};
+use crate::oref::{ORef, Gc, Reify};
 use crate::heap_obj::HeapObj;
 use crate::mutator::Mutator;
 use crate::heap::{self, Heap};
+use crate::r#type::Type;
 
 struct LiveHandleImpl {
     oref: ORef,
@@ -41,7 +42,7 @@ impl Handle {
 }
 
 impl Handle {
-    pub fn try_cast<U: Reify>(self, mt: &Mutator) -> Option<HandleT<U>> where Gc<U::Kind>: AsType {
+    pub fn try_cast<U: Reify>(self, mt: &Mutator) -> Option<HandleT<U>> where Gc<U::Kind>: Into<Gc<Type>> {
         match HandleT::<()>::try_from(self) {
             Ok(obj_handle) => obj_handle.try_cast::<U>(mt),
             Err(()) => None
@@ -95,7 +96,7 @@ impl<T> HandleT<T> {
 }
 
 impl<T: HeapObj> HandleT<T> {
-    pub fn try_cast<U: Reify>(self, mt: &Mutator) -> Option<HandleT<U>> where Gc<U::Kind>: AsType {
+    pub fn try_cast<U: Reify>(self, mt: &Mutator) -> Option<HandleT<U>> where Gc<U::Kind>: Into<Gc<Type>> {
         if self.handle.oref().instance_of::<U>(mt) {
             Some(unsafe { self.unchecked_cast::<U>() })
         } else {

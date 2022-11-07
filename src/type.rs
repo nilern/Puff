@@ -89,6 +89,10 @@ unsafe impl Indexed for NonIndexedType {
     type Item = Field<Type>;
 }
 
+impl From<Gc<NonIndexedType>> for Gc<Type> {
+    fn from(t: Gc<NonIndexedType>) -> Self { unsafe { t.unchecked_cast::<Type>() } }
+}
+
 impl NonIndexedType {
     pub fn new_unchecked(r#type: Type) -> Self { Self(r#type) }
 
@@ -109,6 +113,10 @@ impl NonIndexedType {
 pub struct BitsType(Type);
 
 unsafe impl HeapObj for BitsType {}
+
+impl From<Gc<BitsType>> for Gc<Type> {
+    fn from(t: Gc<BitsType>) -> Self { unsafe { t.unchecked_cast::<Type>() } }
+}
 
 impl BitsType {
     pub fn from_static<T>(inlineable: bool) -> Self {
@@ -141,6 +149,10 @@ impl TryFrom<Gc<Type>> for Gc<IndexedType> {
             Err(())
         }
     }
+}
+
+impl From<Gc<IndexedType>> for Gc<Type> {
+    fn from(t: Gc<IndexedType>) -> Self { unsafe { t.unchecked_cast::<Type>() } }
 }
 
 impl IndexedType {

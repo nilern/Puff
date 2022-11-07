@@ -4,7 +4,7 @@ use std::alloc::Layout;
 use std::slice;
 
 use crate::heap::{self, Heap};
-use crate::oref::{AsType, ORef, Gc};
+use crate::oref::{ORef, Gc};
 use crate::r#type::{Type, Field, IndexedType, NonIndexedType, BitsType, BootstrapTypeBuilder};
 use crate::symbol::{Symbol, SymbolTable};
 use crate::heap_obj::{NonIndexed, Indexed, Singleton, Header, min_size_of_indexed,
@@ -107,7 +107,7 @@ impl Mutator {
 
             let type_nptr = heap.alloc_raw(Type::TYPE_LAYOUT, true)?.cast::<IndexedType>();
             let r#type = Gc::new_unchecked(type_nptr.cast::<IndexedType>());
-            Header::initialize_indexed(type_nptr, Header::new(r#type.as_type()), Type::TYPE_LEN);
+            Header::initialize_indexed(type_nptr, Header::new(r#type.into()), Type::TYPE_LEN);
             type_nptr.as_ptr().write(IndexedType::new_unchecked(Type {
                 min_size: min_size_of_indexed::<Type>(),
                 align: align_of_indexed::<Type>(),
@@ -118,7 +118,7 @@ impl Mutator {
 
             let field_type_nptr = heap.alloc_raw(Field::<()>::TYPE_LAYOUT, true)?.cast::<NonIndexedType>();
             let field_type = Gc::new_unchecked(field_type_nptr.cast::<NonIndexedType>());
-            Header::initialize_indexed(field_type_nptr, Header::new(r#type.as_type()), Field::<()>::TYPE_LEN);
+            Header::initialize_indexed(field_type_nptr, Header::new(r#type.into()), Field::<()>::TYPE_LEN);
             field_type_nptr.as_ptr().write(NonIndexedType::new_unchecked(Type {
                 min_size: size_of::<Field::<()>>(),
                 align: align_of::<Field::<()>>(),
@@ -129,12 +129,12 @@ impl Mutator {
 
             let usize_type_nptr = heap.alloc_raw(USIZE_TYPE_LAYOUT, true)?.cast::<BitsType>();
             let usize_type = Gc::new_unchecked(usize_type_nptr.cast::<BitsType>());
-            Header::initialize_indexed(r#usize_type_nptr, Header::new(r#type.as_type()), 0);
+            Header::initialize_indexed(r#usize_type_nptr, Header::new(r#type.into()), 0);
             usize_type_nptr.as_ptr().write(BitsType::from_static::<usize>(true));
 
             let bool_nptr = heap.alloc_raw(BOOL_TYPE_LAYOUT, true)?.cast::<BitsType>();
             let bool = Gc::new_unchecked(bool_nptr.cast::<BitsType>());
-            Header::initialize_indexed(r#bool_nptr, Header::new(r#type.as_type()), 0);
+            Header::initialize_indexed(r#bool_nptr, Header::new(r#type.into()), 0);
             bool_nptr.as_ptr().write(BitsType::from_static::<bool>(true));
 
             // Initialize Fields of strongly connected bootstrap types:
@@ -143,20 +143,20 @@ impl Mutator {
             // `.min_size` etc. get reinitialized redundantly but that should not matter much:
 
             BootstrapTypeBuilder::<NonIndexedType>::new()
-                .field(r#type.as_type(), false)
-                .field(usize_type.as_type(), false)
+                .field(r#type.into(), false)
+                .field(usize_type.into(), false)
                 .build(|len| {
                     debug_assert!(len == Field::<()>::TYPE_LEN);
                     Some(field_type_nptr)
                 });
 
             BootstrapTypeBuilder::<NonIndexedType>::new()
-                .field(usize_type.as_type(), false)
-                .field(usize_type.as_type(), false)
-                .field(bool.as_type(), false)
-                .field(bool.as_type(), false)
-                .field(bool.as_type(), false)
-                .indexed_field(field_type.as_type(), false)
+                .field(usize_type.into(), false)
+                .field(usize_type.into(), false)
+                .field(bool.into(), false)
+                .field(bool.into(), false)
+                .field(bool.into(), false)
+                .indexed_field(field_type.into(), false)
                 .build(|len| {
                     debug_assert!(len == Type::TYPE_LEN);
                     Some(type_nptr)
@@ -180,11 +180,11 @@ impl Mutator {
 
             let symbol = BootstrapTypeBuilder::<NonIndexedType>::new()
                 .field(any, false)
-                .indexed_field(u8_type.as_type(), false)
+                .indexed_field(u8_type.into(), false)
                 .build(|len| heap.alloc_indexed(r#type, len).map(NonNull::cast))?;
 
             let string = BootstrapTypeBuilder::<NonIndexedType>::new()
-                .indexed_field(u8_type.as_type(), false)
+                .indexed_field(u8_type.into(), false)
                 .build(|len| heap.alloc_indexed(r#type, len).map(NonNull::cast))?;
 
             let pair = BootstrapTypeBuilder::<NonIndexedType>::new()
@@ -215,18 +215,18 @@ impl Mutator {
                 .build(|len| heap.alloc_indexed(r#type, len).map(NonNull::cast))?;
 
             let bytecode = BootstrapTypeBuilder::<NonIndexedType>::new()
-                .field(usize_type.as_type(), false)
-                .field(bool.as_type(), false)
-                .field(usize_type.as_type(), false)
-                .field(usize_type.as_type(), false)
-                .field(vector_of_any.as_type(), false)
-                .field(vector_of_any.as_type(), false)
-                .field(vector_of_any.as_type(), false)
-                .indexed_field(u8_type.as_type(), false)
+                .field(usize_type.into(), false)
+                .field(bool.into(), false)
+                .field(usize_type.into(), false)
+                .field(usize_type.into(), false)
+                .field(vector_of_any.into(), false)
+                .field(vector_of_any.into(), false)
+                .field(vector_of_any.into(), false)
+                .indexed_field(u8_type.into(), false)
                 .build(|len| heap.alloc_indexed(r#type, len).map(NonNull::cast))?;
 
             let closure = BootstrapTypeBuilder::<NonIndexedType>::new()
-                .field(bytecode.as_type(), false)
+                .field(bytecode.into(), false)
                 .indexed_field(any, false)
                 .build(|len| heap.alloc_indexed(r#type, len).map(NonNull::cast))?;
 
@@ -234,9 +234,9 @@ impl Mutator {
                 .build(|| heap.alloc_indexed(r#type, 0).map(NonNull::cast))?;
 
             let native_fn = BootstrapTypeBuilder::<NonIndexedType>::new()
-                .field(usize_type.as_type(), false)
-                .field(bool.as_type(), false)
-                .field(fn_ptr.as_type(), false)
+                .field(usize_type.into(), false)
+                .field(bool.into(), false)
+                .field(fn_ptr.into(), false)
                 .build(|len| heap.alloc_indexed(r#type, len).map(NonNull::cast))?;
 
             let r#box = BootstrapTypeBuilder::<NonIndexedType>::new()
@@ -244,10 +244,10 @@ impl Mutator {
                 .build(|len| heap.alloc_indexed(r#type, len).map(NonNull::cast))?;
 
             let namespace = BootstrapTypeBuilder::<NonIndexedType>::new()
-                .field(usize_type.as_type(), true)
-                .field(usize_type.as_type(), true)
-                .field(vector_mut_of_any.as_type(), true)
-                .field(vector_mut_of_any.as_type(), true)
+                .field(usize_type.into(), true)
+                .field(usize_type.into(), true)
+                .field(vector_mut_of_any.into(), true)
+                .field(vector_mut_of_any.into(), true)
                 .build(|len| heap.alloc_indexed(r#type, len).map(NonNull::cast))?;
 
             let var = BootstrapTypeBuilder::<NonIndexedType>::new()

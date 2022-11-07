@@ -3,7 +3,7 @@ use std::mem::{size_of, align_of, transmute, swap};
 use std::ptr::{self, NonNull};
 use std::iter;
 
-use crate::oref::{AsType, Gc, ORef};
+use crate::oref::{Gc, ORef};
 use crate::r#type::{NonIndexedType, IndexedType, Type, Field};
 use crate::heap_obj::Header;
 
@@ -110,7 +110,7 @@ impl Heap {
         self.alloc_raw(layout, false).map(|obj| {
             // Initialize:
             let header = (obj.as_ptr() as *mut Header).offset(-1);
-            header.write(Header::new(r#type.as_type()));
+            header.write(Header::new(r#type.into()));
             ptr::write_bytes(obj.as_ptr(), 0, layout.size());
 
             obj
@@ -122,7 +122,7 @@ impl Heap {
 
         self.alloc_raw(layout, true).map(|obj| {
             // Initialize:
-            Header::initialize_indexed(obj, Header::new(r#type.as_type()), len);
+            Header::initialize_indexed(obj, Header::new(r#type.into()), len);
             ptr::write_bytes(obj.as_ptr(), 0, layout.size());
 
             obj
@@ -139,7 +139,7 @@ impl Heap {
             self.alloc_raw(layout, false).map(|nptr| {
                 // Initialize:
                 let header = (nptr.as_ptr() as *mut Header).offset(-1);
-                header.write(Header::new(r#type.as_type()));
+                header.write(Header::new(r#type.into()));
                 nptr.as_ptr().copy_from_nonoverlapping(obj.as_ptr() as *const u8, layout.size());
 
                 Gc::<()>::new_unchecked(nptr.cast::<()>())
@@ -151,7 +151,7 @@ impl Heap {
 
             self.alloc_raw(layout, true).map(|nptr| {
                 // Initialize:
-                Header::initialize_indexed(nptr, Header::new(r#type.as_type()), len);
+                Header::initialize_indexed(nptr, Header::new(r#type.into()), len);
                 nptr.as_ptr().copy_from_nonoverlapping(obj.as_ptr() as *const u8, layout.size());
 
                 Gc::<()>::new_unchecked(nptr.cast::<()>())
@@ -416,13 +416,13 @@ mod tests {
             let mut r#type = BitsType::from_static::<usize>(true);
             let r#type = Gc::new_unchecked(
                 NonNull::new_unchecked(&mut r#type as *mut BitsType)
-            ).as_nonindexed();
+            ).unchecked_cast::<NonIndexedType>();
 
             let v = heap.alloc_nonindexed(r#type);
 
             assert!(v.is_some());
             let obj = Gc::new_unchecked(v.unwrap().cast::<usize>());
-            assert_eq!(obj.r#type(), r#type.as_type());
+            assert_eq!(obj.r#type(), r#type.into());
             assert!(obj.forwarding_address().is_none());
             assert_eq!(*heap.borrow(obj), 0usize);
         }

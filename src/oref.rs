@@ -3,7 +3,7 @@ use std::mem::size_of;
 use std::ptr::NonNull;
 use pretty::RcDoc;
 
-use crate::r#type::{Type, NonIndexedType, IndexedType, BitsType};
+use crate::r#type::{Type, IndexedType};
 use crate::heap_obj::{Singleton, HeapObj, Header};
 use crate::mutator::{Mutator, WithinMt};
 use crate::list::{Pair, EmptyList};
@@ -41,7 +41,7 @@ impl ORef {
         Gc::new_unchecked(NonNull::new_unchecked(self.0 as *mut T))
     }
 
-    pub fn try_cast<T: Reify>(self, mt: &Mutator) -> Option<Gc<T>> where Gc<T::Kind>: AsType {
+    pub fn try_cast<T: Reify>(self, mt: &Mutator) -> Option<Gc<T>> where Gc<T::Kind>: Into<Gc<Type>> {
         if let Ok(obj) = Gc::<()>::try_from(self) {
             obj.try_cast::<T>(mt)
         } else {
@@ -49,7 +49,7 @@ impl ORef {
         }
     }
 
-    pub fn instance_of<T: Reify>(self, mt: &Mutator) -> bool where Gc<T::Kind>: AsType {
+    pub fn instance_of<T: Reify>(self, mt: &Mutator) -> bool where Gc<T::Kind>: Into<Gc<Type>> {
         if let Ok(obj) = Gc::<()>::try_from(self) {
             obj.instance_of::<T>(mt)
         } else {
@@ -99,11 +99,11 @@ impl<T> Gc<T> {
 }
 
 impl<T: HeapObj> Gc<T> {
-    pub fn instance_of<U: Reify>(self, mt: &Mutator) -> bool where Gc<U::Kind>: AsType {
-        mt.borrow(self).r#type() == U::reify(mt).as_type()
+    pub fn instance_of<U: Reify>(self, mt: &Mutator) -> bool where Gc<U::Kind>: Into<Gc<Type>> {
+        mt.borrow(self).r#type() == U::reify(mt).into()
     }
 
-    pub fn try_cast<U: Reify>(self, mt: &Mutator) -> Option<Gc<U>> where Gc<U::Kind>: AsType {
+    pub fn try_cast<U: Reify>(self, mt: &Mutator) -> Option<Gc<U>> where Gc<U::Kind>: Into<Gc<Type>> {
         if self.instance_of::<U>(mt) {
             Some(unsafe { self.unchecked_cast::<U>() })
         } else {
@@ -210,33 +210,5 @@ impl Gc<()> {
         } else {
             RcDoc::text(format!("{}", self.within(mt)))
         }
-    }
-}
-
-pub unsafe trait AsType {
-    fn as_type(self) -> Gc<Type>;
-}
-
-unsafe impl AsType for Gc<NonIndexedType> {
-    fn as_type(self) -> Gc<Type> {
-        unsafe { self.unchecked_cast::<Type>() }
-    }
-}
-
-unsafe impl AsType for Gc<IndexedType> {
-    fn as_type(self) -> Gc<Type> {
-        unsafe { self.unchecked_cast::<Type>() }
-    }
-}
-
-unsafe impl AsType for Gc<BitsType> {
-    fn as_type(self) -> Gc<Type> {
-        unsafe { self.unchecked_cast::<Type>() }
-    }
-}
-
-impl Gc<BitsType> {
-    pub fn as_nonindexed(self) -> Gc<NonIndexedType> {
-        unsafe { self.unchecked_cast::<NonIndexedType>() }
     }
 }

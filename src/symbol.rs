@@ -205,7 +205,6 @@ mod tests {
 
     use quickcheck_macros::quickcheck;
 
-    use crate::oref::AsType;
     use crate::handle::{HandleT, Root, root};
 
     #[test]
@@ -214,12 +213,12 @@ mod tests {
         let bootstrap_symbols_len = mt.symbols().len;
 
         let sym1 = Symbol::new(&mut mt, "foo");
-        assert_eq!(sym1.r#type(), mt.types().symbol.as_type());
+        assert_eq!(sym1.r#type(), mt.types().symbol.into());
         assert_eq!(mt.borrow(sym1).hash, hash::<DefaultHasher, _>("foo"));
         assert_eq!(mt.borrow(sym1).name(), "foo");
 
         let sym2 = Symbol::new(&mut mt, "bar");
-        assert_eq!(sym2.r#type(), mt.types().symbol.as_type());
+        assert_eq!(sym2.r#type(), mt.types().symbol.into());
         assert_eq!(mt.borrow(sym2).hash, hash::<DefaultHasher, _>("bar"));
         assert_eq!(mt.borrow(sym2).name(), "bar");
 
