@@ -194,6 +194,24 @@ impl<T> Gc<T> {
 }
 
 impl Gc<()> {
+    pub fn get_field(self, mt: &mut Mutator, index: usize) -> ORef {
+        let t = mt.borrow(self.r#type());
+
+        if t.has_indexed && index == t.fields().len() - 1 {
+            todo!() // Error: indexed field
+        }
+
+        let field_descr = t.fields().get(index).unwrap_or_else(|| {
+            todo!() // Error: field index out of bounds
+        });
+
+        if !mt.borrow(field_descr.r#type).inlineable {
+            unsafe { *((self.as_ptr() as *const u8).add(field_descr.offset) as *const ORef) }
+        } else {
+            todo!()
+        }
+    }
+
     pub fn to_doc(self, mt: &Mutator) -> RcDoc<()> {
         if let Some(pair) = self.try_cast::<Pair>(mt) {
             let mut doc = RcDoc::text("(").append(mt.borrow(pair).car().to_doc(mt));

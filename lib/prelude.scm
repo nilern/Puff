@@ -20,6 +20,18 @@
 
 (define null? (lambda (obj) (eq? obj '())))
 
+(define car
+  (lambda (pair)
+    (if (pair? pair)
+      (field-get pair 0)
+      (error "car: non-pair" pair))))
+
+(define cdr
+  (lambda (pair)
+    (if (pair? pair)
+      (field-get pair 1)
+      (error "car: non-pair" pair))))
+
 (define list (lambda ls ls))
 
 (define fold

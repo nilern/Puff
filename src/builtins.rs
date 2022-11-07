@@ -127,6 +127,23 @@ fn supertype(mt: &mut Mutator) -> Answer {
 
 pub const SUPERTYPE: NativeFn = NativeFn { min_arity: 2, varargs: false, code: supertype };
 
+fn field_get(mt: &mut Mutator) -> Answer {
+    let last_index = mt.regs().len() - 1;
+
+    let obj = Gc::<()>::try_from(mt.regs()[last_index - 1]).unwrap_or_else(|_| {
+        todo!() // error
+    });
+    let i = isize::from(Fixnum::try_from(mt.regs()[last_index]).unwrap_or_else(|_| {
+        todo!() // error
+    }));
+    if i < 0 { todo!() /* error */ } 
+
+    mt.regs_mut()[last_index] = obj.get_field(mt, i as usize);
+    Answer::Ret {retc: 1}
+}
+
+pub const FIELD_GET: NativeFn = NativeFn { min_arity: 3, varargs: false, code: field_get };
+
 fn is_pair(mt: &mut Mutator) -> Answer {
     let last_index = mt.regs().len() - 1;
 
@@ -163,40 +180,6 @@ pub const CONS: NativeFn = NativeFn {
     min_arity: 3,
     varargs: false,
     code: cons
-};
-
-fn car(mt: &mut Mutator) -> Answer {
-    let last_index = mt.regs().len() - 1;
-
-    let pair = mt.regs()[last_index].try_cast::<Pair>(mt).unwrap_or_else(||
-        todo!()
-    );
-
-    mt.regs_mut()[last_index] = mt.borrow(pair).car();
-    Answer::Ret {retc: 1}
-}
-
-pub const CAR: NativeFn = NativeFn {
-    min_arity: 2,
-    varargs: false,
-    code: car
-};
-
-fn cdr(mt: &mut Mutator) -> Answer {
-    let last_index = mt.regs().len() - 1;
-
-    let pair = mt.regs()[last_index].try_cast::<Pair>(mt).unwrap_or_else(||
-        todo!()
-    );
-
-    mt.regs_mut()[last_index] = mt.borrow(pair).cdr();
-    Answer::Ret {retc: 1}
-}
-
-pub const CDR: NativeFn = NativeFn {
-    min_arity: 2,
-    varargs: false,
-    code: cdr
 };
 
 fn set_car(mt: &mut Mutator) -> Answer {
