@@ -18,7 +18,7 @@ fn eval_string(mt: &mut Mutator, s: &str) -> ORef {
     let stx = res.unwrap();
     let code = compile(mt, stx.into(), mt.cfg().debug);
 
-    unsafe { verify(&mt, code.as_ref()) }.unwrap();
+    verify(&mt, mt.borrow(code)).unwrap();
 
     mt.push(code.into());
     let f = Closure::new(mt, 0);
@@ -34,12 +34,10 @@ fn assert_vector_equal(mt: &Mutator, v1: ORef, v2: ORef) {
     let v1 = v1.try_cast::<Vector<ORef>>(mt).unwrap();
     let v2 = v2.try_cast::<Vector<ORef>>(mt).unwrap();
 
-    unsafe {
-        assert_eq!(v1.as_ref().indexed_field().len(), v2.as_ref().indexed_field().len());
+    assert_eq!(mt.borrow(v1).indexed_field().len(), mt.borrow(v2).indexed_field().len());
 
-        for (v, u) in v1.as_ref().indexed_field().iter().zip(v2.as_ref().indexed_field().iter()) {
-            assert_eq!(v, u);
-        }
+    for (v, u) in mt.borrow(v1).indexed_field().iter().zip(mt.borrow(v2).indexed_field().iter()) {
+        assert_eq!(v, u);
     }
 }
 
@@ -47,12 +45,10 @@ fn assert_list_equal(mt: &Mutator, mut ls1: ORef, mut ls2: ORef) {
     loop {
         if let Some(pair1) = ls1.try_cast::<Pair>(mt) {
             if let Some(pair2) = ls2.try_cast::<Pair>(mt) {
-                unsafe {
-                    assert_eq!(pair1.as_ref().car(), pair2.as_ref().car());
+                assert_eq!(mt.borrow(pair1).car(), mt.borrow(pair2).car());
 
-                    ls1 = pair1.as_ref().cdr();
-                    ls2 = pair2.as_ref().cdr();
-                }
+                ls1 = mt.borrow(pair1).cdr();
+                ls2 = mt.borrow(pair2).cdr();
             } else {
                 assert!(false);
             }
