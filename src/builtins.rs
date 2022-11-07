@@ -133,12 +133,32 @@ fn field_get(mt: &mut Mutator) -> Answer {
     let obj = Gc::<()>::try_from(mt.regs()[last_index - 1]).unwrap_or_else(|_| {
         todo!() // error
     });
-    let i = isize::from(Fixnum::try_from(mt.regs()[last_index]).unwrap_or_else(|_| {
+    let index = isize::from(Fixnum::try_from(mt.regs()[last_index]).unwrap_or_else(|_| {
         todo!() // error
     }));
-    if i < 0 { todo!() /* error */ } 
+    let index = if index >= 0 {
+        index as usize
+    } else {
+        todo!() // error
+    };
 
-    mt.regs_mut()[last_index] = obj.get_field(mt, i as usize);
+    let t = mt.borrow(obj.r#type());
+
+    if t.has_indexed && index == t.fields().len() - 1 {
+        todo!() // Error: indexed field
+    }
+
+    let field_descr = t.fields().get(index).unwrap_or_else(|| {
+        todo!() // Error: field index out of bounds
+    });
+
+    let v = if !mt.borrow(field_descr.r#type).inlineable {
+        unsafe { *((obj.as_ptr() as *const u8).add(field_descr.offset) as *const ORef) }
+    } else {
+        todo!()
+    };
+
+    mt.regs_mut()[last_index] = v;
     Answer::Ret {retc: 1}
 }
 
