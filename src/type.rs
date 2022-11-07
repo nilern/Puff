@@ -4,9 +4,10 @@ use std::marker::PhantomData;
 use std::ptr::NonNull;
 
 use crate::heap::Heap;
-use crate::oref::{Gc, ORef};
+use crate::oref::{Reify, Gc, ORef};
 use crate::heap_obj::{HeapObj, Indexed, min_size_of_indexed, align_of_indexed,
     item_stride};
+use crate::mutator::Mutator;
 
 #[repr(C)]
 pub struct Field<T> {
@@ -47,6 +48,18 @@ pub struct Type {
     pub inlineable: bool,
 }
 
+unsafe impl HeapObj for Type {}
+
+unsafe impl Indexed for Type {
+    type Item = Field<Type>;
+}
+
+impl Reify for Type {
+    type Kind = IndexedType;
+
+    fn reify(mt: &Mutator) -> Gc<Self::Kind> { mt.types().r#type }
+}
+
 impl Type {
     pub const TYPE_LEN: usize = 6;
 
@@ -72,12 +85,6 @@ impl Type {
     }
 
     pub fn fields(&self) -> &[Field<Type>] { self.indexed_field() }
-}
-
-unsafe impl HeapObj for Type {}
-
-unsafe impl Indexed for Type {
-    type Item = Field<Type>;
 }
 
 #[repr(C)]

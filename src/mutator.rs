@@ -295,7 +295,7 @@ impl Mutator {
             // -----------------------------------------------------------------
 
             let ns = root!(&mut mt, mt.ns.unwrap());
-            for (name, f) in [("eq?", builtins::EQ),
+            for (name, f) in [("type-of", builtins::TYPE_OF), ("eq?", builtins::EQ),
                 ("fx+", builtins::FX_ADD), ("fx-", builtins::FX_SUB), ("fx*", builtins::FX_MUL),
                 ("pair?", builtins::IS_PAIR), ("null?", builtins::IS_NULL), ("cons", builtins::CONS),
                 ("car", builtins::CAR), ("cdr", builtins::CDR),

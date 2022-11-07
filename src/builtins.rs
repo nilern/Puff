@@ -98,6 +98,17 @@ pub const FX_MUL: NativeFn = NativeFn {
     code: fx_mul
 };
 
+fn type_of(mt: &mut Mutator) -> Answer {
+    let last_index = mt.regs().len() - 1;
+
+    let t = mt.regs()[last_index].r#type();
+
+    mt.regs_mut()[last_index] = t.into();
+    Answer::Ret {retc: 1}
+}
+
+pub const TYPE_OF: NativeFn = NativeFn { min_arity: 2, varargs: false, code: type_of };
+
 fn is_pair(mt: &mut Mutator) -> Answer {
     let last_index = mt.regs().len() - 1;
 

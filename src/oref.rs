@@ -37,6 +37,14 @@ impl ORef {
         WithinMt {v: self, mt}
     }
 
+    pub fn r#type(self) -> Gc<Type> {
+        if let Ok(obj) = Gc::<()>::try_from(self) {
+            obj.r#type()
+        } else {
+            todo!()
+        }
+    }
+
     pub unsafe fn unchecked_cast<T>(self) -> Gc<T> {
         Gc::new_unchecked(NonNull::new_unchecked(self.0 as *mut T))
     }

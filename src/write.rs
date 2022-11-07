@@ -13,6 +13,7 @@ use crate::mutator::{Mutator, WithinMt};
 use crate::symbol::Symbol;
 use crate::string::String;
 use crate::r#box::Box;
+use crate::r#type::Type;
 
 pub trait DisplayWithin {
     fn fmt_within(&self, mt: &Mutator, fmt: &mut fmt::Formatter) -> fmt::Result;
@@ -83,6 +84,8 @@ impl DisplayWithin for Gc<()> {
             }
 
             write!(fmt, ")")
+        } else if let Some(_) = self.try_cast::<Type>(mt) {
+            write!(fmt, "#<type>")
         } else if let Some(_) = self.try_cast::<Closure>(mt) {
             write!(fmt, "#<fn @ {:p}>", mt.borrow(*self))
         } else if let Some(_) = self.try_cast::<NativeFn>(mt) {
