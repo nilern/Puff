@@ -205,7 +205,7 @@ mod tests {
 
     use quickcheck_macros::quickcheck;
 
-    use crate::handle::{HandleT, Root, root};
+    use crate::handle::{Handle, Root, root};
 
     #[test]
     fn symbol_new() {
@@ -242,8 +242,8 @@ mod tests {
     fn multi_interned(names: Vec<String>) -> bool {
         let mut mt = Mutator::new(1 << 20 /* 1 MiB */, false).unwrap();
 
-        let syms1: Vec<HandleT<Symbol>> = names.iter().map(|name| root!(&mut mt, Symbol::new(&mut mt, name))).collect();
-        let syms2: Vec<HandleT<Symbol>> = names.iter().map(|name| root!(&mut mt, Symbol::new(&mut mt, name))).collect();
+        let syms1: Vec<Handle<Symbol>> = names.iter().map(|name| root!(&mut mt, Symbol::new(&mut mt, name))).collect();
+        let syms2: Vec<Handle<Symbol>> = names.iter().map(|name| root!(&mut mt, Symbol::new(&mut mt, name))).collect();
 
         syms1.iter().zip(syms2.iter()).all(|(sym1, sym2)| sym1.oref() == sym2.oref())
     }

@@ -12,7 +12,7 @@ mod emit;
 
 use crate::bytecode::Bytecode;
 use crate::oref::Gc;
-use crate::handle::{HandleAny, HandleT};
+use crate::handle::{HandleAny, Handle};
 use crate::mutator::Mutator;
 use crate::symbol::Symbol;
 use analyzer::analyze;
@@ -24,7 +24,7 @@ use emit::emit;
 pub struct Id(usize);
 
 impl Id {
-    pub fn src_fresh(cmp: &mut Compiler, name: HandleT<Symbol>) -> Self {
+    pub fn src_fresh(cmp: &mut Compiler, name: Handle<Symbol>) -> Self {
         let id = Self::fresh(cmp);
         cmp.names.insert(id, name);
         id
@@ -46,7 +46,7 @@ impl Id {
         id
     }
 
-    pub fn name(self, cmp: &Compiler) -> Option<HandleT<Symbol>> { cmp.names.get(&self).map(Clone::clone) }
+    pub fn name(self, cmp: &Compiler) -> Option<Handle<Symbol>> { cmp.names.get(&self).map(Clone::clone) }
 
     pub fn to_doc<'a>(self, cmp: &Compiler) -> RcDoc<'a, ()> {
         RcDoc::text(match cmp.names.get(&self) {
@@ -59,7 +59,7 @@ impl Id {
 pub struct Compiler<'a> {
     pub mt: &'a mut Mutator,
     id_counter: usize,
-    names: HashMap<Id, HandleT<Symbol>>
+    names: HashMap<Id, Handle<Symbol>>
 }
 
 impl<'a> Compiler<'a> {

@@ -3,7 +3,7 @@ use std::fs;
 use crate::native_fn::{NativeFn, Answer};
 use crate::mutator::Mutator;
 use crate::oref::{ORef, Gc};
-use crate::handle::{HandleT, Root, root};
+use crate::handle::{Handle, Root, root};
 use crate::fixnum::Fixnum;
 use crate::bool::Bool;
 use crate::string::String;
@@ -270,7 +270,7 @@ fn load(mt: &mut Mutator) -> Answer {
     };
 
     let mut reader = Reader::new(&s, Some(filename.clone()));
-    let mut builder: Option<(HandleT<Pair>, HandleT<Pair>)> = None;
+    let mut builder: Option<(Handle<Pair>, Handle<Pair>)> = None;
     while let Some(res) = reader.next(mt) {
         match res {
             Ok(stx) =>

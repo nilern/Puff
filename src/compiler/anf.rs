@@ -2,7 +2,7 @@ use std::collections::hash_set::HashSet;
 use pretty::RcDoc;
 
 use crate::oref::ORef;
-use crate::handle::{HandleAny, HandleT};
+use crate::handle::{HandleAny, Handle};
 use crate::compiler::{Compiler, Id};
 use crate::symbol::Symbol;
 use crate::mutator::Mutator;
@@ -15,8 +15,8 @@ pub enum Triv {
 }
 
 pub enum Expr {
-    Define(HandleT<Symbol>, Box<PosExpr>),
-    GlobalSet(HandleT<Symbol>, Box<PosExpr>),
+    Define(Handle<Symbol>, Box<PosExpr>),
+    GlobalSet(Handle<Symbol>, Box<PosExpr>),
 
     Begin(Vec<PosExpr>),
     Let(Vec<Binding>, Box<PosExpr>, LiveVars),
@@ -36,7 +36,7 @@ pub enum Expr {
     Call(Vec<Binding>, LiveVars),
     CallWithValues((Id, Box<PosExpr>), (Id, Box<PosExpr>), LiveVars),
 
-    Global(HandleT<Symbol>),
+    Global(Handle<Symbol>),
     CheckedUse {guard: Id, id: Id},
     Triv(Triv)
 }

@@ -8,7 +8,7 @@ use crate::oref::{Reify, ORef, Gc};
 use crate::heap_obj::Indexed;
 use crate::vector::Vector;
 use crate::mutator::Mutator;
-use crate::handle::{HandleAny, HandleT, Root, root};
+use crate::handle::{HandleAny, Handle, Root, root};
 use crate::r#type::IndexedType;
 use crate::compiler::cfg;
 use crate::symbol::Symbol;
@@ -330,7 +330,7 @@ impl DisplayWithin for Gc<Bytecode> {
 
 impl Bytecode {
     pub fn new(mt: &mut Mutator, min_arity: usize, varargs: bool, max_regs: usize, clovers_len: usize,
-        clover_names: HandleT<Vector<ORef>>, consts: HandleT<Vector<ORef>>, positions: HandleT<Vector<ORef>>,
+        clover_names: Handle<Vector<ORef>>, consts: Handle<Vector<ORef>>, positions: Handle<Vector<ORef>>,
         instrs: &[u8]
     ) -> Gc<Self> {
         unsafe {
@@ -580,7 +580,7 @@ pub struct Builder {
     varargs: bool,
     max_regs: usize,
     clovers_len: usize,
-    clover_names: HandleT<Vector<ORef>>,
+    clover_names: Handle<Vector<ORef>>,
     consts: Vec<HandleAny>,
     instrs: Vec<u8>,
     label_indices: HashMap<cfg::Label, usize>,
@@ -589,7 +589,7 @@ pub struct Builder {
 }
 
 impl Builder {
-    pub fn new(min_arity: usize, varargs: bool, max_regs: usize, clover_names: HandleT<Vector<ORef>>) -> Self {
+    pub fn new(min_arity: usize, varargs: bool, max_regs: usize, clover_names: Handle<Vector<ORef>>) -> Self {
         Self {
             min_arity,
             varargs,
@@ -605,7 +605,7 @@ impl Builder {
     }
 
     // TODO: Deduplicate constants
-    pub fn define(&mut self, name: HandleT<Symbol>, pos: HandleAny) {
+    pub fn define(&mut self, name: Handle<Symbol>, pos: HandleAny) {
         self.instrs.push(Opcode::Define as u8);
 
         let i = u8::try_from(self.consts.len()).unwrap();
@@ -615,7 +615,7 @@ impl Builder {
     }
 
     // TODO: Deduplicate constants
-    pub fn global_set(&mut self, name: HandleT<Symbol>, pos: HandleAny) {
+    pub fn global_set(&mut self, name: Handle<Symbol>, pos: HandleAny) {
         self.instrs.push(Opcode::GlobalSet as u8);
 
         let i = u8::try_from(self.consts.len()).unwrap();
@@ -625,7 +625,7 @@ impl Builder {
     }
 
     // TODO: Deduplicate constants
-    pub fn global(&mut self, name: HandleT<Symbol>, pos: HandleAny) {
+    pub fn global(&mut self, name: Handle<Symbol>, pos: HandleAny) {
         self.instrs.push(Opcode::Global as u8);
 
         let i = u8::try_from(self.consts.len()).unwrap();
@@ -720,7 +720,7 @@ impl Builder {
         self.positions.push(pos);
     }
 
-    pub fn r#fn(&mut self, code: HandleT<Bytecode>, len: usize, pos: HandleAny) {
+    pub fn r#fn(&mut self, code: Handle<Bytecode>, len: usize, pos: HandleAny) {
         self.instrs.push(Opcode::r#Fn as u8);
 
         let i = u8::try_from(self.consts.len()).unwrap();

@@ -4,7 +4,7 @@ use crate::symbol::Symbol;
 use crate::oref::{Reify, Gc, ORef};
 use crate::fixnum::Fixnum;
 use crate::mutator::Mutator;
-use crate::handle::{HandleAny, HandleT, Root, root};
+use crate::handle::{HandleAny, Handle, Root, root};
 use crate::heap_obj::{NonIndexed, Indexed};
 use crate::r#type::NonIndexedType;
 use crate::vector::VectorMut;
@@ -100,8 +100,8 @@ impl Namespace {
     }
 }
 
-impl HandleT<Namespace> {
-    pub fn add(self, mt: &mut Mutator, name: HandleT<Symbol>, v: HandleT<Var>) {
+impl Handle<Namespace> {
+    pub fn add(self, mt: &mut Mutator, name: Handle<Symbol>, v: Handle<Var>) {
         let hash = name.hash();
 
         loop {

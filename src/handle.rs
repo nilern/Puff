@@ -42,20 +42,20 @@ impl HandleAny {
 }
 
 impl HandleAny {
-    pub fn try_cast<U: Reify>(self, mt: &Mutator) -> Option<HandleT<U>> where Gc<U::Kind>: Into<Gc<Type>> {
-        match HandleT::<()>::try_from(self) {
+    pub fn try_cast<U: Reify>(self, mt: &Mutator) -> Option<Handle<U>> where Gc<U::Kind>: Into<Gc<Type>> {
+        match Handle::<()>::try_from(self) {
             Ok(obj_handle) => obj_handle.try_cast::<U>(mt),
             Err(()) => None
         }
     }
 }
 
-pub struct HandleT<T> {
+pub struct Handle<T> {
     handle: HandleAny,
     phantom: PhantomData<*const T>
 }
 
-impl<T> Deref for HandleT<T> {
+impl<T> Deref for Handle<T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -63,17 +63,17 @@ impl<T> Deref for HandleT<T> {
     }
 }
 
-impl<T> DerefMut for HandleT<T> {
+impl<T> DerefMut for Handle<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         unsafe { transmute::<_, &mut Self::Target>((*self.handle.0).oref.unchecked_cast::<T>().as_ptr()) }
     }
 }
 
-impl<T> Clone for HandleT<T> {
+impl<T> Clone for Handle<T> {
     fn clone(&self) -> Self { Self { handle: self.handle.clone(), phantom: self.phantom } }
 }
 
-impl TryFrom<HandleAny> for HandleT<()> {
+impl TryFrom<HandleAny> for Handle<()> {
     type Error = ();
 
     fn try_from(handle: HandleAny) -> Result<Self, Self::Error> {
@@ -85,18 +85,18 @@ impl TryFrom<HandleAny> for HandleT<()> {
     }
 }
 
-impl<T> From<HandleT<T>> for HandleAny {
-    fn from(typed: HandleT<T>) -> Self { typed.handle }
+impl<T> From<Handle<T>> for HandleAny {
+    fn from(typed: Handle<T>) -> Self { typed.handle }
 }
 
-impl<T> HandleT<T> {
+impl<T> Handle<T> {
     pub fn oref(&self) -> Gc<T> { unsafe { self.handle.oref().unchecked_cast::<T>() } }
 
-    unsafe fn unchecked_cast<U>(self) -> HandleT<U> { HandleT {handle: self.handle, phantom: PhantomData::default()} }
+    unsafe fn unchecked_cast<U>(self) -> Handle<U> { Handle {handle: self.handle, phantom: PhantomData::default()} }
 }
 
-impl<T: HeapObj> HandleT<T> {
-    pub fn try_cast<U: Reify>(self, mt: &Mutator) -> Option<HandleT<U>> where Gc<U::Kind>: Into<Gc<Type>> {
+impl<T: HeapObj> Handle<T> {
+    pub fn try_cast<U: Reify>(self, mt: &Mutator) -> Option<Handle<U>> where Gc<U::Kind>: Into<Gc<Type>> {
         if self.handle.oref().instance_of::<U>(mt) {
             Some(unsafe { self.unchecked_cast::<U>() })
         } else {
@@ -163,8 +163,8 @@ impl HandlePool {
         HandleAny(handle.as_ptr())
     }
 
-    pub unsafe fn root_t<T>(&mut self, obj: Gc<T>) -> HandleT<T> {
-        HandleT {
+    pub unsafe fn root_t<T>(&mut self, obj: Gc<T>) -> Handle<T> {
+        Handle {
             handle: self.root(obj.into()),
             phantom: Default::default()
         }
@@ -258,7 +258,7 @@ impl Root for ORef {
 }
 
 impl<T> Root for Gc<T> {
-    type Rooted = HandleT<T>;
+    type Rooted = Handle<T>;
 
     fn root(self, mt: &mut Mutator) -> Self::Rooted { mt.root_t(self) }
 }

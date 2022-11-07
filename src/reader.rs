@@ -1,5 +1,5 @@
 use crate::oref::{ORef, Gc};
-use crate::handle::{HandleAny, HandleT, Root, root};
+use crate::handle::{HandleAny, Handle, Root, root};
 use crate::mutator::Mutator;
 use crate::symbol::Symbol;
 use crate::list::{EmptyList, Pair};
@@ -12,14 +12,14 @@ use crate::fixnum::Fixnum;
 
 #[derive(Clone)]
 struct Pos {
-    filename: Option<HandleT<String>>,
+    filename: Option<Handle<String>>,
     index: usize,
     line: usize,
     col: usize
 }
 
 impl Pos {
-    fn default(filename: Option<HandleT<String>>) -> Self {
+    fn default(filename: Option<Handle<String>>) -> Self {
         Pos {
             filename,
             index: 0,
@@ -57,7 +57,7 @@ struct Input<'a> {
 }
 
 impl<'a> Input<'a> {
-    fn new(chars: &'a str, filename: Option<HandleT<String>>) -> Self {
+    fn new(chars: &'a str, filename: Option<Handle<String>>) -> Self {
         Input {
             chars: chars,
             pos: Pos::default(filename)
@@ -104,7 +104,7 @@ impl<'a> Iterator for Input<'a> {
 }
 
 // TODO: Proper error type:
-type ReadResult = Result<HandleT<Syntax>, ()>;
+type ReadResult = Result<Handle<Syntax>, ()>;
 
 pub struct Reader<'i> {
     input: Input<'i>
@@ -126,7 +126,7 @@ fn is_explicit_sign(c: char) -> bool { c == '+' || c == '-' }
 fn is_sign_subsequent(c: char) -> bool { is_initial(c) || is_explicit_sign(c) || c == '@' }
 
 impl<'i> Reader<'i> {
-    pub fn new(chars: &'i str, filename: Option<HandleT<String>>) -> Self {
+    pub fn new(chars: &'i str, filename: Option<Handle<String>>) -> Self {
         Reader { input: Input::new(chars, filename) }
     }
 
@@ -201,7 +201,7 @@ impl<'i> Reader<'i> {
         }
     }
 
-    fn read_symbol(&mut self, mt: &mut Mutator, first_pc: Positioned<char>) -> HandleT<Syntax> {
+    fn read_symbol(&mut self, mt: &mut Mutator, first_pc: Positioned<char>) -> Handle<Syntax> {
         while let Some(pc) = self.input.peek() {
             if is_subsequent(pc.v) {
                 self.input.next();
@@ -215,7 +215,7 @@ impl<'i> Reader<'i> {
         root!(mt, Syntax::new(mt, sym.into(), Some(start)))
     }
 
-    fn read_peculiar_identifier(&mut self, mt: &mut Mutator, sign: Positioned<char>) -> HandleT<Syntax> {
+    fn read_peculiar_identifier(&mut self, mt: &mut Mutator, sign: Positioned<char>) -> Handle<Syntax> {
         while let Some(pc) = self.input.peek() {
             if is_sign_subsequent(pc.v) {
                 self.input.next();
@@ -274,7 +274,7 @@ impl<'i> Reader<'i> {
             None => return Err(())
         };
 
-        let ls: HandleT<Pair> = root!(mt, Gc::<Pair>::new(mt, car, empty.clone()));
+        let ls: Handle<Pair> = root!(mt, Gc::<Pair>::new(mt, car, empty.clone()));
 
         // (<datum> ...
         let mut last_pair = ls.clone();

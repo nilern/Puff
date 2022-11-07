@@ -6,7 +6,7 @@ use crate::list::{Pair, EmptyList};
 use crate::compiler::anf::{self, PosExpr};
 use crate::heap_obj::Singleton;
 use crate::oref::{ORef, Gc};
-use crate::handle::{HandleT, HandleAny, Root, root};
+use crate::handle::{Handle, HandleAny, Root, root};
 use crate::symbol::Symbol;
 use crate::compiler::{Compiler, Id};
 use crate::syntax::Syntax;
@@ -16,7 +16,7 @@ pub fn analyze(cmp: &mut Compiler, expr: HandleAny) -> anf::PosExpr {
     use anf::Triv::*;
 
     enum Env {
-        Binding(Id, HandleT<Symbol>, Rc<Env>),
+        Binding(Id, Handle<Symbol>, Rc<Env>),
         Empty
     }
 
@@ -348,7 +348,7 @@ pub fn analyze(cmp: &mut Compiler, expr: HandleAny) -> anf::PosExpr {
         }
     }
 
-    fn analyze_call(cmp: &mut Compiler, env: &Rc<Env>, expr: HandleT<Pair>, pos: HandleAny) -> anf::PosExpr {
+    fn analyze_call(cmp: &mut Compiler, env: &Rc<Env>, expr: Handle<Pair>, pos: HandleAny) -> anf::PosExpr {
         let mut bindings = Vec::new();
 
         let callee = root!(cmp.mt, expr.car());

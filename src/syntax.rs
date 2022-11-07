@@ -1,5 +1,5 @@
 use crate::oref::{Reify, ORef, Gc};
-use crate::handle::{HandleAny, HandleT, Root, root};
+use crate::handle::{HandleAny, Handle, Root, root};
 use crate::mutator::Mutator;
 use crate::fixnum::Fixnum;
 use crate::heap_obj::{NonIndexed, Indexed};
@@ -24,7 +24,7 @@ impl Reify for Syntax {
 unsafe impl NonIndexed for Syntax {}
 
 impl Syntax {
-    pub fn new(mt: &mut Mutator, expr: HandleAny, pos: Option<HandleT<Pos>>) -> Gc<Self> {
+    pub fn new(mt: &mut Mutator, expr: HandleAny, pos: Option<Handle<Pos>>) -> Gc<Self> {
         unsafe {
             let nptr = mt.alloc_static::<Self>();
             nptr.as_ptr().write(Self {
@@ -91,7 +91,7 @@ impl Reify for Pos {
 unsafe impl NonIndexed for Pos {}
 
 impl Pos {
-    pub fn new(mt: &mut Mutator, filename: Option<HandleT<String>>, line: Fixnum, column: Fixnum) -> Gc<Self> {
+    pub fn new(mt: &mut Mutator, filename: Option<Handle<String>>, line: Fixnum, column: Fixnum) -> Gc<Self> {
         unsafe {
             let nptr = mt.alloc_static::<Self>();
             nptr.as_ptr().write(Self {

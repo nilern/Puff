@@ -2,7 +2,7 @@ use std::fmt;
 use std::collections::hash_set::HashSet;
 
 use crate::oref::ORef;
-use crate::handle::{HandleAny, HandleT};
+use crate::handle::{HandleAny, Handle};
 use crate::mutator::{Mutator, WithinMt};
 use crate::symbol::Symbol;
 use crate::vector::Vector;
@@ -21,9 +21,9 @@ impl fmt::Display for Label {
 }
 
 pub enum Instr {
-    Define(HandleT<Symbol>),
-    GlobalSet(HandleT<Symbol>),
-    Global(HandleT<Symbol>),
+    Define(Handle<Symbol>),
+    GlobalSet(Handle<Symbol>),
+    Global(Handle<Symbol>),
 
     Const(HandleAny),
     Local(usize),
@@ -119,7 +119,7 @@ pub struct Fn {
     pub min_arity: usize,
     pub varargs: bool,
     pub max_regs: usize,
-    pub clover_names: HandleT<Vector<ORef>>,
+    pub clover_names: Handle<Vector<ORef>>,
     pub blocks: Vec<Block>
 }
 
@@ -128,7 +128,7 @@ impl DisplayWithin for &Fn {
 }
 
 impl Fn {
-    pub fn new(min_arity: usize, varargs: bool, max_regs: usize, clover_names: HandleT<Vector<ORef>>) -> Self {
+    pub fn new(min_arity: usize, varargs: bool, max_regs: usize, clover_names: Handle<Vector<ORef>>) -> Self {
         Fn { min_arity, varargs, max_regs, clover_names, blocks: Vec::new() }
     }
 

@@ -9,7 +9,7 @@ use crate::r#type::{Type, Field, IndexedType, NonIndexedType, BitsType, Bootstra
 use crate::symbol::{Symbol, SymbolTable};
 use crate::heap_obj::{NonIndexed, Indexed, Singleton, Header, min_size_of_indexed,
     align_of_indexed};
-use crate::handle::{HandleAny, HandleT, HandlePool, Root, root};
+use crate::handle::{HandleAny, Handle, HandlePool, Root, root};
 use crate::list::{EmptyList, Pair};
 use crate::bytecode::{Opcode, Bytecode, decode_prune_mask};
 use crate::vector::Vector;
@@ -394,7 +394,7 @@ impl Mutator {
         unsafe { self.handles.root(oref) }
     }
 
-    pub fn root_t<T>(&mut self, obj: Gc<T>) -> HandleT<T> {
+    pub fn root_t<T>(&mut self, obj: Gc<T>) -> Handle<T> {
         unsafe { self.handles.root_t(obj) }
     }
 
