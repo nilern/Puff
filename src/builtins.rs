@@ -128,21 +128,6 @@ pub const IS_PAIR: NativeFn = NativeFn {
     code: is_pair
 };
 
-fn is_null(mt: &mut Mutator) -> Answer {
-    let last_index = mt.regs().len() - 1;
-
-    let res = mt.regs()[last_index] == EmptyList::instance(mt).into();
-
-    mt.regs_mut()[last_index] = Bool::instance(mt, res).into();
-    Answer::Ret {retc: 1}
-}
-
-pub const IS_NULL: NativeFn = NativeFn {
-    min_arity: 2,
-    varargs: false,
-    code: is_null
-};
-
 fn cons(mt: &mut Mutator) -> Answer {
     let last_index = mt.regs().len() - 1;
 

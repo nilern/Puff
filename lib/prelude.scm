@@ -7,6 +7,8 @@
 
 (define not (lambda (obj) (if obj #f #t)))
 
+(define null? (lambda (obj) (eq? obj '())))
+
 (define list (lambda ls ls))
 
 (define fold
