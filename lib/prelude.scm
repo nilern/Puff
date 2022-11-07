@@ -105,6 +105,23 @@
 
 (define memq (lambda (obj list) (member obj list eq?)))
 
+(define assoc
+  (lambda (obj alist compare)
+    (letrec ((assoc (lambda (als)
+                      (if (pair? als)
+                        (letrec ((entry (car als)))
+                          (if (pair? entry)
+                            (if (compare (car entry) obj)
+                              entry
+                              (assoc (cdr als)))
+                            (error "assoc: non-pair list element" entry alist)))
+                        (if (null? als)
+                          #f
+                          (error "assoc: improper list" alist))))))
+      (assoc alist))))
+
+(define assq (lambda (obj alist) (assoc obj alist eq?)))
+
 (define list-copy
   (lambda (list)
     (if (pair? list)
