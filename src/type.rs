@@ -85,6 +85,8 @@ impl Type {
     }
 
     pub fn fields(&self) -> &[Field<Type>] { self.indexed_field() }
+
+    pub fn supertype(&self) -> Option<Gc<Type>> { None } // FIXME
 }
 
 #[repr(C)]

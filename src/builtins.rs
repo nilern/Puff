@@ -15,6 +15,7 @@ use crate::compiler::compile;
 use crate::closure::Closure;
 use crate::verifier::verify;
 use crate::syntax::{Pos, Syntax};
+use crate::r#type::Type;
 
 fn eq(mt: &mut Mutator) -> Answer {
     let res = mt.regs()[mt.regs().len() - 1] == mt.regs()[mt.regs().len() - 2];
@@ -108,6 +109,23 @@ fn type_of(mt: &mut Mutator) -> Answer {
 }
 
 pub const TYPE_OF: NativeFn = NativeFn { min_arity: 2, varargs: false, code: type_of };
+
+fn supertype(mt: &mut Mutator) -> Answer {
+    let last_index = mt.regs().len() - 1;
+
+    let t = mt.regs()[last_index].try_cast::<Type>(mt).unwrap_or_else(|| {
+        todo!() // error
+    });
+    let sup = match mt.borrow(t).supertype() {
+        Some(sup) => sup.into(),
+        None => Bool::instance(mt, false).into()
+    };
+
+    mt.regs_mut()[last_index] = sup;
+    Answer::Ret {retc: 1}
+}
+
+pub const SUPERTYPE: NativeFn = NativeFn { min_arity: 2, varargs: false, code: supertype };
 
 fn is_pair(mt: &mut Mutator) -> Answer {
     let last_index = mt.regs().len() - 1;
