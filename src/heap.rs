@@ -105,7 +105,7 @@ impl Heap {
     }
 
     pub unsafe fn alloc_nonindexed(&mut self, r#type: Gc<NonIndexedType>) -> Option<NonNull<u8>> {
-        let layout = r#type.as_ref().layout();
+        let layout = self.borrow(r#type).layout();
 
         self.alloc_raw(layout, false).map(|obj| {
             // Initialize:
@@ -118,7 +118,7 @@ impl Heap {
     }
 
     pub unsafe fn alloc_indexed(&mut self, r#type: Gc<IndexedType>, len: usize) -> Option<NonNull<u8>> {
-        let layout = r#type.as_ref().layout(len);
+        let layout = self.borrow(r#type).layout(len);
 
         self.alloc_raw(layout, true).map(|obj| {
             // Initialize:
@@ -132,9 +132,9 @@ impl Heap {
     unsafe fn shallow_copy(&mut self, obj: Gc<()>) -> Option<Gc<()>> {
         let r#type = obj.r#type();
 
-        if !r#type.as_ref().has_indexed {
+        if !self.borrow(r#type).has_indexed {
             let r#type = r#type.unchecked_cast::<NonIndexedType>();
-            let layout = r#type.as_ref().layout();
+            let layout = self.borrow(r#type).layout();
 
             self.alloc_raw(layout, false).map(|nptr| {
                 // Initialize:
@@ -147,7 +147,7 @@ impl Heap {
         } else {
             let r#type = r#type.unchecked_cast::<IndexedType>();
             let len = *((obj.as_ptr() as *const Header).offset(-1) as *const usize).offset(-1);
-            let layout = r#type.as_ref().layout(len);
+            let layout = self.borrow(r#type).layout(len);
 
             self.alloc_raw(layout, true).map(|nptr| {
                 // Initialize:
@@ -158,6 +158,10 @@ impl Heap {
             })
         }
     }
+
+    /// Deref `oref`. This is safe because allocation and thus GC is impossible while a `&Heap` exists.
+    /// Idea from the Josephine SpiderMonkey bindings (although I had the same intuition before hearing about that).
+    pub fn borrow<'a, T>(&'a self, oref: Gc<T>) -> &'a T { unsafe { transmute(oref.as_ref()) } }
 
     pub unsafe fn flip(&mut self) {
         swap(&mut self.fromspace, &mut self.tospace);
@@ -213,7 +217,7 @@ impl Heap {
 
     // TODO: Avoid scan_field & scan_fields mutual recursion (although it is unlikely to be very deep):
     unsafe fn scan_field(&mut self, r#type: Gc<Type>, data: *mut u8) {
-        if !r#type.as_ref().inlineable {
+        if !self.borrow(r#type).inlineable {
             self.mark(data as *mut usize);
         } else {
             self.scan_fields(r#type, data);
@@ -221,8 +225,8 @@ impl Heap {
     }
 
     unsafe fn scan_fields(&mut self, r#type: Gc<Type>, data: *mut u8) {
-        if !r#type.as_ref().is_bits {
-            if !r#type.as_ref().has_indexed {
+        if !self.borrow(r#type).is_bits {
+            if !self.borrow(r#type).has_indexed {
                 for field in r#type.as_ref().fields() {
                     self.scan_field(field.r#type, data.add(field.offset));
                 }
@@ -236,8 +240,8 @@ impl Heap {
 
                 let indexed_field = fields[last_index];
                 let indexed_field_type = indexed_field.r#type;
-                if !indexed_field_type.as_ref().is_bits {
-                    let stride = indexed_field_type.unchecked_cast::<NonIndexedType>().as_ref().stride();
+                if !self.borrow(indexed_field_type).is_bits {
+                    let stride = self.borrow(indexed_field_type.unchecked_cast::<NonIndexedType>()).stride();
                     let len = *((data as *const Header).offset(-1) as *const usize).offset(-1);
                     let mut data = data.add(indexed_field.offset);
                     for _ in 0..len {
@@ -277,12 +281,12 @@ impl Heap {
         let r#type = obj.r#type();
 
         let data = obj.as_ptr() as *const u8;
-        if data as usize % r#type.as_ref().align != 0 {
+        if data as usize % self.borrow(r#type).align != 0 {
             return Err(VerificationError::MisalignedObject);
         }
         match next_obj {
             Some(next_obj) => {
-                let next_obj_header_start = if !next_obj.r#type().as_ref().has_indexed {
+                let next_obj_header_start = if !self.borrow(next_obj.r#type()).has_indexed {
                     (next_obj.as_ptr() as *const Header).offset(-1) as usize
                 } else {
                     ((next_obj.as_ptr() as *const Header).offset(-1) as *const usize).offset(-1) as usize
@@ -303,7 +307,7 @@ impl Heap {
             return Err(VerificationError::TypeNotInTospace);
         }
 
-        self.verify_fields(obj, r#type.as_ref(), data)
+        self.verify_fields(obj, self.borrow(r#type), data)
     }
 
     unsafe fn verify_fields(&self, obj: Gc<()>, r#type: &Type, data: *const u8) -> Result<(), VerificationError> {
@@ -324,8 +328,8 @@ impl Heap {
 
                 let indexed_field_descr = &field_descrs[last_index];
                 let indexed_field_type = indexed_field_descr.r#type;
-                if !indexed_field_type.as_ref().is_bits {
-                    let stride = indexed_field_type.unchecked_cast::<NonIndexedType>().as_ref().stride();
+                if !self.borrow(indexed_field_type).is_bits {
+                    let stride = self.borrow(indexed_field_type.unchecked_cast::<NonIndexedType>()).stride();
                     let len = *((data as *const Header).offset(-1) as *const usize).offset(-1);
                     let mut data = data.add(indexed_field_descr.offset);
                     for _ in 0..len {
@@ -348,14 +352,14 @@ impl Heap {
             return Err(VerificationError::FieldOffsetBounds);
         }
 
-        if descr.offset % descr.r#type.as_ref().align != 0 {
+        if descr.offset % self.borrow(descr.r#type).align != 0 {
             return Err(VerificationError::MisalignedField);
         }
 
-        let field_size = if !descr.r#type.as_ref().inlineable {
+        let field_size = if !self.borrow(descr.r#type).inlineable {
             size_of::<ORef>()
         } else {
-            descr.r#type.as_ref().min_size
+            self.borrow(descr.r#type).min_size
         };
         let field_end = descr.offset + field_size;
         if field_end > obj_size {
@@ -366,13 +370,13 @@ impl Heap {
             return Err(VerificationError::FieldTypeNotInTospace);
         }
 
-        if !descr.r#type.as_ref().inlineable {
+        if !self.borrow(descr.r#type).inlineable {
             let oref = data as *const usize;
             if *oref != 0 {
                 self.verify_oref(*(oref as *const ORef))?;
             }
         } else {
-            self.verify_fields(obj, descr.r#type.as_ref(), data)?;
+            self.verify_fields(obj, self.borrow(descr.r#type), data)?;
         }
 
         Ok(())
@@ -420,7 +424,7 @@ mod tests {
             let obj = Gc::new_unchecked(v.unwrap().cast::<usize>());
             assert_eq!(obj.r#type(), r#type.as_type());
             assert!(obj.forwarding_address().is_none());
-            assert_eq!(*obj.as_ref(), 0usize);
+            assert_eq!(*heap.borrow(obj), 0usize);
         }
     }
 }
