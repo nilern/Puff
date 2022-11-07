@@ -8,7 +8,7 @@ use crate::oref::{Reify, ORef, Gc};
 use crate::heap_obj::Indexed;
 use crate::vector::Vector;
 use crate::mutator::Mutator;
-use crate::handle::{HandleAny, Handle, Root, root};
+use crate::handle::{HandleAny, Handle, HandleRef, Root, root};
 use crate::r#type::IndexedType;
 use crate::compiler::cfg;
 use crate::symbol::Symbol;
@@ -330,7 +330,7 @@ impl DisplayWithin for Gc<Bytecode> {
 
 impl Bytecode {
     pub fn new(mt: &mut Mutator, min_arity: usize, varargs: bool, max_regs: usize, clovers_len: usize,
-        clover_names: Handle<Vector<ORef>>, consts: Handle<Vector<ORef>>, positions: Handle<Vector<ORef>>,
+        clover_names: HandleRef<Vector<ORef>>, consts: HandleRef<Vector<ORef>>, positions: HandleRef<Vector<ORef>>,
         instrs: &[u8]
     ) -> Gc<Self> {
         unsafe {
@@ -779,7 +779,7 @@ impl Builder {
 
         let consts = root!(mt, Vector::<ORef>::from_handles(mt, &self.consts));
         let positions = root!(mt, Vector::<ORef>::from_handles(mt, &self.positions));
-        Bytecode::new(mt, self.min_arity, self.varargs, self.max_regs, self.clovers_len, self.clover_names, consts,
-            positions, &self.instrs)
+        Bytecode::new(mt, self.min_arity, self.varargs, self.max_regs, self.clovers_len, self.clover_names.borrow(),
+            consts.borrow(), positions.borrow(), &self.instrs)
     }
 }

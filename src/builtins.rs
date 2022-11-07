@@ -276,12 +276,12 @@ fn load(mt: &mut Mutator) -> Answer {
             Ok(stx) =>
                 if let Some((_, ref mut last_pair)) = builder {
                     let nil = root!(mt, ORef::from(EmptyList::instance(mt)));
-                    let pair = Gc::<Pair>::new(mt, stx.into(), nil);
+                    let pair = Gc::<Pair>::new(mt, stx.borrow().into(), nil.borrow());
                     last_pair.set_cdr(pair.into());
                     *last_pair = root!(mt, pair);
                 } else {
                     let nil = root!(mt, ORef::from(EmptyList::instance(mt)));
-                    let pair = root!(mt, Gc::<Pair>::new(mt, stx.into(), nil));
+                    let pair = root!(mt, Gc::<Pair>::new(mt, stx.borrow().into(), nil.borrow()));
                     builder = Some((pair.clone(), pair));
                 },
             Err(()) => todo!()
@@ -292,15 +292,15 @@ fn load(mt: &mut Mutator) -> Answer {
         None => root!(mt, ORef::from(EmptyList::instance(mt)))
     };
 
-    let start = root!(mt, Pos::new(mt, Some(filename), Fixnum::from(1u8), Fixnum::from(1u8)));
+    let start = root!(mt, Pos::new(mt, Some(filename.borrow()), Fixnum::from(1u8), Fixnum::from(1u8)));
     let sexpr = { // `(begin ,@sexprs)
         let begin = {
             let begin = root!(mt, Symbol::new(mt, "begin"));
-            root!(mt, Syntax::new(mt, begin.into(), Some(start.clone())))
+            root!(mt, Syntax::new(mt, begin.borrow().into(), Some(start.borrow())))
         };
-        root!(mt, Gc::<Pair>::new(mt, begin.into(), sexprs))
+        root!(mt, Gc::<Pair>::new(mt, begin.borrow().into(), sexprs.borrow()))
     };
-    let stx = root!(mt, Syntax::new(mt, sexpr.into(), Some(start)));
+    let stx = root!(mt, Syntax::new(mt, sexpr.borrow().into(), Some(start.borrow())));
 
     mt.push_global("eval-syntax");
     mt.push(stx.oref().into());

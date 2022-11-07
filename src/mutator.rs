@@ -305,8 +305,8 @@ impl Mutator {
             ] {
                 let name = root!(&mut mt, Symbol::new(&mut mt, name));
                 let f = root!(&mut mt, NativeFn::new(&mut mt, f));
-                let var = root!(&mut mt, Var::new(&mut mt, f.into()));
-                ns.clone().add(&mut mt, name, var);
+                let var = root!(&mut mt, Var::new(&mut mt, f.borrow().into()));
+                ns.clone().add(&mut mt, name.borrow(), var.borrow());
             }
 
             // -----------------------------------------------------------------
@@ -674,7 +674,7 @@ impl Mutator {
                         } else {
                             unsafe {
                                 let var = root!(self, Var::new_uninitialized(self));
-                                root!(self, self.ns.unwrap()).add(self, name, var.clone());
+                                root!(self, self.ns.unwrap()).add(self, name.borrow(), var.borrow());
                                 let v = self.regs.pop().unwrap();
                                 var.init(v); // Avoids allocating a HandleAny for `v`
                                 self.regs.push_unchecked(v); // HACK?

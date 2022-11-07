@@ -4,7 +4,7 @@ use crate::symbol::Symbol;
 use crate::oref::{Reify, Gc, ORef};
 use crate::fixnum::Fixnum;
 use crate::mutator::Mutator;
-use crate::handle::{HandleAny, Handle, Root, root};
+use crate::handle::{Handle, HandleRefAny, HandleRef, Root, root};
 use crate::heap_obj::{NonIndexed, Indexed};
 use crate::r#type::NonIndexedType;
 use crate::vector::VectorMut;
@@ -25,7 +25,7 @@ impl Reify for Var {
 impl Var {
     pub unsafe fn new_uninitialized(mt: &mut Mutator) -> Gc<Self> { Gc::new_unchecked(mt.alloc_static::<Self>()) }
 
-    pub fn new(mt: &mut Mutator, value: HandleAny) -> Gc<Self> {
+    pub fn new(mt: &mut Mutator, value: HandleRefAny) -> Gc<Self> {
         unsafe {
             let nptr = mt.alloc_static::<Self>();
             nptr.as_ptr().write(Self { value: Cell::new(value.oref()) });
@@ -101,7 +101,7 @@ impl Namespace {
 }
 
 impl Handle<Namespace> {
-    pub fn add(self, mt: &mut Mutator, name: Handle<Symbol>, v: Handle<Var>) {
+    pub fn add(self, mt: &mut Mutator, name: HandleRef<Symbol>, v: HandleRef<Var>) {
         let hash = name.hash();
 
         loop {
@@ -184,20 +184,20 @@ mod tests {
 
         assert_eq!(ns.get(foo.oref()), None);
 
-        let var = root!(&mut mt, Var::new(&mut mt, one.clone()));
-        ns.clone().add(&mut mt, foo.clone(), var);
+        let var = root!(&mut mt, Var::new(&mut mt, one.borrow()));
+        ns.clone().add(&mut mt, foo.borrow(), var.borrow());
         assert_eq!(mt.borrow(ns.get(foo.oref()).unwrap()).value(), one.oref());
         assert_eq!(ns.get(bar.oref()), None);
         assert_eq!(ns.get(baz.oref()), None);
 
-        let var = root!(&mut mt, Var::new(&mut mt, two.clone()));
-        ns.clone().add(&mut mt, bar.clone(), var);
+        let var = root!(&mut mt, Var::new(&mut mt, two.borrow()));
+        ns.clone().add(&mut mt, bar.borrow(), var.borrow());
         assert_eq!(mt.borrow(ns.get(foo.oref()).unwrap()).value(), one.oref());
         assert_eq!(mt.borrow(ns.get(bar.oref()).unwrap()).value(), two.oref());
         assert_eq!(ns.get(baz.oref()), None);
 
-        let var = root!(&mut mt, Var::new(&mut mt, three.clone()));
-        ns.clone().add(&mut mt, baz.clone(), var);
+        let var = root!(&mut mt, Var::new(&mut mt, three.borrow()));
+        ns.clone().add(&mut mt, baz.borrow(), var.borrow());
         assert_eq!(mt.borrow(ns.get(foo.oref()).unwrap()).value(), one.oref());
         assert_eq!(mt.borrow(ns.get(bar.oref()).unwrap()).value(), two.oref());
         assert_eq!(mt.borrow(ns.get(baz.oref()).unwrap()).value(), three.oref());
@@ -210,8 +210,8 @@ mod tests {
 
         let k = root!(&mut mt, Symbol::new(&mut mt, &k));
         let v = root!(&mut mt, ORef::from(Fixnum::from(v)));
-        let var = root!(&mut mt, Var::new(&mut mt, v.clone()));
-        ns.clone().add(&mut mt, k.clone(), var);
+        let var = root!(&mut mt, Var::new(&mut mt, v.borrow()));
+        ns.clone().add(&mut mt, k.borrow(), var.borrow());
 
         mt.borrow(ns.get(k.oref()).unwrap()).value() == v.oref()
     }
@@ -228,8 +228,8 @@ mod tests {
         for (k, v) in kvs.iter() {
             let k = root!(&mut mt, Symbol::new(&mut mt, k));
             let v = root!(&mut mt, ORef::from(Fixnum::from(*v)));
-            let var = root!(&mut mt, Var::new(&mut mt, v.clone()));
-            ns.clone().add(&mut mt, k.clone(), var);
+            let var = root!(&mut mt, Var::new(&mut mt, v.borrow()));
+            ns.clone().add(&mut mt, k.borrow(), var.borrow());
         }
 
         kvs.iter().all(|(k, v)| {

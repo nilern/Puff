@@ -11,6 +11,40 @@ use crate::mutator::Mutator;
 use crate::heap::{self, Heap};
 use crate::r#type::Type;
 
+pub struct HandleRef<'a, T>(&'a Gc<T>);
+
+impl<'a, T> Clone for HandleRef<'a, T> {
+    fn clone(&self) -> Self { Self(self.0) }
+}
+
+impl<'a, T> Copy for HandleRef<'a, T> {}
+
+impl<'a, T> Deref for HandleRef<'a, T> {
+    type Target = T;
+
+    fn deref(&self) -> &'a Self::Target { unsafe { self.0.as_ref() } }
+}
+
+impl<'a, T> HandleRef<'a, T> {
+    pub fn oref(self) -> Gc<T> { *self.0 }
+}
+
+pub struct HandleRefAny<'a>(&'a ORef);
+
+impl<'a> Clone for HandleRefAny<'a> {
+    fn clone(&self) -> Self { Self(self.0) }
+}
+
+impl<'a> Copy for HandleRefAny<'a> {}
+
+impl<'a, T> From<HandleRef<'a, T>> for HandleRefAny<'a> {
+    fn from(href: HandleRef<'a, T>) -> Self { Self(unsafe { transmute::<&'a Gc<T>, &'a ORef>(href.0) }) }
+}
+
+impl<'a> HandleRefAny<'a> {
+    pub fn oref(self) -> ORef { *self.0 }
+}
+
 struct LiveHandleImpl {
     oref: ORef,
     rc: Cell<usize>,
@@ -42,6 +76,8 @@ impl HandleAny {
 }
 
 impl HandleAny {
+    pub fn borrow<'a>(&self) -> HandleRefAny<'a> { HandleRefAny(unsafe { &(*self.0).oref }) }
+
     pub fn try_cast<U: Reify>(self, mt: &Mutator) -> Option<Handle<U>> where Gc<U::Kind>: Into<Gc<Type>> {
         match Handle::<()>::try_from(self) {
             Ok(obj_handle) => obj_handle.try_cast::<U>(mt),
@@ -91,6 +127,10 @@ impl<T> From<Handle<T>> for HandleAny {
 
 impl<T> Handle<T> {
     pub fn oref(&self) -> Gc<T> { unsafe { self.handle.oref().unchecked_cast::<T>() } }
+
+    pub fn borrow<'a>(&'a self) -> HandleRef<'a, T> {
+        HandleRef(unsafe { transmute::<&ORef, &Gc<T>>(&(*self.handle.0).oref) })
+    }
 
     unsafe fn unchecked_cast<U>(self) -> Handle<U> { Handle {handle: self.handle, phantom: PhantomData::default()} }
 }

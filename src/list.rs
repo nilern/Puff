@@ -1,7 +1,7 @@
 use std::cell::Cell;
 
 use crate::oref::{Reify, ORef, Gc};
-use crate::handle::HandleAny;
+use crate::handle::HandleRefAny;
 use crate::heap_obj::{NonIndexed, Singleton};
 use crate::mutator::Mutator;
 use crate::r#type::NonIndexedType;
@@ -46,7 +46,7 @@ impl Pair {
 }
 
 impl Gc<Pair> {
-    pub fn new(mt: &mut Mutator, car: HandleAny, cdr: HandleAny) -> Self {
+    pub fn new(mt: &mut Mutator, car: HandleRefAny, cdr: HandleRefAny) -> Self {
         unsafe {
             let nptr = mt.alloc_static::<Pair>();
             nptr.as_ptr().write(Pair::new(car.oref(), cdr.oref()));

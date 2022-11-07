@@ -86,11 +86,11 @@ fn test_quote() {
 
     let ls1 = eval_string(&mut mt, "(quote (+ 1 2))");
     let ls1 = mt.root(ls1);
-    let ls2 = Gc::<Pair>::new(&mut mt, two.clone(), empty_list.clone());
+    let ls2 = Gc::<Pair>::new(&mut mt, two.borrow(), empty_list.borrow());
     let ls2 = mt.root(ls2.into());
-    let ls2 = Gc::<Pair>::new(&mut mt, one.clone(), ls2);
+    let ls2 = Gc::<Pair>::new(&mut mt, one.borrow(), ls2.borrow());
     let ls2 = mt.root(ls2.into());
-    let ls2 = Gc::<Pair>::new(&mut mt, plus.clone(), ls2);
+    let ls2 = Gc::<Pair>::new(&mut mt, plus.borrow(), ls2.borrow());
     assert_list_equal(&mt, ls1.oref(), ls2.into());
 
     assert_eq!(eval_string(&mut mt, "'a"), a.oref().into());
@@ -104,25 +104,25 @@ fn test_quote() {
 
     let ls1 = eval_string(&mut mt, "'(+ 1 2)");
     let ls1 = mt.root(ls1);
-    let ls2 = Gc::<Pair>::new(&mut mt, two, empty_list.clone());
+    let ls2 = Gc::<Pair>::new(&mut mt, two.borrow(), empty_list.borrow());
     let ls2 = mt.root(ls2.into());
-    let ls2 = Gc::<Pair>::new(&mut mt, one, ls2);
+    let ls2 = Gc::<Pair>::new(&mut mt, one.borrow(), ls2.borrow());
     let ls2 = mt.root(ls2.into());
-    let ls2 = Gc::<Pair>::new(&mut mt, plus, ls2);
+    let ls2 = Gc::<Pair>::new(&mut mt, plus.borrow(), ls2.borrow());
     assert_list_equal(&mt, ls1.oref(), ls2.into());
 
     let ls1 = eval_string(&mut mt, "'(quote a)");
     let ls1 = mt.root(ls1);
-    let ls2 = Gc::<Pair>::new(&mut mt, a.clone(), empty_list.clone());
+    let ls2 = Gc::<Pair>::new(&mut mt, a.borrow(), empty_list.borrow());
     let ls2 = mt.root(ls2.into());
-    let ls2 = Gc::<Pair>::new(&mut mt, quote.clone(), ls2);
+    let ls2 = Gc::<Pair>::new(&mut mt, quote.borrow(), ls2.borrow());
     assert_list_equal(&mt, ls1.oref(), ls2.into());
 
     let ls1 = eval_string(&mut mt, "''a");
     let ls1 = mt.root(ls1);
-    let ls2 = Gc::<Pair>::new(&mut mt, a, empty_list);
+    let ls2 = Gc::<Pair>::new(&mut mt, a.borrow(), empty_list.borrow());
     let ls2 = mt.root(ls2.into());
-    let ls2 = Gc::<Pair>::new(&mut mt, quote, ls2);
+    let ls2 = Gc::<Pair>::new(&mut mt, quote.borrow(), ls2.borrow());
     assert_list_equal(&mt, ls1.oref(), ls2.into());
 }
 

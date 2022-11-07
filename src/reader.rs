@@ -40,7 +40,7 @@ impl Pos {
     }
 
     fn as_obj(&self, mt: &mut Mutator) -> Gc<syntax::Pos> {
-        syntax::Pos::new(mt, self.filename.clone(),
+        syntax::Pos::new(mt, self.filename.as_ref().map(Handle::<String>::borrow),
             Fixnum::try_from(self.line).unwrap(),
             Fixnum::try_from(self.col).unwrap())
     }
@@ -157,7 +157,7 @@ impl<'i> Reader<'i> {
 
         let b = root!(mt, Bool::instance(mt, b));
         let start = root!(mt, start.as_obj(mt));
-        Ok(root!(mt, Syntax::new(mt, b.into(), Some(start.into()))))
+        Ok(root!(mt, Syntax::new(mt, b.borrow().into(), Some(start.borrow().into()))))
     }
 
     fn read_quoted(&mut self, mt: &mut Mutator, quote: Positioned<char>) -> ReadResult {
@@ -165,12 +165,12 @@ impl<'i> Reader<'i> {
 
         if let Some(res) = self.next(mt) {
             let ls = root!(mt, EmptyList::instance(mt));
-            let ls = root!(mt, Gc::<Pair>::new(mt, res?.into(), ls.into()));
+            let ls = root!(mt, Gc::<Pair>::new(mt, res?.borrow().into(), ls.borrow().into()));
             let quote = root!(mt, Symbol::new(mt, "quote"));
-            let quote = root!(mt, Syntax::new(mt, quote.into(), Some(start.clone())));
-            let ls = root!(mt, Gc::<Pair>::new(mt, quote.into(), ls.into()));
+            let quote = root!(mt, Syntax::new(mt, quote.borrow().into(), Some(start.borrow())));
+            let ls = root!(mt, Gc::<Pair>::new(mt, quote.borrow().into(), ls.borrow().into()));
 
-            Ok(root!(mt, Syntax::new(mt, ls.into(), Some(start))))
+            Ok(root!(mt, Syntax::new(mt, ls.borrow().into(), Some(start.borrow()))))
         } else {
             Err(()) // FIXME
         }
@@ -194,7 +194,7 @@ impl<'i> Reader<'i> {
             Ok(n) => {
                 let n = root!(mt, ORef::from(n));
                 let start = root!(mt, first_pc.pos.as_obj(mt));
-                Ok(root!(mt, Syntax::new(mt, n, Some(start.into()))))
+                Ok(root!(mt, Syntax::new(mt, n.borrow(), Some(start.borrow().into()))))
             },
 
             Err(()) => Err(()) // FIXME
@@ -212,7 +212,7 @@ impl<'i> Reader<'i> {
 
         let sym = root!(mt, Symbol::new(mt, &self.input.chars[first_pc.pos.index..self.input.pos.index]));
         let start = root!(mt, first_pc.pos.as_obj(mt));
-        root!(mt, Syntax::new(mt, sym.into(), Some(start)))
+        root!(mt, Syntax::new(mt, sym.borrow().into(), Some(start.borrow())))
     }
 
     fn read_peculiar_identifier(&mut self, mt: &mut Mutator, sign: Positioned<char>) -> Handle<Syntax> {
@@ -226,7 +226,7 @@ impl<'i> Reader<'i> {
 
         let sym = root!(mt, Symbol::new(mt, &self.input.chars[sign.pos.index..self.input.pos.index]));
         let start = root!(mt, sign.pos.as_obj(mt));
-        root!(mt, Syntax::new(mt, sym.into(), Some(start)))
+        root!(mt, Syntax::new(mt, sym.borrow().into(), Some(start.borrow())))
     }
 
     fn read_string(&mut self, mt: &mut Mutator, double_quote: Positioned<char>) -> ReadResult {
@@ -250,7 +250,7 @@ impl<'i> Reader<'i> {
         let start = double_quote.pos;
         let str = root!(mt, String::new(mt, &self.input.chars[start.index + 1..self.input.pos.index - 1]));
         let start = root!(mt, start.as_obj(mt));
-        Ok(root!(mt, Syntax::new(mt, str.into(), Some(start))))
+        Ok(root!(mt, Syntax::new(mt, str.borrow().into(), Some(start.borrow()))))
     }
 
     fn read_list(&mut self, mt: &mut Mutator, lparen: Positioned<char>) -> ReadResult {
@@ -265,7 +265,7 @@ impl<'i> Reader<'i> {
         if let Some(pc) = self.input.peek() {
             if pc.v == ')' {
                 self.input.next();
-                return Ok(root!(mt, Syntax::new(mt, empty, Some(start))));
+                return Ok(root!(mt, Syntax::new(mt, empty.borrow(), Some(start.borrow()))));
             }
         }
 
@@ -274,7 +274,7 @@ impl<'i> Reader<'i> {
             None => return Err(())
         };
 
-        let ls: Handle<Pair> = root!(mt, Gc::<Pair>::new(mt, car, empty.clone()));
+        let ls: Handle<Pair> = root!(mt, Gc::<Pair>::new(mt, car.borrow(), empty.borrow()));
 
         // (<datum> ...
         let mut last_pair = ls.clone();
@@ -314,7 +314,7 @@ impl<'i> Reader<'i> {
                 Some(_) => // (<datum>+ ...
                     match self.next(mt) {
                         Some(res) => {
-                            let pair = Gc::<Pair>::new(mt, res?.into(), empty.clone());
+                            let pair = Gc::<Pair>::new(mt, res?.borrow().into(), empty.borrow());
                             last_pair.set_cdr(pair.into());
                             last_pair = root!(mt, pair);
                         },
@@ -326,7 +326,7 @@ impl<'i> Reader<'i> {
             }
         }
 
-        Ok(root!(mt, Syntax::new(mt, ls.into(), Some(start))))
+        Ok(root!(mt, Syntax::new(mt, ls.borrow().into(), Some(start.borrow()))))
     }
 
     fn read_vector(&mut self, mt: &mut Mutator, start: Pos) -> ReadResult {
@@ -353,7 +353,7 @@ impl<'i> Reader<'i> {
 
         let vector = root!(mt, Vector::<ORef>::from_handles(mt, &vs));
         let start = root!(mt, start.as_obj(mt));
-        Ok(root!(mt, Syntax::new(mt, vector.into(), Some(start))))
+        Ok(root!(mt, Syntax::new(mt, vector.borrow().into(), Some(start.borrow()))))
     }
 
     pub fn next(&mut self, mt: &mut Mutator) -> Option<ReadResult> {
