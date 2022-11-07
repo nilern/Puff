@@ -176,16 +176,10 @@ impl Symbol {
                             }
                         },
 
-                    SymbolTableEntry::Tombstone => unsafe {
-                        let mut nptr = mt.alloc_indexed(Self::reify(mt), cs.len()).cast::<Self>();
-                        nptr.as_ptr().write(Symbol { hash });
-                        nptr.as_mut().indexed_field_mut().copy_from_slice(cs.as_bytes());
-
-                        let sym = Gc::new_unchecked(nptr);
-
-                        *entries.add(i) = SymbolTableEntry::Present(sym);
-
-                        return sym;
+                    // OPTIMIZE: Reuse tombstones:
+                    SymbolTableEntry::Tombstone => {
+                        collisions += 1;
+                        i = (i + collisions) & max_index;
                     }
                 }
             }
