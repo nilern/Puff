@@ -8,8 +8,9 @@ use crate::heap_obj::{Singleton, HeapObj, Header};
 use crate::mutator::{Mutator, WithinMt};
 use crate::list::{Pair, EmptyList};
 use crate::bool::Bool;
+use crate::fixnum::Fixnum;
 
-trait Tagged {
+pub trait Tagged {
     const TAG: usize;
 }
 
@@ -20,15 +21,15 @@ pub struct ORef(usize);
 impl ORef {
     pub const TAG_SIZE: usize = 2;
 
-    const TAG_BITS: usize = (1 << Self::TAG_SIZE) - 1;
+    pub const TAG_BITS: usize = (1 << Self::TAG_SIZE) - 1;
 
-    const PAYLOAD_BITS: usize = 8*size_of::<Self>() - Self::TAG_SIZE;
+    pub const PAYLOAD_BITS: usize = 8*size_of::<Self>() - Self::TAG_SIZE;
 
-    const SHIFT: usize = Self::TAG_SIZE;
+    pub const SHIFT: usize = Self::TAG_SIZE;
 
     pub fn tag(self) -> usize { self.0 & Self::TAG_BITS }
 
-    fn is_tagged<T: Tagged>(self) -> bool { self.tag() == T::TAG }
+    pub fn is_tagged<T: Tagged>(self) -> bool { self.tag() == T::TAG }
 
     pub fn within(self, mt: &Mutator) -> WithinMt<Self> {
         WithinMt {v: self, mt}
@@ -75,91 +76,12 @@ impl From<ORef> for ORefEnum {
     fn from(oref: ORef) -> Self {
         match oref.tag() {
             Gc::<()>::TAG => Self::Gc(unsafe { Gc(NonNull::new_unchecked(oref.0 as *mut ())) }),
-            Fixnum::TAG => Self::Fixnum(Fixnum(oref.0).into()),
+            Fixnum::TAG => Self::Fixnum(unsafe { Fixnum::from_oref_unchecked(oref) }.into()),
             Flonum::TAG => Self::Flonum(Flonum(oref.0).into()),
             Char::TAG => Self::Char(Char(oref.0).into()),
             _ => unreachable!()
         }
     }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Fixnum(usize);
-
-impl Tagged for Fixnum {
-    const TAG: usize = Gc::<()>::TAG + 1;
-}
-
-impl Fixnum {
-    const MIN: isize = -(1 << (ORef::PAYLOAD_BITS - 1));
-
-    const MAX: isize = (1 << (ORef::PAYLOAD_BITS - 1)) - 1;
-
-    pub unsafe fn from_oref_unchecked(oref: ORef) -> Self { Self(oref.0) }
-
-    pub fn checked_add(self, other: Self) -> Option<Self> {
-        self.0.checked_add(other.0)
-            .map(|n| Self(n - 1))
-    }
-
-    pub fn checked_sub(self, other: Self) -> Option<Self> {
-        self.0.checked_sub(other.0)
-            .map(|n| Self(n | Self::TAG))
-    }
-
-    pub fn checked_mul(self, other: Self) -> Option<Self> {
-        (self.0 & !ORef::TAG_BITS).checked_mul(other.0 & !ORef::TAG_BITS)
-            .map(|n| Self((n >> ORef::SHIFT) | Self::TAG))
-    }
-}
-
-impl From<Fixnum> for ORef {
-    fn from(n: Fixnum) -> Self { ORef(n.0) }
-}
-
-impl TryFrom<ORef> for Fixnum {
-    type Error = ();
-
-    fn try_from(oref: ORef) -> Result<Self, Self::Error> {
-        if oref.tag() == Self::TAG {
-            Ok(Self(oref.0))
-        } else {
-            Err(())
-        }
-    }
-}
-
-impl TryFrom<isize> for Fixnum {
-    type Error = ();
-
-    fn try_from(n: isize) -> Result<Self, Self::Error> {
-        // Bounds check `MIN <= n <= MAX` from Hacker's Delight 4-1:
-        if (n - Fixnum::MIN) as usize <= (Fixnum::MAX - Fixnum::MIN) as usize {
-            Ok(Fixnum(((n as usize) << ORef::SHIFT) | Fixnum::TAG))
-        } else {
-            Err(())
-        }
-    }
-}
-
-impl From<Fixnum> for isize {
-    fn from(n: Fixnum) -> Self { (n.0 as isize) >> ORef::SHIFT }
-}
-
-impl TryFrom<usize> for Fixnum {
-    type Error = ();
-
-    fn try_from(n: usize) -> Result<Self, Self::Error> {
-        if n <= Fixnum::MAX as usize {
-            Ok(Fixnum((n << ORef::SHIFT) | Fixnum::TAG))
-        } else {
-            Err(())
-        }
-    }
-}
-
-impl From<u8> for Fixnum {
-    fn from(n: u8) -> Self { Self((n as usize) << ORef::SHIFT | Fixnum::TAG) }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -366,35 +288,6 @@ impl Gc<BitsType> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn fixnum_try_from_isize() {
-        assert!(Fixnum::try_from(0isize).is_ok());
-        assert!(ORef::from(Fixnum::try_from(0isize).unwrap())
-            .is_tagged::<Fixnum>());
-
-        assert!(Fixnum::try_from(5isize).is_ok());
-        assert!(Fixnum::try_from(-5isize).is_ok());
-
-        assert!(Fixnum::try_from(Fixnum::MIN).is_ok());
-        assert!(Fixnum::try_from(Fixnum::MAX).is_ok());
-    	
-        assert!(Fixnum::try_from(Fixnum::MIN - 1).is_err());
-        assert!(Fixnum::try_from(Fixnum::MAX + 1).is_err());
-    }
-
-    #[test]
-    fn isize_from_fixnum() {
-        assert_eq!(isize::from(Fixnum::try_from(0isize).unwrap()), 0);
-
-        assert_eq!(isize::from(Fixnum::try_from(5isize).unwrap()), 5);
-        assert_eq!(isize::from(Fixnum::try_from(-5isize).unwrap()), -5);
-
-        assert_eq!(isize::from(Fixnum::try_from(Fixnum::MIN).unwrap()),
-            Fixnum::MIN);
-        assert_eq!(isize::from(Fixnum::try_from(Fixnum::MAX).unwrap()),
-            Fixnum::MAX);
-    }
 
     #[test]
     fn flonum_from_f64() {

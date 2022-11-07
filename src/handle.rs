@@ -274,7 +274,7 @@ pub(crate) use root;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use super::super::oref::Fixnum;
+    use super::super::fixnum::Fixnum;
 
     #[test]
     fn new_pool() {

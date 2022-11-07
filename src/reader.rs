@@ -1,4 +1,4 @@
-use crate::oref::{ORef, Fixnum, Gc};
+use crate::oref::{ORef, Gc};
 use crate::handle::{Handle, HandleT, Root, root};
 use crate::mutator::Mutator;
 use crate::symbol::Symbol;
@@ -8,6 +8,7 @@ use crate::string::String;
 use crate::bool::Bool;
 use crate::vector::Vector;
 use crate::syntax::{self, Syntax};
+use crate::fixnum::Fixnum;
 
 #[derive(Clone)]
 struct Pos {

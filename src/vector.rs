@@ -2,7 +2,8 @@ use std::marker::PhantomData;
 use std::cell::Cell;
 
 use crate::heap_obj::Indexed;
-use crate::oref::{Reify, ORef, Gc, Fixnum};
+use crate::oref::{Reify, ORef, Gc};
+use crate::fixnum::Fixnum;
 use crate::handle::Handle;
 use crate::mutator::Mutator;
 use crate::r#type::IndexedType;

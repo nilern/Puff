@@ -2,8 +2,9 @@ use std::fs;
 
 use crate::native_fn::{NativeFn, Answer};
 use crate::mutator::Mutator;
-use crate::oref::{ORef, Fixnum, Gc};
+use crate::oref::{ORef, Gc};
 use crate::handle::{HandleT, Root, root};
+use crate::fixnum::Fixnum;
 use crate::bool::Bool;
 use crate::string::String;
 use crate::list::{Pair, EmptyList};

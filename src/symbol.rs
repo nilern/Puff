@@ -4,8 +4,9 @@ use std::alloc::{Layout, alloc, dealloc};
 use std::mem::{size_of, align_of};
 use std::slice;
 
-use crate::oref::{Reify,  Gc, Fixnum};
+use crate::oref::{Reify,  Gc};
 use crate::heap_obj::{HeapObj, Indexed};
+use crate::fixnum::Fixnum;
 use crate::mutator::Mutator;
 use crate::util::hash;
 use crate::r#type::IndexedType;

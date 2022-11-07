@@ -4,7 +4,7 @@ use std::alloc::Layout;
 use std::slice;
 
 use crate::heap::{self, Heap};
-use crate::oref::{AsType, ORef, Gc, Fixnum};
+use crate::oref::{AsType, ORef, Gc};
 use crate::r#type::{Type, Field, IndexedType, NonIndexedType, BitsType, BootstrapTypeBuilder};
 use crate::symbol::{Symbol, SymbolTable};
 use crate::heap_obj::{NonIndexed, Indexed, Singleton, Header, min_size_of_indexed,
@@ -20,6 +20,7 @@ use crate::namespace::{Namespace, Var};
 use crate::native_fn::{self, NativeFn, Answer};
 use crate::builtins;
 use crate::bool::Bool;
+use crate::fixnum::Fixnum;
 
 const USIZE_TYPE_SIZE: usize = min_size_of_indexed::<Type>();
 

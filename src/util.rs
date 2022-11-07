@@ -1,6 +1,7 @@
 use std::hash::{Hasher, Hash};
 
-use crate::oref::{ORef, Fixnum};
+use crate::oref::ORef;
+use crate::fixnum::Fixnum;
 
 pub fn hash<H: Hasher + Default, T: Hash + ?Sized>(t: &T) -> Fixnum {
     let mut s = H::default();

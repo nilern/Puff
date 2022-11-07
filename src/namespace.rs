@@ -1,7 +1,8 @@
 use std::cell::Cell;
 
 use crate::symbol::Symbol;
-use crate::oref::{Reify, Gc, ORef, Fixnum};
+use crate::oref::{Reify, Gc, ORef};
+use crate::fixnum::Fixnum;
 use crate::mutator::Mutator;
 use crate::handle::{Handle, HandleT, Root, root};
 use crate::heap_obj::{NonIndexed, Indexed};
@@ -165,7 +166,7 @@ mod tests {
 
     use quickcheck_macros::quickcheck;
 
-    use crate::oref::Fixnum;
+    use crate::fixnum::Fixnum;
     use crate::handle::{Root, root};
 
     #[test]

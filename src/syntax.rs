@@ -1,6 +1,7 @@
-use crate::oref::{Reify, ORef, Gc, Fixnum};
+use crate::oref::{Reify, ORef, Gc};
 use crate::handle::{Handle, HandleT, Root, root};
 use crate::mutator::Mutator;
+use crate::fixnum::Fixnum;
 use crate::heap_obj::{NonIndexed, Indexed};
 use crate::r#type::NonIndexedType;
 use crate::bool::Bool;
