@@ -35,11 +35,6 @@ impl Semispace {
 
     fn contains<T>(&self, ptr: *const T) -> bool {
         let addr = ptr as usize;
-        self.start as usize <= addr && addr < self.end as usize
-    }
-
-    fn contains_end<T>(&self, ptr: *const T) -> bool {
-        let addr = ptr as usize;
         self.start as usize <= addr && addr <= self.end as usize
     }
 }
@@ -298,7 +293,7 @@ impl Heap {
             },
 
             None =>
-                if !self.tospace.contains_end(data.add(obj.size())) {
+                if !self.tospace.contains(data.add(obj.size())) {
                     return Err(VerificationError::TospaceOverrun);
                 }
         }
