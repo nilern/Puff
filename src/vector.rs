@@ -4,7 +4,7 @@ use std::cell::Cell;
 use crate::heap_obj::Indexed;
 use crate::oref::{Reify, ORef, Gc};
 use crate::fixnum::Fixnum;
-use crate::handle::Handle;
+use crate::handle::HandleAny;
 use crate::mutator::Mutator;
 use crate::r#type::IndexedType;
 
@@ -25,7 +25,7 @@ impl Reify for Vector<ORef> {
 }
 
 impl Vector<ORef> {
-    pub fn from_handles(mt: &mut Mutator, handles: &[Handle]) -> Gc<Self> {
+    pub fn from_handles(mt: &mut Mutator, handles: &[HandleAny]) -> Gc<Self> {
         unsafe {
             let mut nptr = mt.alloc_indexed(Self::reify(mt), handles.len()).cast::<Self>();
 

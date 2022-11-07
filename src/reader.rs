@@ -1,5 +1,5 @@
 use crate::oref::{ORef, Gc};
-use crate::handle::{Handle, HandleT, Root, root};
+use crate::handle::{HandleAny, HandleT, Root, root};
 use crate::mutator::Mutator;
 use crate::symbol::Symbol;
 use crate::list::{EmptyList, Pair};
@@ -269,7 +269,7 @@ impl<'i> Reader<'i> {
             }
         }
 
-        let car: Handle = match self.next(mt) {
+        let car: HandleAny = match self.next(mt) {
             Some(res) => res?.into(),
             None => return Err(())
         };
@@ -330,7 +330,7 @@ impl<'i> Reader<'i> {
     }
 
     fn read_vector(&mut self, mt: &mut Mutator, start: Pos) -> ReadResult {
-        let mut vs: Vec<Handle> = Vec::new();
+        let mut vs: Vec<HandleAny> = Vec::new();
 
         loop {
             self.intertoken_space();

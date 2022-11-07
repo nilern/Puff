@@ -2,7 +2,7 @@ use std::fmt;
 use std::collections::hash_set::HashSet;
 
 use crate::oref::ORef;
-use crate::handle::{Handle, HandleT};
+use crate::handle::{HandleAny, HandleT};
 use crate::mutator::{Mutator, WithinMt};
 use crate::symbol::Symbol;
 use crate::vector::Vector;
@@ -25,7 +25,7 @@ pub enum Instr {
     GlobalSet(HandleT<Symbol>),
     Global(HandleT<Symbol>),
 
-    Const(Handle),
+    Const(HandleAny),
     Local(usize),
     Clover(usize),
 
@@ -103,7 +103,7 @@ impl Instr {
 }
 
 pub struct PosInstr {
-    pub pos: Handle,
+    pub pos: HandleAny,
     pub instr: Instr
 }
 
@@ -142,7 +142,7 @@ impl Fn {
         label
     }
 
-    pub fn insert_prune(&mut self, label: Label, prunes: Vec<bool>, pos: Handle) {
+    pub fn insert_prune(&mut self, label: Label, prunes: Vec<bool>, pos: HandleAny) {
         let block = self.block_mut(label);
         block.insert(block.len() - 1, PosInstr {instr: Instr::Prune(prunes), pos});
     }

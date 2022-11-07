@@ -4,7 +4,7 @@ use crate::symbol::Symbol;
 use crate::oref::{Reify, Gc, ORef};
 use crate::fixnum::Fixnum;
 use crate::mutator::Mutator;
-use crate::handle::{Handle, HandleT, Root, root};
+use crate::handle::{HandleAny, HandleT, Root, root};
 use crate::heap_obj::{NonIndexed, Indexed};
 use crate::r#type::NonIndexedType;
 use crate::vector::VectorMut;
@@ -25,7 +25,7 @@ impl Reify for Var {
 impl Var {
     pub unsafe fn new_uninitialized(mt: &mut Mutator) -> Gc<Self> { Gc::new_unchecked(mt.alloc_static::<Self>()) }
 
-    pub fn new(mt: &mut Mutator, value: Handle) -> Gc<Self> {
+    pub fn new(mt: &mut Mutator, value: HandleAny) -> Gc<Self> {
         unsafe {
             let nptr = mt.alloc_static::<Self>();
             nptr.as_ptr().write(Self { value: Cell::new(value.oref()) });

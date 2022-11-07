@@ -4,7 +4,7 @@ use std::collections::hash_map::HashMap;
 use crate::oref::ORef;
 use crate::vector::Vector;
 use crate::bool::Bool;
-use crate::handle::{Handle, Root, root};
+use crate::handle::{HandleAny, Root, root};
 use crate::compiler::cfg::{Fn, Instr, Label, PosInstr};
 use crate::compiler::anf::{self, PosExpr};
 use crate::compiler::{Compiler, Id};
@@ -15,7 +15,7 @@ struct CfgBuilder {
 }
 
 impl CfgBuilder {
-    fn push(&mut self, instr: Instr, pos: Handle) { self.f.block_mut(self.current).push(PosInstr {instr, pos}); }
+    fn push(&mut self, instr: Instr, pos: HandleAny) { self.f.block_mut(self.current).push(PosInstr {instr, pos}); }
 }
 
 enum Loc {
@@ -192,7 +192,7 @@ enum Cont {
 }
 
 impl Cont {
-    fn goto(self, env: &mut Env, builder: &mut CfgBuilder, pos: Handle) {
+    fn goto(self, env: &mut Env, builder: &mut CfgBuilder, pos: HandleAny) {
         match self {
             Cont::Next {ignore_values} =>
                 if ignore_values {
@@ -213,7 +213,7 @@ impl Cont {
     }
 }
 
-fn emit_use(env: &mut Env, builder: &mut CfgBuilder, r#use: Id, pos: Handle) {
+fn emit_use(env: &mut Env, builder: &mut CfgBuilder, r#use: Id, pos: HandleAny) {
     match env.get(r#use) {
         Loc::Reg(reg) => {
             builder.push(Instr::Local(reg), pos);
@@ -485,8 +485,8 @@ fn emit_fn(cmp: &mut Compiler, clovers: &[Id], params: &[Id], varargs: bool, bod
     let mut env = Env::new(clovers, params);
     let mut f = {
         // OPTIMIZE: temp Vec:
-        let clover_names: Vec<Handle> = clovers.iter()
-            .map(|id| id.name(cmp).map(Handle::from)
+        let clover_names: Vec<HandleAny> = clovers.iter()
+            .map(|id| id.name(cmp).map(HandleAny::from)
                 .unwrap_or_else(|| root!(&mut cmp.mt, Bool::instance(cmp.mt, false)).into()))
             .collect();
         let clover_names = root!(&mut cmp.mt, Vector::<ORef>::from_handles(cmp.mt, &clover_names));

@@ -9,7 +9,7 @@ use crate::r#type::{Type, Field, IndexedType, NonIndexedType, BitsType, Bootstra
 use crate::symbol::{Symbol, SymbolTable};
 use crate::heap_obj::{NonIndexed, Indexed, Singleton, Header, min_size_of_indexed,
     align_of_indexed};
-use crate::handle::{Handle, HandleT, HandlePool, Root, root};
+use crate::handle::{HandleAny, HandleT, HandlePool, Root, root};
 use crate::list::{EmptyList, Pair};
 use crate::bytecode::{Opcode, Bytecode, decode_prune_mask};
 use crate::vector::Vector;
@@ -390,7 +390,7 @@ impl Mutator {
         self.alloc_nonindexed(T::reify_nonindexed(self)).cast::<T>()
     }
 
-    pub fn root(&mut self, oref: ORef) -> Handle {
+    pub fn root(&mut self, oref: ORef) -> HandleAny {
         unsafe { self.handles.root(oref) }
     }
 
@@ -676,7 +676,7 @@ impl Mutator {
                                 let var = root!(self, Var::new_uninitialized(self));
                                 root!(self, self.ns.unwrap()).add(self, name, var.clone());
                                 let v = self.regs.pop().unwrap();
-                                var.init(v); // Avoids allocating a Handle for `v`
+                                var.init(v); // Avoids allocating a HandleAny for `v`
                                 self.regs.push_unchecked(v); // HACK?
                             }
                         }

@@ -2,7 +2,7 @@ use std::collections::hash_set::HashSet;
 use pretty::RcDoc;
 
 use crate::oref::ORef;
-use crate::handle::{Handle, HandleT};
+use crate::handle::{HandleAny, HandleT};
 use crate::compiler::{Compiler, Id};
 use crate::symbol::Symbol;
 use crate::mutator::Mutator;
@@ -11,7 +11,7 @@ pub type LiveVars = HashSet<Id>;
 
 pub enum Triv {
     Use(Id),
-    Const(Handle)
+    Const(HandleAny)
 }
 
 pub enum Expr {
@@ -42,7 +42,7 @@ pub enum Expr {
 }
 
 pub struct PosExpr {
-    pub pos: Handle,
+    pub pos: HandleAny,
     pub expr: Expr
 }
 

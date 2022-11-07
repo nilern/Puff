@@ -8,7 +8,7 @@ use crate::oref::{Reify, ORef, Gc};
 use crate::heap_obj::Indexed;
 use crate::vector::Vector;
 use crate::mutator::Mutator;
-use crate::handle::{Handle, HandleT, Root, root};
+use crate::handle::{HandleAny, HandleT, Root, root};
 use crate::r#type::IndexedType;
 use crate::compiler::cfg;
 use crate::symbol::Symbol;
@@ -581,11 +581,11 @@ pub struct Builder {
     max_regs: usize,
     clovers_len: usize,
     clover_names: HandleT<Vector<ORef>>,
-    consts: Vec<Handle>,
+    consts: Vec<HandleAny>,
     instrs: Vec<u8>,
     label_indices: HashMap<cfg::Label, usize>,
     br_dests: HashMap<usize, cfg::Label>,
-    positions: Vec<Handle>
+    positions: Vec<HandleAny>
 }
 
 impl Builder {
@@ -605,7 +605,7 @@ impl Builder {
     }
 
     // TODO: Deduplicate constants
-    pub fn define(&mut self, name: HandleT<Symbol>, pos: Handle) {
+    pub fn define(&mut self, name: HandleT<Symbol>, pos: HandleAny) {
         self.instrs.push(Opcode::Define as u8);
 
         let i = u8::try_from(self.consts.len()).unwrap();
@@ -615,7 +615,7 @@ impl Builder {
     }
 
     // TODO: Deduplicate constants
-    pub fn global_set(&mut self, name: HandleT<Symbol>, pos: Handle) {
+    pub fn global_set(&mut self, name: HandleT<Symbol>, pos: HandleAny) {
         self.instrs.push(Opcode::GlobalSet as u8);
 
         let i = u8::try_from(self.consts.len()).unwrap();
@@ -625,7 +625,7 @@ impl Builder {
     }
 
     // TODO: Deduplicate constants
-    pub fn global(&mut self, name: HandleT<Symbol>, pos: Handle) {
+    pub fn global(&mut self, name: HandleT<Symbol>, pos: HandleAny) {
         self.instrs.push(Opcode::Global as u8);
 
         let i = u8::try_from(self.consts.len()).unwrap();
@@ -635,7 +635,7 @@ impl Builder {
     }
 
     // TODO: Deduplicate constants
-    pub fn r#const(&mut self, v: Handle, pos: Handle) {
+    pub fn r#const(&mut self, v: HandleAny, pos: HandleAny) {
         self.instrs.push(Opcode::Const as u8);
 
         let i = u8::try_from(self.consts.len()).unwrap();
@@ -644,60 +644,60 @@ impl Builder {
         self.positions.push(pos);
     }
 
-    pub fn local(&mut self, reg: usize, pos: Handle) {
+    pub fn local(&mut self, reg: usize, pos: HandleAny) {
         self.instrs.push(Opcode::Local as u8);
         self.instrs.push(u8::try_from(reg).unwrap());
         self.positions.push(pos);
     }
 
-    pub fn clover(&mut self, i: usize, pos: Handle) {
+    pub fn clover(&mut self, i: usize, pos: HandleAny) {
         self.instrs.push(Opcode::Clover as u8);
         self.instrs.push(u8::try_from(i).unwrap());
         self.positions.push(pos);
     }
 
-    pub fn pop(&mut self, pos: Handle) {
+    pub fn pop(&mut self, pos: HandleAny) {
         self.instrs.push(Opcode::Pop as u8);
         self.positions.push(pos);
     }
 
-    pub fn prune(&mut self, prunes: &[bool], pos: Handle) {
+    pub fn prune(&mut self, prunes: &[bool], pos: HandleAny) {
         self.instrs.push(Opcode::Prune as u8);
         encode_prune_mask(&mut self.instrs, prunes);
         self.positions.push(pos);
     }
 
-    pub fn r#box(&mut self, pos: Handle) {
+    pub fn r#box(&mut self, pos: HandleAny) {
         self.instrs.push(Opcode::Box as u8);
         self.positions.push(pos);
     }
 
-    pub fn uninitialized_box(&mut self, pos: Handle) {
+    pub fn uninitialized_box(&mut self, pos: HandleAny) {
         self.instrs.push(Opcode::UninitializedBox as u8);
         self.positions.push(pos);
     }
 
-    pub fn box_set(&mut self, pos: Handle) {
+    pub fn box_set(&mut self, pos: HandleAny) {
         self.instrs.push(Opcode::BoxSet as u8);
         self.positions.push(pos);
     }
 
-    pub fn checked_box_set(&mut self, pos: Handle) {
+    pub fn checked_box_set(&mut self, pos: HandleAny) {
         self.instrs.push(Opcode::CheckedBoxSet as u8);
         self.positions.push(pos);
     }
 
-    pub fn box_get(&mut self, pos: Handle) {
+    pub fn box_get(&mut self, pos: HandleAny) {
         self.instrs.push(Opcode::BoxGet as u8);
         self.positions.push(pos);
     }
 
-    pub fn checked_box_get(&mut self, pos: Handle) {
+    pub fn checked_box_get(&mut self, pos: HandleAny) {
         self.instrs.push(Opcode::CheckedBoxGet as u8);
         self.positions.push(pos);
     }
 
-    pub fn check_use(&mut self, pos: Handle) {
+    pub fn check_use(&mut self, pos: HandleAny) {
         self.instrs.push(Opcode::CheckUse as u8);
         self.positions.push(pos);
     }
@@ -706,21 +706,21 @@ impl Builder {
         self.label_indices.insert(label, self.instrs.len());
     }
 
-    pub fn brf(&mut self, label: cfg::Label, pos: Handle) {
+    pub fn brf(&mut self, label: cfg::Label, pos: HandleAny) {
         self.instrs.push(Opcode::Brf as u8);
         self.br_dests.insert(self.instrs.len(), label);
         self.instrs.push(0);
         self.positions.push(pos);
     }
 
-    pub fn br(&mut self, label: cfg::Label, pos: Handle) {
+    pub fn br(&mut self, label: cfg::Label, pos: HandleAny) {
         self.instrs.push(Opcode::Br as u8);
         self.br_dests.insert(self.instrs.len(), label);
         self.instrs.push(0);
         self.positions.push(pos);
     }
 
-    pub fn r#fn(&mut self, code: HandleT<Bytecode>, len: usize, pos: Handle) {
+    pub fn r#fn(&mut self, code: HandleT<Bytecode>, len: usize, pos: HandleAny) {
         self.instrs.push(Opcode::r#Fn as u8);
 
         let i = u8::try_from(self.consts.len()).unwrap();
@@ -731,35 +731,35 @@ impl Builder {
         self.positions.push(pos);
     }
 
-    pub fn call(&mut self, cargc: usize, prune_mask: &[bool], pos: Handle) {
+    pub fn call(&mut self, cargc: usize, prune_mask: &[bool], pos: HandleAny) {
         self.instrs.push(Opcode::Call as u8);
         self.instrs.push(u8::try_from(cargc).unwrap());
         encode_prune_mask(&mut self.instrs, prune_mask);
         self.positions.push(pos);
     }
 
-    pub fn check_one_return_value(&mut self, pos: Handle) {
+    pub fn check_one_return_value(&mut self, pos: HandleAny) {
         self.instrs.push(Opcode::CheckOneReturnValue as u8);
         self.positions.push(pos);
     }
 
-    pub fn ignore_return_values(&mut self, pos: Handle) {
+    pub fn ignore_return_values(&mut self, pos: HandleAny) {
         self.instrs.push(Opcode::IgnoreReturnValues as u8);
         self.positions.push(pos);
     }
 
-    pub fn tailcall_with_values(&mut self, pos: Handle) {
+    pub fn tailcall_with_values(&mut self, pos: HandleAny) {
         self.instrs.push(Opcode::TailCallWithValues as u8);
         self.positions.push(pos);
     }
 
-    pub fn tailcall(&mut self, cargc: usize, pos: Handle) {
+    pub fn tailcall(&mut self, cargc: usize, pos: HandleAny) {
         self.instrs.push(Opcode::TailCall as u8);
         self.instrs.push(u8::try_from(cargc).unwrap());
         self.positions.push(pos);
     }
 
-    pub fn ret(&mut self, pos: Handle) {
+    pub fn ret(&mut self, pos: HandleAny) {
         self.instrs.push(Opcode::Ret as u8);
         self.positions.push(pos);
     }

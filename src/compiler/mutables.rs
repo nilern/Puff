@@ -4,7 +4,7 @@ use std::collections::hash_map::HashMap;
 
 use crate::compiler::anf::{self, PosExpr};
 use crate::compiler::{Compiler, Id};
-use crate::handle::{Handle, Root, root};
+use crate::handle::{HandleAny, Root, root};
 use crate::bool::Bool;
 
 pub fn mutables(expr: &anf::PosExpr) -> HashSet<Id> {
@@ -155,7 +155,7 @@ pub fn letrec(cmp: &mut Compiler, mutables: &HashSet<Id>, expr: anf::PosExpr) ->
 
             // OPTIMIZE: If all `lambda`:s, emit `fix` instead:
             Letrec(bindings, body) => {
-                let original_binders: Vec<(Id, Handle)> = bindings.iter()
+                let original_binders: Vec<(Id, HandleAny)> = bindings.iter()
                     .map(|(id, val_expr)| (*id, val_expr.pos.clone()))
                     .collect();
 

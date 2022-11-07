@@ -6,12 +6,12 @@ use crate::list::{Pair, EmptyList};
 use crate::compiler::anf::{self, PosExpr};
 use crate::heap_obj::Singleton;
 use crate::oref::{ORef, Gc};
-use crate::handle::{HandleT, Handle, Root, root};
+use crate::handle::{HandleT, HandleAny, Root, root};
 use crate::symbol::Symbol;
 use crate::compiler::{Compiler, Id};
 use crate::syntax::Syntax;
 
-pub fn analyze(cmp: &mut Compiler, expr: Handle) -> anf::PosExpr {
+pub fn analyze(cmp: &mut Compiler, expr: HandleAny) -> anf::PosExpr {
     use anf::Expr::*;
     use anf::Triv::*;
 
@@ -37,7 +37,7 @@ pub fn analyze(cmp: &mut Compiler, expr: Handle) -> anf::PosExpr {
         }
     }
 
-    fn analyze_expr(cmp: &mut Compiler, env: &Rc<Env>, sexpr: Handle) -> anf::PosExpr {
+    fn analyze_expr(cmp: &mut Compiler, env: &Rc<Env>, sexpr: HandleAny) -> anf::PosExpr {
         let stx = sexpr.try_cast::<Syntax>(cmp.mt).unwrap_or_else(|| {
             todo!() // error
         });
@@ -92,9 +92,9 @@ pub fn analyze(cmp: &mut Compiler, expr: Handle) -> anf::PosExpr {
         }
     }
 
-    fn analyze_letrec(cmp: &mut Compiler, env: &Rc<Env>, args: Handle, pos: Handle) -> anf::PosExpr {
-        fn bindings(cmp: &mut Compiler, env: &Rc<Env>, bindings: ORef) -> (Rc<Env>, Vec<(Id, Handle)>) {
-            fn binding(cmp: &mut Compiler, env: &Rc<Env>, binding: ORef) -> (Rc<Env>, (Id, Handle)) {
+    fn analyze_letrec(cmp: &mut Compiler, env: &Rc<Env>, args: HandleAny, pos: HandleAny) -> anf::PosExpr {
+        fn bindings(cmp: &mut Compiler, env: &Rc<Env>, bindings: ORef) -> (Rc<Env>, Vec<(Id, HandleAny)>) {
+            fn binding(cmp: &mut Compiler, env: &Rc<Env>, binding: ORef) -> (Rc<Env>, (Id, HandleAny)) {
                 let stx = binding.try_cast::<Syntax>(cmp.mt).unwrap_or_else(|| {
                     todo!() // error
                 });
@@ -164,7 +164,7 @@ pub fn analyze(cmp: &mut Compiler, expr: Handle) -> anf::PosExpr {
         PosExpr {expr: Letrec(bindings, boxed::Box::new(body)), pos}
     }
 
-    fn analyze_if(cmp: &mut Compiler, env: &Rc<Env>, args: Handle, pos: Handle) -> anf::PosExpr {
+    fn analyze_if(cmp: &mut Compiler, env: &Rc<Env>, args: HandleAny, pos: HandleAny) -> anf::PosExpr {
         let args = args.try_cast::<Pair>(cmp.mt).unwrap_or_else(|| {
             todo!() // error
         });
@@ -191,7 +191,7 @@ pub fn analyze(cmp: &mut Compiler, expr: Handle) -> anf::PosExpr {
         }
     }
 
-    fn analyze_lambda(cmp: &mut Compiler, env: &Rc<Env>, args: Handle, pos: Handle) -> anf::PosExpr {
+    fn analyze_lambda(cmp: &mut Compiler, env: &Rc<Env>, args: HandleAny, pos: HandleAny) -> anf::PosExpr {
         // TODO: Reject duplicate parameter names:
         fn analyze_params(cmp: &mut Compiler, env: &Rc<Env>, params: ORef) -> (Rc<Env>, anf::Params, bool) {
             let mut anf_ps = vec![Id::fresh(cmp)]; // Id for "self" closure
@@ -262,7 +262,7 @@ pub fn analyze(cmp: &mut Compiler, expr: Handle) -> anf::PosExpr {
         PosExpr {expr: r#Fn(anf::LiveVars::new(), params, varargs, boxed::Box::new(body)), pos}
     }
 
-    fn analyze_begin(cmp: &mut Compiler, env: &Rc<Env>, mut args: Handle, pos: Handle) -> anf::PosExpr {
+    fn analyze_begin(cmp: &mut Compiler, env: &Rc<Env>, mut args: HandleAny, pos: HandleAny) -> anf::PosExpr {
         let mut stmts = Vec::new();
 
         while let Some(args_pair) = args.clone().try_cast::<Pair>(cmp.mt) {
@@ -283,7 +283,7 @@ pub fn analyze(cmp: &mut Compiler, expr: Handle) -> anf::PosExpr {
         }
     }
 
-    fn analyze_quote(cmp: &mut Compiler, args: Handle, pos: Handle) -> anf::PosExpr {
+    fn analyze_quote(cmp: &mut Compiler, args: HandleAny, pos: HandleAny) -> anf::PosExpr {
         let args = args.try_cast::<Pair>(cmp.mt).unwrap_or_else(|| {
             todo!() // error
         });
@@ -296,7 +296,7 @@ pub fn analyze(cmp: &mut Compiler, expr: Handle) -> anf::PosExpr {
         PosExpr {expr: Triv(Const(c)), pos}
     }
 
-    fn analyze_set(cmp: &mut Compiler, env: &Rc<Env>, args: Handle, pos: Handle) -> anf::PosExpr {
+    fn analyze_set(cmp: &mut Compiler, env: &Rc<Env>, args: HandleAny, pos: HandleAny) -> anf::PosExpr {
         let args = args.try_cast::<Pair>(cmp.mt).unwrap_or_else(|| {
             todo!() // error
         });
@@ -324,7 +324,7 @@ pub fn analyze(cmp: &mut Compiler, expr: Handle) -> anf::PosExpr {
         }
     }
 
-    fn analyze_call_with_values(cmp: &mut Compiler, env: &Rc<Env>, args: Handle, pos: Handle) -> anf::PosExpr {
+    fn analyze_call_with_values(cmp: &mut Compiler, env: &Rc<Env>, args: HandleAny, pos: HandleAny) -> anf::PosExpr {
         let args = args.try_cast::<Pair>(cmp.mt).unwrap_or_else(|| {
             todo!() // error
         });
@@ -348,7 +348,7 @@ pub fn analyze(cmp: &mut Compiler, expr: Handle) -> anf::PosExpr {
         }
     }
 
-    fn analyze_call(cmp: &mut Compiler, env: &Rc<Env>, expr: HandleT<Pair>, pos: Handle) -> anf::PosExpr {
+    fn analyze_call(cmp: &mut Compiler, env: &Rc<Env>, expr: HandleT<Pair>, pos: HandleAny) -> anf::PosExpr {
         let mut bindings = Vec::new();
 
         let callee = root!(cmp.mt, expr.car());
@@ -371,7 +371,7 @@ pub fn analyze(cmp: &mut Compiler, expr: Handle) -> anf::PosExpr {
         PosExpr {expr: Call(bindings, HashSet::new()), pos}
     }
 
-    fn analyze_toplevel_form(cmp: &mut Compiler, form: Handle) -> anf::PosExpr {
+    fn analyze_toplevel_form(cmp: &mut Compiler, form: HandleAny) -> anf::PosExpr {
         let stx = form.clone().try_cast::<Syntax>(cmp.mt).unwrap_or_else(|| {
             todo!() // error
         });
@@ -396,7 +396,7 @@ pub fn analyze(cmp: &mut Compiler, expr: Handle) -> anf::PosExpr {
         analyze_expr(cmp, &Rc::new(Env::Empty), form)
     }
 
-    fn analyze_definition(cmp: &mut Compiler, args: Handle, pos: Handle) -> anf::PosExpr {
+    fn analyze_definition(cmp: &mut Compiler, args: HandleAny, pos: HandleAny) -> anf::PosExpr {
         let args = args.try_cast::<Pair>(cmp.mt).unwrap_or_else(|| {
             todo!() // error
         });
@@ -420,7 +420,7 @@ pub fn analyze(cmp: &mut Compiler, expr: Handle) -> anf::PosExpr {
         PosExpr {expr: Define(definiend, boxed::Box::new(val_expr)), pos}
     }
 
-    fn analyze_toplevel_begin(cmp: &mut Compiler, mut args: Handle, pos: Handle) -> anf::PosExpr {
+    fn analyze_toplevel_begin(cmp: &mut Compiler, mut args: HandleAny, pos: HandleAny) -> anf::PosExpr {
         let mut stmts = Vec::new();
 
         while let Some(args_pair) = args.clone().try_cast::<Pair>(cmp.mt) {

@@ -21,27 +21,27 @@ struct FreeHandleImpl {
     next: Option<NonNull<FreeHandleImpl>>
 }
 
-pub struct Handle(*mut LiveHandleImpl);
+pub struct HandleAny(*mut LiveHandleImpl);
 
-impl Clone for Handle {
+impl Clone for HandleAny {
     fn clone(&self) -> Self {
         unsafe { (*self.0).rc.set((*self.0).rc.get() + 1); }
 
-        Handle(self.0)
+        HandleAny(self.0)
     }
 }
 
-impl Drop for Handle {
+impl Drop for HandleAny {
     fn drop(&mut self) {
         unsafe { (*self.0).rc.set((*self.0).rc.get() - 1); }
     }
 }
 
-impl Handle {
+impl HandleAny {
     pub fn oref(&self) -> ORef { unsafe { (*self.0).oref } }
 }
 
-impl Handle {
+impl HandleAny {
     pub fn try_cast<U: Reify>(self, mt: &Mutator) -> Option<HandleT<U>> where Gc<U::Kind>: Into<Gc<Type>> {
         match HandleT::<()>::try_from(self) {
             Ok(obj_handle) => obj_handle.try_cast::<U>(mt),
@@ -51,7 +51,7 @@ impl Handle {
 }
 
 pub struct HandleT<T> {
-    handle: Handle,
+    handle: HandleAny,
     phantom: PhantomData<*const T>
 }
 
@@ -73,10 +73,10 @@ impl<T> Clone for HandleT<T> {
     fn clone(&self) -> Self { Self { handle: self.handle.clone(), phantom: self.phantom } }
 }
 
-impl TryFrom<Handle> for HandleT<()> {
+impl TryFrom<HandleAny> for HandleT<()> {
     type Error = ();
 
-    fn try_from(handle: Handle) -> Result<Self, Self::Error> {
+    fn try_from(handle: HandleAny) -> Result<Self, Self::Error> {
         if handle.oref().tag() == Gc::<()>::TAG {
             Ok(Self {handle, phantom: Default::default()})
         } else {
@@ -85,7 +85,7 @@ impl TryFrom<Handle> for HandleT<()> {
     }
 }
 
-impl<T> From<HandleT<T>> for Handle {
+impl<T> From<HandleT<T>> for HandleAny {
     fn from(typed: HandleT<T>) -> Self { typed.handle }
 }
 
@@ -137,7 +137,7 @@ impl HandlePool {
 
     /// Safety: The returned handle and its clones are only valid for the
     /// lifetime of `self`.
-    pub unsafe fn root(&mut self, oref: ORef) -> Handle {
+    pub unsafe fn root(&mut self, oref: ORef) -> HandleAny {
         if self.free.is_none() {
             self.grow();
         }
@@ -160,7 +160,7 @@ impl HandlePool {
         let handle = NonNull::new_unchecked(handle);
         self.live = Some(handle);
 
-        Handle(handle.as_ptr())
+        HandleAny(handle.as_ptr())
     }
 
     pub unsafe fn root_t<T>(&mut self, obj: Gc<T>) -> HandleT<T> {
@@ -252,7 +252,7 @@ pub trait Root {
 }
 
 impl Root for ORef {
-    type Rooted = Handle;
+    type Rooted = HandleAny;
 
     fn root(self, mt: &mut Mutator) -> Self::Rooted { mt.root(self) }
 }
