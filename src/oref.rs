@@ -1,5 +1,5 @@
 use std::fmt::{self, Debug};
-use std::mem::{size_of, transmute};
+use std::mem::size_of;
 use std::ptr::NonNull;
 use pretty::RcDoc;
 
@@ -9,6 +9,7 @@ use crate::mutator::{Mutator, WithinMt};
 use crate::list::{Pair, EmptyList};
 use crate::bool::Bool;
 use crate::fixnum::Fixnum;
+use crate::flonum::Flonum;
 
 pub trait Tagged {
     const TAG: usize;
@@ -77,34 +78,10 @@ impl From<ORef> for ORefEnum {
         match oref.tag() {
             Gc::<()>::TAG => Self::Gc(unsafe { Gc(NonNull::new_unchecked(oref.0 as *mut ())) }),
             Fixnum::TAG => Self::Fixnum(unsafe { Fixnum::from_oref_unchecked(oref) }.into()),
-            Flonum::TAG => Self::Flonum(Flonum(oref.0).into()),
+            Flonum::TAG => Self::Flonum(unsafe { Flonum::from_oref_unchecked(oref) }.into()),
             Char::TAG => Self::Char(Char(oref.0).into()),
             _ => unreachable!()
         }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Flonum(usize);
-
-impl Tagged for Flonum {
-    const TAG: usize = Fixnum::TAG + 1;
-}
-
-impl From<Flonum> for ORef {
-    fn from(n: Flonum) -> Self { ORef(n.0) }
-}
-
-impl From<f64> for Flonum {
-    // Loses `ORef::TAG_SIZE` bits of precision:
-    fn from(n: f64) -> Self {
-        Flonum(unsafe { transmute::<f64, usize>(n) } | Self::TAG)
-    }
-}
-
-impl From<Flonum> for f64 {
-    fn from(n: Flonum) -> Self {
-        unsafe { transmute::<usize, f64>(n.0 & !ORef::TAG_BITS) }
     }
 }
 
@@ -288,16 +265,6 @@ impl Gc<BitsType> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn flonum_from_f64() {
-        assert_eq!(f64::from(Flonum::from(0f64)), 0f64);
-        assert!(ORef::from(Flonum::from(0f64)).is_tagged::<Flonum>());
-
-        assert_eq!(f64::from(Flonum::from(5f64)), 5f64);
-
-        assert_eq!(f64::from(Flonum::from(-5f64)), -5f64);
-    }
 
     #[test]
     fn char_from() {
