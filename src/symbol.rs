@@ -141,27 +141,27 @@ impl Symbol {
         let hash = hash::<DefaultHasher, _>(cs);
 
         loop {
-            unsafe {
-                let entries = (*symbols).symbols;
+            let entries = unsafe { (*symbols).symbols };
 
-                let max_index = (*symbols).capacity - 1;
-                let mut collisions = 0;
-                let mut i = (isize::from(hash) as usize) & max_index;
-                loop {
-                    match *entries.add(i) {
-                        SymbolTableEntry::Present(isymbol) =>
-                            if isymbol.as_ref().hash == hash && isymbol.as_ref().name() == cs {
-                                return isymbol
-                            } else {
-                                collisions += 1;
-                                i = (i + collisions) & max_index;
-                            },
+            let max_index = unsafe { (*symbols).capacity } - 1;
+            let mut collisions = 0;
+            let mut i = (isize::from(hash) as usize) & max_index;
+            loop {
+                match unsafe { *entries.add(i) } {
+                    SymbolTableEntry::Present(isymbol) =>
+                        if mt.borrow(isymbol).hash == hash && mt.borrow(isymbol).name() == cs {
+                            return isymbol
+                        } else {
+                            collisions += 1;
+                            i = (i + collisions) & max_index;
+                        },
 
-                        SymbolTableEntry::Vacant =>
-                            if ((*symbols).len + 1) * 2 > (*symbols).capacity {
-                                (*symbols).rehash();
-                                break; // continue outer loop
-                            } else {
+                    SymbolTableEntry::Vacant =>
+                        if unsafe { ((*symbols).len + 1) * 2 > (*symbols).capacity } {
+                            unsafe { (*symbols).rehash(); }
+                            break; // continue outer loop
+                        } else {
+                            unsafe {
                                 let mut nptr = mt.alloc_indexed(Self::reify(mt), cs.len()).cast::<Self>();
                                 nptr.as_ptr().write(Symbol { hash });
                                 nptr.as_mut().indexed_field_mut().copy_from_slice(cs.as_bytes());
@@ -172,19 +172,19 @@ impl Symbol {
                                 *entries.add(i) = SymbolTableEntry::Present(sym);
 
                                 return sym;
-                            },
+                            }
+                        },
 
-                        SymbolTableEntry::Tombstone => {
-                            let mut nptr = mt.alloc_indexed(Self::reify(mt), cs.len()).cast::<Self>();
-                            nptr.as_ptr().write(Symbol { hash });
-                            nptr.as_mut().indexed_field_mut().copy_from_slice(cs.as_bytes());
+                    SymbolTableEntry::Tombstone => unsafe {
+                        let mut nptr = mt.alloc_indexed(Self::reify(mt), cs.len()).cast::<Self>();
+                        nptr.as_ptr().write(Symbol { hash });
+                        nptr.as_mut().indexed_field_mut().copy_from_slice(cs.as_bytes());
 
-                            let sym = Gc::new_unchecked(nptr);
+                        let sym = Gc::new_unchecked(nptr);
 
-                            *entries.add(i) = SymbolTableEntry::Present(sym);
+                        *entries.add(i) = SymbolTableEntry::Present(sym);
 
-                            return sym;
-                        }
+                        return sym;
                     }
                 }
             }
@@ -213,18 +213,14 @@ mod tests {
         let bootstrap_symbols_len = mt.symbols().len;
 
         let sym1 = Symbol::new(&mut mt, "foo");
-        unsafe {
-            assert_eq!(sym1.r#type(), mt.types().symbol.as_type());
-            assert_eq!(sym1.as_ref().hash, hash::<DefaultHasher, _>("foo"));
-            assert_eq!(sym1.as_ref().name(), "foo");
-        }
+        assert_eq!(sym1.r#type(), mt.types().symbol.as_type());
+        assert_eq!(mt.borrow(sym1).hash, hash::<DefaultHasher, _>("foo"));
+        assert_eq!(mt.borrow(sym1).name(), "foo");
 
         let sym2 = Symbol::new(&mut mt, "bar");
-        unsafe {
-            assert_eq!(sym2.r#type(), mt.types().symbol.as_type());
-            assert_eq!(sym2.as_ref().hash, hash::<DefaultHasher, _>("bar"));
-            assert_eq!(sym2.as_ref().name(), "bar");
-        }
+        assert_eq!(sym2.r#type(), mt.types().symbol.as_type());
+        assert_eq!(mt.borrow(sym2).hash, hash::<DefaultHasher, _>("bar"));
+        assert_eq!(mt.borrow(sym2).name(), "bar");
 
         let sym3 = Symbol::new(&mut mt, "foo");
         assert_eq!(sym3, sym3);

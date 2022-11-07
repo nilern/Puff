@@ -323,7 +323,7 @@ impl Reify for Bytecode {
 impl DisplayWithin for Gc<Bytecode> {
     fn fmt_within(&self, mt: &Mutator, fmt: &mut fmt::Formatter) -> fmt::Result {
         writeln!(fmt, "#<bytecode")?;
-        unsafe { self.as_ref().disassemble(mt, fmt, "  ")?; }
+        mt.borrow(*self).disassemble(mt, fmt, "  ")?;
         write!(fmt, ">")
     }
 }
@@ -355,94 +355,152 @@ impl Bytecode {
     pub fn instrs(&self) -> &[u8] { self.indexed_field() }
 
     fn disassemble(&self, mt: &Mutator, fmt: &mut fmt::Formatter, indent: &str) -> fmt::Result {
-        unsafe {
-            write!(fmt, "{}(clovers {}) ", indent, self.clovers_len)?;
-            if self.min_arity > 0 {
-                write!(fmt, "(_")?;
+        write!(fmt, "{}(clovers {}) ", indent, self.clovers_len)?;
+        if self.min_arity > 0 {
+            write!(fmt, "(_")?;
 
-                for _ in 1..self.min_arity {
-                    write!(fmt, " _")?;
-                }
-
-                if self.varargs {
-                    write!(fmt, " . _")?;
-                }
-
-                writeln!(fmt, ")")?;
-            } else {
-                if !self.varargs {
-                    writeln!(fmt, "()")?;
-                } else {
-                    writeln!(fmt, "_")?;
-                }
+            for _ in 1..self.min_arity {
+                write!(fmt, " _")?;
             }
-            writeln!(fmt, "{}(locals {})", indent, self.max_regs)?;
 
-            let mut instrs = self.instrs().iter().enumerate();
-            while let Some((i, &byte)) = instrs.next() {
-                if let Ok(op) = Opcode::try_from(byte) {
-                    match op {
-                        Opcode::Define =>
-                            if let Some((_, ci)) = instrs.next() {
-                                let c = self.consts.as_ref().indexed_field()[*ci as usize];
-                                writeln!(fmt, "{}{}: define {} ; {}", indent, i, ci, c.within(mt))?;
+            if self.varargs {
+                write!(fmt, " . _")?;
+            }
+
+            writeln!(fmt, ")")?;
+        } else {
+            if !self.varargs {
+                writeln!(fmt, "()")?;
+            } else {
+                writeln!(fmt, "_")?;
+            }
+        }
+        writeln!(fmt, "{}(locals {})", indent, self.max_regs)?;
+
+        let mut instrs = self.instrs().iter().enumerate();
+        while let Some((i, &byte)) = instrs.next() {
+            if let Ok(op) = Opcode::try_from(byte) {
+                match op {
+                    Opcode::Define =>
+                        if let Some((_, ci)) = instrs.next() {
+                            let c = mt.borrow(self.consts).indexed_field()[*ci as usize];
+                            writeln!(fmt, "{}{}: define {} ; {}", indent, i, ci, c.within(mt))?;
+                        } else {
+                            todo!()
+                        },
+
+                    Opcode::GlobalSet =>
+                        if let Some((_, ci)) = instrs.next() {
+                            let c = mt.borrow(self.consts).indexed_field()[*ci as usize];
+                            writeln!(fmt, "{}{}: global-set! {} ; {}", indent, i, ci, c.within(mt))?;
+                        } else {
+                            todo!()
+                        },
+
+                    Opcode::Global =>
+                        if let Some((_, ci)) = instrs.next() {
+                            let c = mt.borrow(self.consts).indexed_field()[*ci as usize];
+                            writeln!(fmt, "{}{}: global {} ; {}", indent, i, ci, c.within(mt))?;
+                        } else {
+                            todo!()
+                        },
+
+                    Opcode::Const =>
+                        if let Some((_, ci)) = instrs.next() {
+                            let c = mt.borrow(self.consts).indexed_field()[*ci as usize];
+                            writeln!(fmt, "{}{}: const {} ; {}", indent, i, ci, c.within(mt))?;
+                        } else {
+                            todo!()
+                        },
+
+                    Opcode::Local =>
+                        if let Some((_, reg)) = instrs.next() {
+                            writeln!(fmt, "{}{}: local {}", indent, i, reg)?;
+                        } else {
+                            todo!()
+                        },
+
+                    Opcode::Clover =>
+                        if let Some((_, j)) = instrs.next() {
+                            let name = mt.borrow(self.clover_names).indexed_field()[*j as usize];
+
+                            write!(fmt, "{}{}: clover {}", indent, i, j)?;
+                            if let Some(name) = name.try_cast::<Symbol>(mt) {
+                                writeln!(fmt, "; {}", mt.borrow(name).name())?;
                             } else {
-                                todo!()
-                            },
+                                writeln!(fmt, "")?;
+                            }
+                        } else {
+                            todo!()
+                        },
 
-                        Opcode::GlobalSet =>
-                            if let Some((_, ci)) = instrs.next() {
-                                let c = self.consts.as_ref().indexed_field()[*ci as usize];
-                                writeln!(fmt, "{}{}: global-set! {} ; {}", indent, i, ci, c.within(mt))?;
-                            } else {
-                                todo!()
-                            },
+                    Opcode::Pop => writeln!(fmt, "{}{}: pop", indent, i)?,
 
-                        Opcode::Global =>
-                            if let Some((_, ci)) = instrs.next() {
-                                let c = self.consts.as_ref().indexed_field()[*ci as usize];
-                                writeln!(fmt, "{}{}: global {} ; {}", indent, i, ci, c.within(mt))?;
-                            } else {
-                                todo!()
-                            },
+                    Opcode::Prune => {
+                        write!(fmt, "{}{}: prune #b", indent, i)?;
 
-                        Opcode::Const =>
-                            if let Some((_, ci)) = instrs.next() {
-                                let c = self.consts.as_ref().indexed_field()[*ci as usize];
-                                writeln!(fmt, "{}{}: const {} ; {}", indent, i, ci, c.within(mt))?;
-                            } else {
-                                todo!()
-                            },
+                        let mut mask_len = 0;
+                        for (i, prune) in decode_prune_mask(&self.instrs()[i + 1..]).enumerate() {
+                            write!(fmt, "{}", prune as u8)?;
+                            if i % 7 == 0 {
+                                mask_len += 1;
+                            }
+                        }
 
-                        Opcode::Local =>
-                            if let Some((_, reg)) = instrs.next() {
-                                writeln!(fmt, "{}{}: local {}", indent, i, reg)?;
-                            } else {
-                                todo!()
-                            },
+                        writeln!(fmt, "")?;
 
-                        Opcode::Clover =>
-                            if let Some((_, j)) = instrs.next() {
-                                let name = self.clover_names.as_ref().indexed_field()[*j as usize];
+                        for _ in 0..mask_len {
+                            instrs.next();
+                        }
+                    },
 
-                                write!(fmt, "{}{}: clover {}", indent, i, j)?;
-                                if let Some(name) = name.try_cast::<Symbol>(mt) {
-                                    writeln!(fmt, "; {}", name.as_ref().name())?;
+                    Opcode::Box => writeln!(fmt, "{}{}: box", indent, i)?,
+                    Opcode::UninitializedBox => writeln!(fmt, "{}{}: uninitialized-box", indent, i)?,
+                    Opcode::BoxSet => writeln!(fmt, "{}{}: box-set!", indent, i)?,
+                    Opcode::CheckedBoxSet => writeln!(fmt, "{}{}: checked-box-set!", indent, i)?,
+                    Opcode::BoxGet => writeln!(fmt, "{}{}: box-get", indent, i)?,
+                    Opcode::CheckedBoxGet => writeln!(fmt, "{}{}: checked-box-get", indent, i)?,
+                    Opcode::CheckUse => writeln!(fmt, "{}{}: check-use", indent, i)?,
+
+                    Opcode::Brf =>
+                        if let Some((_, d)) = instrs.next() {
+                            writeln!(fmt, "{}{}: brf {}", indent, i, d)?;
+                        } else {
+                            todo!()
+                        },
+
+                    Opcode::Br =>
+                        if let Some((_, d)) = instrs.next() {
+                            writeln!(fmt, "{}{}: br {}", indent, i, d)?;
+                        } else {
+                            todo!()
+                        },
+
+                    Opcode::r#Fn =>
+                        if let Some((_, ci)) = instrs.next() {
+                            if let Some((_, len)) = instrs.next() {
+                                let code = mt.borrow(self.consts).indexed_field()[*ci as usize];
+
+                                if let Some(code) = code.try_cast::<Bytecode>(mt) {
+                                    writeln!(fmt, "{}{}: fn {}", indent, i, len)?;
+                                    mt.borrow(code).disassemble(mt, fmt, &(indent.to_string() + "  "))?;
                                 } else {
-                                    writeln!(fmt, "")?;
+                                    todo!()
                                 }
                             } else {
                                 todo!()
-                            },
+                            }
+                        } else {
+                            todo!()
+                        },
 
-                        Opcode::Pop => writeln!(fmt, "{}{}: pop", indent, i)?,
-
-                        Opcode::Prune => {
-                            write!(fmt, "{}{}: prune #b", indent, i)?;
+                    Opcode::Call =>
+                        if let Some((j, argc)) = instrs.next() {
+                            write!(fmt, "{}{}: call {} #b", indent, i, argc)?;
 
                             let mut mask_len = 0;
-                            for (i, prune) in decode_prune_mask(&self.instrs()[i + 1..]).enumerate() {
-                                write!(fmt, "{}", prune as u8)?;
+                            for (i, prune) in decode_prune_mask(&self.instrs()[j + 1..]).enumerate() {
+                                write!(fmt, "{}", (prune as u8))?;
                                 if i % 7 == 0 {
                                     mask_len += 1;
                                 }
@@ -453,87 +511,27 @@ impl Bytecode {
                             for _ in 0..mask_len {
                                 instrs.next();
                             }
+                        } else {
+                            todo!()
                         },
 
-                        Opcode::Box => writeln!(fmt, "{}{}: box", indent, i)?,
-                        Opcode::UninitializedBox => writeln!(fmt, "{}{}: uninitialized-box", indent, i)?,
-                        Opcode::BoxSet => writeln!(fmt, "{}{}: box-set!", indent, i)?,
-                        Opcode::CheckedBoxSet => writeln!(fmt, "{}{}: checked-box-set!", indent, i)?,
-                        Opcode::BoxGet => writeln!(fmt, "{}{}: box-get", indent, i)?,
-                        Opcode::CheckedBoxGet => writeln!(fmt, "{}{}: checked-box-get", indent, i)?,
-                        Opcode::CheckUse => writeln!(fmt, "{}{}: check-use", indent, i)?,
+                    Opcode::CheckOneReturnValue => writeln!(fmt, "{}{}: check-one-return-value", indent, i)?,
 
-                        Opcode::Brf =>
-                            if let Some((_, d)) = instrs.next() {
-                                writeln!(fmt, "{}{}: brf {}", indent, i, d)?;
-                            } else {
-                                todo!()
-                            },
+                    Opcode::IgnoreReturnValues => writeln!(fmt, "{}{}: ignore-return-values", indent, i)?,
 
-                        Opcode::Br =>
-                            if let Some((_, d)) = instrs.next() {
-                                writeln!(fmt, "{}{}: br {}", indent, i, d)?;
-                            } else {
-                                todo!()
-                            },
+                    Opcode::TailCallWithValues => writeln!(fmt, "{}{}: tailcall-with-values", indent, i)?,
 
-                        Opcode::r#Fn =>
-                            if let Some((_, ci)) = instrs.next() {
-                                if let Some((_, len)) = instrs.next() {
-                                    let code = self.consts.as_ref().indexed_field()[*ci as usize];
+                    Opcode::TailCall =>
+                        if let Some((_, argc)) = instrs.next() {
+                            writeln!(fmt, "{}{}: tailcall {}", indent, i, argc)?;
+                        } else {
+                            todo!()
+                        },
 
-                                    if let Some(code) = code.try_cast::<Bytecode>(mt) {
-                                        writeln!(fmt, "{}{}: fn {}", indent, i, len)?;
-                                        code.as_ref().disassemble(mt, fmt, &(indent.to_string() + "  "))?;
-                                    } else {
-                                        todo!()
-                                    }
-                                } else {
-                                    todo!()
-                                }
-                            } else {
-                                todo!()
-                            },
-
-                        Opcode::Call =>
-                            if let Some((j, argc)) = instrs.next() {
-                                write!(fmt, "{}{}: call {} #b", indent, i, argc)?;
-
-                                let mut mask_len = 0;
-                                for (i, prune) in decode_prune_mask(&self.instrs()[j + 1..]).enumerate() {
-                                    write!(fmt, "{}", (prune as u8))?;
-                                    if i % 7 == 0 {
-                                        mask_len += 1;
-                                    }
-                                }
-
-                                writeln!(fmt, "")?;
-
-                                for _ in 0..mask_len {
-                                    instrs.next();
-                                }
-                            } else {
-                                todo!()
-                            },
-
-                        Opcode::CheckOneReturnValue => writeln!(fmt, "{}{}: check-one-return-value", indent, i)?,
-
-                        Opcode::IgnoreReturnValues => writeln!(fmt, "{}{}: ignore-return-values", indent, i)?,
-
-                        Opcode::TailCallWithValues => writeln!(fmt, "{}{}: tailcall-with-values", indent, i)?,
-
-                        Opcode::TailCall =>
-                            if let Some((_, argc)) = instrs.next() {
-                                writeln!(fmt, "{}{}: tailcall {}", indent, i, argc)?;
-                            } else {
-                                todo!()
-                            },
-
-                        Opcode::Ret => writeln!(fmt, "{}{}: ret", indent, i)?
-                    }
-                } else {
-                    todo!();
+                    Opcode::Ret => writeln!(fmt, "{}{}: ret", indent, i)?
                 }
+            } else {
+                todo!();
             }
         }
 

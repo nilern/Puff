@@ -222,7 +222,7 @@ impl<T> Gc<T> {
 
 impl<T: HeapObj> Gc<T> {
     pub fn instance_of<U: Reify>(self, mt: &Mutator) -> bool where Gc<U::Kind>: AsType {
-        unsafe { self.as_ref() }.r#type() == U::reify(mt).as_type()
+        mt.borrow(self).r#type() == U::reify(mt).as_type()
     }
 
     pub fn try_cast<U: Reify>(self, mt: &Mutator) -> Option<Gc<U>> where Gc<U::Kind>: AsType {
@@ -310,27 +310,25 @@ impl<T> Gc<T> {
 impl Gc<()> {
     pub fn to_doc(self, mt: &Mutator) -> RcDoc<()> {
         if let Some(pair) = self.try_cast::<Pair>(mt) {
-            unsafe {
-                let mut doc = RcDoc::text("(").append(pair.as_ref().car().to_doc(mt));
-                
-                let mut ls = pair.as_ref().cdr();
-                loop {
-                    if let Some(pair) = ls.try_cast::<Pair>(mt) {
-                        doc = doc.append(RcDoc::line())
-                            .append(pair.as_ref().car().to_doc(mt));
-                        ls = pair.as_ref().cdr();
-                    } else if ls == EmptyList::instance(mt).into() {
-                        doc = doc.append(RcDoc::text(")"));
-                        break;
-                    } else {
-                        doc = doc.append(RcDoc::line()).append(RcDoc::text(".")).append(RcDoc::line())
-                            .append(ls.to_doc(mt)).append(RcDoc::text(")"));
-                        break;
-                    }
+            let mut doc = RcDoc::text("(").append(mt.borrow(pair).car().to_doc(mt));
+            
+            let mut ls = mt.borrow(pair).cdr();
+            loop {
+                if let Some(pair) = ls.try_cast::<Pair>(mt) {
+                    doc = doc.append(RcDoc::line())
+                        .append(mt.borrow(pair).car().to_doc(mt));
+                    ls = mt.borrow(pair).cdr();
+                } else if ls == EmptyList::instance(mt).into() {
+                    doc = doc.append(RcDoc::text(")"));
+                    break;
+                } else {
+                    doc = doc.append(RcDoc::line()).append(RcDoc::text(".")).append(RcDoc::line())
+                        .append(ls.to_doc(mt)).append(RcDoc::text(")"));
+                    break;
                 }
-
-                doc
             }
+
+            doc
         } else {
             RcDoc::text(format!("{}", self.within(mt)))
         }

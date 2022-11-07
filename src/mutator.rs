@@ -327,7 +327,7 @@ impl Mutator {
 
     fn set_code(&mut self, code: Gc<Bytecode>) {
         self.code = Some(code);
-        unsafe { self.consts = Some(code.as_ref().consts); }
+        self.consts = Some(self.borrow(code).consts);
         self.pc = 0;
     }
 
@@ -336,12 +336,12 @@ impl Mutator {
     unsafe fn consts(&self) -> Gc<Vector<ORef>> { self.consts.unwrap() }
 
     fn next_opcode(&mut self) -> Result<Opcode, ()> {
-        let op = Opcode::try_from(unsafe { self.code().as_ref().instrs()[self.pc] });
+        let op = Opcode::try_from(self.borrow(unsafe { self.code() }).instrs()[self.pc]);
         self.pc += 1;
         op
     }
 
-    fn peek_oparg(&self) -> usize { unsafe { self.code().as_ref().instrs()[self.pc] as usize } }
+    fn peek_oparg(&self) -> usize { self.borrow(unsafe { self.code() }).instrs()[self.pc] as usize }
 
     fn next_oparg(&mut self) -> usize {
         let arg = self.peek_oparg();
@@ -358,8 +358,8 @@ impl Mutator {
     pub fn push_global(&mut self, name: &str) {
         let name = Symbol::new(self, name);
 
-        if let Some(var) = unsafe { self.ns.unwrap().as_ref().get(name) } {
-            unsafe { self.regs.push(var.as_ref().value()); }
+        if let Some(var) = self.borrow(self.ns.unwrap()).get(name) {
+            self.regs.push(self.borrow(var).value());
         } else {
             todo!()
         }
@@ -396,6 +396,10 @@ impl Mutator {
     pub fn root_t<T>(&mut self, obj: Gc<T>) -> HandleT<T> {
         unsafe { self.handles.root_t(obj) }
     }
+
+    /// Deref `oref`. This is safe because allocation and thus GC is impossible while a `&Mutator` exists.
+    /// Idea from the Josephine SpiderMonkey bindings (although I had the same intuition before hearing about that).
+    pub fn borrow<'a, T>(&'a self, oref: Gc<T>) -> &'a T { unsafe { transmute(oref.as_ref()) } }
 
     unsafe fn mark_roots(&mut self) {
         self.handles.for_each_mut_root_freeing(|oref|
@@ -515,7 +519,7 @@ impl Mutator {
     fn tailcall(&mut self, argc: usize) -> Option<Trampoline> {
         let callee = self.regs[self.regs.len() - argc];
         if let Some(callee) = callee.try_cast::<Closure>(self) {
-            let code = unsafe { callee.as_ref().code };
+            let code = self.borrow(callee).code;
 
             // Pass arguments:
             self.regs.enter(argc);
@@ -524,13 +528,13 @@ impl Mutator {
             self.set_code(code);
 
             // Ensure register space, reclaim garbage regs prefix and extend regs if necessary:
-            self.regs.ensure(unsafe { code.as_ref().max_regs });
+            self.regs.ensure(self.borrow(code).max_regs);
 
             // TODO: GC safepoint (only becomes necessary with multithreading)
 
             // Check arity:
-            let min_arity = unsafe { self.code().as_ref().min_arity };
-            if ! unsafe { self.code().as_ref().varargs } {
+            let min_arity = unsafe { self.borrow(self.code()).min_arity };
+            if ! unsafe { self.borrow(self.code()).varargs } {
                 if argc != min_arity {
                     todo!()
                 }
@@ -559,8 +563,8 @@ impl Mutator {
             self.regs.enter(argc);
 
             // Check arity:
-            let min_arity = unsafe { callee.as_ref().min_arity };
-            if ! unsafe { callee.as_ref().varargs } {
+            let min_arity = self.borrow(callee).min_arity;
+            if !self.borrow(callee).varargs {
                 if argc != min_arity {
                     todo!()
                 }
@@ -571,7 +575,7 @@ impl Mutator {
             }
 
             // Call:
-            Some(Trampoline::Answer(unsafe { (callee.as_ref().code)(self) }))
+            Some(Trampoline::Answer((self.borrow(callee).code)(self)))
         } else {
             todo!()
         }
@@ -586,7 +590,7 @@ impl Mutator {
 
             let start = self.stack.len() - frame_len;
             let f = unsafe { self.stack[start].unchecked_cast::<Closure>() };
-            let code = unsafe { f.as_ref().code };
+            let code = self.borrow(f).code;
 
             // Jump back:
             self.set_code(code);
@@ -603,7 +607,7 @@ impl Mutator {
                     self.stack.truncate(start);
 
                     // Ensure register space, reclaim garbage regs prefix and extend regs if necessary:
-                    self.regs.ensure(unsafe { code.as_ref().max_regs });
+                    self.regs.ensure(self.borrow(code).max_regs);
 
                     None
                 },
@@ -613,7 +617,7 @@ impl Mutator {
                     self.stack.truncate(start);
 
                     // Ensure register space, reclaim garbage regs prefix and extend regs if necessary:
-                    self.regs.ensure(unsafe { code.as_ref().max_regs });
+                    self.regs.ensure(self.borrow(code).max_regs);
 
                     None
                 },
@@ -623,7 +627,7 @@ impl Mutator {
                     self.stack.truncate(start);
 
                     // Ensure register space, reclaim garbage regs prefix and extend regs if necessary:
-                    self.regs.ensure(unsafe { code.as_ref().max_regs });
+                    self.regs.ensure(self.borrow(code).max_regs);
 
                     Some(Trampoline::Answer(Answer::TailCall {argc: retc + 1}))
                 },
@@ -661,13 +665,11 @@ impl Mutator {
                         let i = self.next_oparg();
 
                         let name = root!(self,
-                            unsafe { self.consts().as_ref().indexed_field()[i].unchecked_cast::<Symbol>() });
-                        if let Some(var) = unsafe { self.ns.unwrap().as_ref().get(name.oref()) } {
+                            unsafe { self.borrow(self.consts()).indexed_field()[i].unchecked_cast::<Symbol>() });
+                        if let Some(var) = self.borrow(self.ns.unwrap()).get(name.oref()) {
                             let v = self.regs.pop().unwrap();
-                            unsafe {
-                                var.as_ref().redefine(v);
-                                self.regs.push_unchecked(v); // HACK?
-                            }
+                            self.borrow(var).redefine(v);
+                            unsafe { self.regs.push_unchecked(v); } // HACK?
                         } else {
                             unsafe {
                                 let var = root!(self, Var::new_uninitialized(self));
@@ -682,13 +684,11 @@ impl Mutator {
                     Opcode::GlobalSet => {
                         let i = self.next_oparg();
 
-                        let name = unsafe { self.consts().as_ref().indexed_field()[i].unchecked_cast::<Symbol>() };
-                        if let Some(var) = unsafe { self.ns.unwrap().as_ref().get(name) } {
+                        let name = unsafe { self.borrow(self.consts()).indexed_field()[i].unchecked_cast::<Symbol>() };
+                        if let Some(var) = self.borrow(self.ns.unwrap()).get(name) {
                             let v = self.regs.pop().unwrap();
-                            unsafe {
-                                var.as_ref().set(v);
-                                self.regs.push_unchecked(v); // HACK?
-                            }
+                            self.borrow(var).set(v);
+                            unsafe { self.regs.push_unchecked(v); } // HACK?
                         } else {
                             todo!()
                         }
@@ -697,18 +697,18 @@ impl Mutator {
                     Opcode::Global => {
                         let i = self.next_oparg();
 
-                        let name = unsafe { self.consts().as_ref().indexed_field()[i].unchecked_cast::<Symbol>() };
-                        if let Some(var) = unsafe { self.ns.unwrap().as_ref().get(name) } {
-                            unsafe { self.regs.push_unchecked(var.as_ref().value()); }
+                        let name = unsafe { self.borrow(self.consts()).indexed_field()[i].unchecked_cast::<Symbol>() };
+                        if let Some(var) = self.borrow(self.ns.unwrap()).get(name) {
+                            unsafe { self.regs.push_unchecked(self.borrow(var).value()); }
                         } else {
-                            unsafe { todo!("Unbound {}", name.as_ref().name()); }
+                            todo!("Unbound {}", self.borrow(name).name());
                         }
                     }
 
                     Opcode::Const => {
                         let i = self.next_oparg();
 
-                        unsafe { self.regs.push_unchecked(self.consts().as_ref().indexed_field()[i]); }
+                        unsafe { self.regs.push_unchecked(self.borrow(self.consts()).indexed_field()[i]); }
                     },
 
                     Opcode::Local => {
@@ -721,7 +721,8 @@ impl Mutator {
                         let i = self.next_oparg();
 
                         unsafe {
-                            self.regs.push_unchecked(self.regs[0].unchecked_cast::<Closure>().as_ref().clovers()[i]);
+                            self.regs.push_unchecked(
+                                self.borrow(self.regs[0].unchecked_cast::<Closure>()).clovers()[i]);
                         }
                     },
 
@@ -778,7 +779,7 @@ impl Mutator {
                         let v = self.regs.pop().unwrap();
                         let r#box = self.regs.pop().unwrap();
 
-                        unsafe { r#box.unchecked_cast::<Box>().as_ref().set(v); }
+                        self.borrow(unsafe { r#box.unchecked_cast::<Box>() }).set(v);
 
                         self.regs.push(r#box); // FIXME: Abstraction leak wrt. `set!`-conversion
                     },
@@ -788,8 +789,8 @@ impl Mutator {
                         let r#box = self.regs.pop().unwrap();
                         let guard = unsafe { self.regs.pop().unwrap().unchecked_cast::<Box>() };
 
-                        if unsafe { guard.as_ref().get().is_truthy(self) } {
-                            unsafe { r#box.unchecked_cast::<Box>().as_ref().set(v); }
+                        if self.borrow(guard).get().is_truthy(self) {
+                            self.borrow(unsafe { r#box.unchecked_cast::<Box>() }).set(v);
 
                             self.regs.push(r#box); // FIXME: Abstraction leak wrt. `set!`-conversion
                         } else {
@@ -800,15 +801,15 @@ impl Mutator {
                     Opcode::BoxGet => {
                         let r#box = self.regs.pop().unwrap();
 
-                        self.regs.push(unsafe { r#box.unchecked_cast::<Box>().as_ref().get() });
+                        self.regs.push(self.borrow(unsafe { r#box.unchecked_cast::<Box>() }).get());
                     },
 
                     Opcode::CheckedBoxGet => {
                         let r#box = self.regs.pop().unwrap();
                         let guard = unsafe { self.regs.pop().unwrap().unchecked_cast::<Box>() };
 
-                        if unsafe { guard.as_ref().get().is_truthy(self) } {
-                            self.regs.push(unsafe { r#box.unchecked_cast::<Box>().as_ref().get() });
+                        if self.borrow(guard).get().is_truthy(self) {
+                            self.regs.push(self.borrow(unsafe { r#box.unchecked_cast::<Box>() }).get());
                         } else {
                             todo!()
                         }
@@ -817,7 +818,7 @@ impl Mutator {
                     Opcode::CheckUse => {
                         let guard = unsafe { self.regs.pop().unwrap().unchecked_cast::<Box>() };
 
-                        if !unsafe { guard.as_ref().get().is_truthy(self) } {
+                        if !self.borrow(guard).get().is_truthy(self) {
                             todo!()
                         }
                     },
@@ -841,7 +842,7 @@ impl Mutator {
                         let ci = self.next_oparg();
                         let len = self.next_oparg();
 
-                        unsafe { self.regs.push_unchecked(self.consts().as_ref().indexed_field()[ci]); }
+                        unsafe { self.regs.push_unchecked(self.borrow(self.consts()).indexed_field()[ci]); }
                         let closure = Closure::new(self, len);
                         unsafe { self.regs.popn_unchecked(len + 1); }
                         unsafe { self.regs.push_unchecked(closure.into()); }

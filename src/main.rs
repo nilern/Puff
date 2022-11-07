@@ -77,7 +77,7 @@ fn main() {
                                 println!("");
                             }
 
-                            match unsafe { verify(&mt, code.as_ref()) } {
+                            match verify(&mt, mt.borrow(code)) {
                                 Ok(()) => {
                                     mt.push(code.into());
                                     let f = Closure::new(&mut mt, 0);

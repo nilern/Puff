@@ -35,71 +35,73 @@ impl DisplayWithin for ORef {
 
 impl DisplayWithin for Gc<()> {
     fn fmt_within(&self, mt: &Mutator, fmt: &mut fmt::Formatter) -> fmt::Result {
-        unsafe {
-            if let Some(this) = self.try_cast::<Symbol>(mt) {
-                write!(fmt, "{}", this.as_ref().name())
-            } else if let Some(this) = self.try_cast::<Pair>(mt) {
-                write!(fmt, "({}", this.as_ref().car().within(mt))?;
+        if let Some(sym) = self.try_cast::<Symbol>(mt) {
+            write!(fmt, "{}", mt.borrow(sym).name())
+        } else if let Some(pair) = self.try_cast::<Pair>(mt) {
+            let pair = mt.borrow(pair);
+            write!(fmt, "({}", pair.car().within(mt))?;
 
-                let mut ls = this.as_ref().cdr();
-                loop {
-                    if let Ok(ls_obj) = Gc::<()>::try_from(ls) {
-                        if let Some(pair) = ls_obj.try_cast::<Pair>(mt) {
-                            write!(fmt, " {}", pair.as_ref().car().within(mt))?;
+            let mut ls = pair.cdr();
+            loop {
+                if let Ok(ls_obj) = Gc::<()>::try_from(ls) {
+                    if let Some(pair) = ls_obj.try_cast::<Pair>(mt) {
+                        let pair = mt.borrow(pair);
+                        write!(fmt, " {}", pair.car().within(mt))?;
 
-                            ls = pair.as_ref().cdr();
-                            continue;
-                        } else if let Some(_) = ls_obj.try_cast::<EmptyList>(mt) {
-                            break;
-                        }
-                    }
-
-                    write!(fmt, " . {}", ls.within(mt))?;
-                    break;
-                }
-
-                write!(fmt, ")")
-            } else if let Some(_) = self.try_cast::<EmptyList>(mt) {
-                write!(fmt, "()")
-            } else if let Some(this) = self.try_cast::<String>(mt) {
-                write!(fmt, "\"{}\"", this.as_ref().as_str())
-            } else if let Some(this) = self.try_cast::<Bool>(mt) {
-                if bool::from(this.as_ref().0) {
-                    write!(fmt, "#t")
-                } else {
-                    write!(fmt, "#f")
-                }
-            } else if let Some(vs) = self.try_cast::<Vector<ORef>>(mt) {
-                write!(fmt, "#(")?;
-
-                if vs.as_ref().indexed_field().len() > 0 {
-                    write!(fmt, "{}", vs.as_ref().indexed_field()[0].within(mt))?;
-
-                    for v in &vs.as_ref().indexed_field()[1..] {
-                        write!(fmt, " {}", v.within(mt))?;
+                        ls = pair.cdr();
+                        continue;
+                    } else if let Some(_) = ls_obj.try_cast::<EmptyList>(mt) {
+                        break;
                     }
                 }
 
-                write!(fmt, ")")
-            } else if let Some(_) = self.try_cast::<Closure>(mt) {
-                write!(fmt, "#<fn @ {:p}>", self.as_ref())
-            } else if let Some(_) = self.try_cast::<NativeFn>(mt) {
-                write!(fmt, "#<fn native @ {:p}>", self.as_ref())
-            } else if let Some(_) = self.try_cast::<Syntax>(mt) {
-                write!(fmt, "#<syntax>") // TODO: show unwrapped .expr
-            } else if let Some(pos) = self.try_cast::<Pos>(mt) {
-                write!(fmt, "#<pos {} {} {}>",
-                    pos.as_ref().filename.within(mt),
-                    ORef::from(pos.as_ref().line).within(mt),
-                    ORef::from(pos.as_ref().column).within(mt)
-                )
-            } else if let Some(_) = self.try_cast::<Box>(mt) {
-                write!(fmt, "#<box>")
-            } else if let Some(code) = self.try_cast::<Bytecode>(mt) {
-                write!(fmt, "{}", code.within(mt))
-            } else {
-                write!(fmt, "#<object @ {:p}>", self.as_ref())
+                write!(fmt, " . {}", ls.within(mt))?;
+                break;
             }
+
+            write!(fmt, ")")
+        } else if let Some(_) = self.try_cast::<EmptyList>(mt) {
+            write!(fmt, "()")
+        } else if let Some(s) = self.try_cast::<String>(mt) {
+            write!(fmt, "\"{}\"", mt.borrow(s).as_str())
+        } else if let Some(b) = self.try_cast::<Bool>(mt) {
+            if bool::from(mt.borrow(b).0) {
+                write!(fmt, "#t")
+            } else {
+                write!(fmt, "#f")
+            }
+        } else if let Some(vs) = self.try_cast::<Vector<ORef>>(mt) {
+            write!(fmt, "#(")?;
+
+            let vs = mt.borrow(vs);
+            if vs.indexed_field().len() > 0 {
+                write!(fmt, "{}", vs.indexed_field()[0].within(mt))?;
+
+                for v in &vs.indexed_field()[1..] {
+                    write!(fmt, " {}", v.within(mt))?;
+                }
+            }
+
+            write!(fmt, ")")
+        } else if let Some(_) = self.try_cast::<Closure>(mt) {
+            write!(fmt, "#<fn @ {:p}>", mt.borrow(*self))
+        } else if let Some(_) = self.try_cast::<NativeFn>(mt) {
+            write!(fmt, "#<fn native @ {:p}>", mt.borrow(*self))
+        } else if let Some(_) = self.try_cast::<Syntax>(mt) {
+            write!(fmt, "#<syntax>") // TODO: show unwrapped .expr
+        } else if let Some(pos) = self.try_cast::<Pos>(mt) {
+            let pos = mt.borrow(pos);
+            write!(fmt, "#<pos {} {} {}>",
+                pos.filename.within(mt),
+                ORef::from(pos.line).within(mt),
+                ORef::from(pos.column).within(mt)
+            )
+        } else if let Some(_) = self.try_cast::<Box>(mt) {
+            write!(fmt, "#<box>")
+        } else if let Some(code) = self.try_cast::<Bytecode>(mt) {
+            write!(fmt, "{}", code.within(mt))
+        } else {
+            write!(fmt, "#<object @ {:p}>", mt.borrow(*self))
         }
     }
 }

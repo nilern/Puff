@@ -108,7 +108,7 @@ impl HandleT<Namespace> {
             let mut collisions = 0;
             let mut i = (isize::from(hash) as usize) & max_index;
             loop {
-                let k = unsafe { self.keys.get().as_ref().indexed_field()[i].get() };
+                let k = mt.borrow(self.keys.get()).indexed_field()[i].get();
 
                 if k != Fixnum::from(0u8).into() {
                     debug_assert!(k != name.oref().into());
@@ -116,14 +116,12 @@ impl HandleT<Namespace> {
                     i = (i + collisions) & max_index;
                 } else {
                     if (self.len.get() + 1) * 2 > self.capacity.get() {
-                        unsafe { self.clone().rehash(mt); }
+                        self.clone().rehash(mt);
                         break; // continue outer loop
                     } else {
-                        unsafe {
-                            self.len.set(self.len.get() + 1);
-                            self.keys.get().as_ref().indexed_field()[i].set(name.oref().into());
-                            self.values.get().as_ref().indexed_field()[i].set(v.oref().into());
-                        }
+                        self.len.set(self.len.get() + 1);
+                        mt.borrow(self.keys.get()).indexed_field()[i].set(name.oref().into());
+                        mt.borrow(self.values.get()).indexed_field()[i].set(v.oref().into());
                         return;
                     }
                 }
@@ -131,27 +129,27 @@ impl HandleT<Namespace> {
         }
     }
 
-    unsafe fn rehash(self, mt: &mut Mutator) {
+    fn rehash(self, mt: &mut Mutator) {
         let new_capacity = self.capacity.get() * 2;
 
         let new_keys = root!(mt, VectorMut::<ORef>::zeros(mt, new_capacity));
         let new_values = VectorMut::<ORef>::zeros(mt, new_capacity);
         let new_keys = new_keys.oref();
 
-        for (old_i, k) in self.keys.get().as_ref().indexed_field().iter().enumerate() {
+        for (old_i, k) in mt.borrow(self.keys.get()).indexed_field().iter().enumerate() {
             if let Some(k) = k.get().try_cast::<Symbol>(mt) {
-                let hash = isize::from(k.as_ref().hash()) as usize;
+                let hash = isize::from(mt.borrow(k).hash()) as usize;
 
                 let max_index = new_capacity - 1;
                 let mut collisions = 0;
                 let mut i = hash & max_index;
-                while new_keys.as_ref().indexed_field()[i].get() != Fixnum::from(0u8).into() {
+                while mt.borrow(new_keys).indexed_field()[i].get() != Fixnum::from(0u8).into() {
                     collisions += 1;
                     i = (i + collisions) & max_index;
                 }
-                new_keys.as_ref().indexed_field()[i].set(k.into());
-                new_values.as_ref().indexed_field()[i]
-                    .set(self.values.get().as_ref().indexed_field()[old_i].get());
+                mt.borrow(new_keys).indexed_field()[i].set(k.into());
+                mt.borrow(new_values).indexed_field()[i]
+                    .set(mt.borrow(self.values.get()).indexed_field()[old_i].get());
             }
         }
 
@@ -187,21 +185,21 @@ mod tests {
 
         let var = root!(&mut mt, Var::new(&mut mt, one.clone()));
         ns.clone().add(&mut mt, foo.clone(), var);
-        assert_eq!(unsafe { ns.get(foo.oref()).unwrap().as_ref().value() }, one.oref());
+        assert_eq!(mt.borrow(ns.get(foo.oref()).unwrap()).value(), one.oref());
         assert_eq!(ns.get(bar.oref()), None);
         assert_eq!(ns.get(baz.oref()), None);
 
         let var = root!(&mut mt, Var::new(&mut mt, two.clone()));
         ns.clone().add(&mut mt, bar.clone(), var);
-        assert_eq!(unsafe { ns.get(foo.oref()).unwrap().as_ref().value() }, one.oref());
-        assert_eq!(unsafe { ns.get(bar.oref()).unwrap().as_ref().value() }, two.oref());
+        assert_eq!(mt.borrow(ns.get(foo.oref()).unwrap()).value(), one.oref());
+        assert_eq!(mt.borrow(ns.get(bar.oref()).unwrap()).value(), two.oref());
         assert_eq!(ns.get(baz.oref()), None);
 
         let var = root!(&mut mt, Var::new(&mut mt, three.clone()));
         ns.clone().add(&mut mt, baz.clone(), var);
-        assert_eq!(unsafe { ns.get(foo.oref()).unwrap().as_ref().value() }, one.oref());
-        assert_eq!(unsafe { ns.get(bar.oref()).unwrap().as_ref().value() }, two.oref());
-        assert_eq!(unsafe { ns.get(baz.oref()).unwrap().as_ref().value() }, three.oref());
+        assert_eq!(mt.borrow(ns.get(foo.oref()).unwrap()).value(), one.oref());
+        assert_eq!(mt.borrow(ns.get(bar.oref()).unwrap()).value(), two.oref());
+        assert_eq!(mt.borrow(ns.get(baz.oref()).unwrap()).value(), three.oref());
     }
 
     #[quickcheck]
@@ -214,7 +212,7 @@ mod tests {
         let var = root!(&mut mt, Var::new(&mut mt, v.clone()));
         ns.clone().add(&mut mt, k.clone(), var);
 
-        unsafe { ns.get(k.oref()).unwrap().as_ref().value() == v.oref() }
+        mt.borrow(ns.get(k.oref()).unwrap()).value() == v.oref()
     }
 
     #[quickcheck]
@@ -236,7 +234,7 @@ mod tests {
         kvs.iter().all(|(k, v)| {
             let k = root!(&mut mt, Symbol::new(&mut mt, k));
             let v = root!(&mut mt, ORef::from(Fixnum::from(*v)));
-            unsafe { ns.get(k.oref()).unwrap().as_ref().value() == v.oref() }
+            mt.borrow(ns.get(k.oref()).unwrap()).value() == v.oref()
         })
     }
 }

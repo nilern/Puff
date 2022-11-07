@@ -235,7 +235,7 @@ pub fn verify(mt: &Mutator, code: &Bytecode) -> Result<(), IndexedErr<Vec<usize>
                 &DecodedInstr::Fn {code_index, len} => {
                     let code = amt.get_const(&cfg, code_index)?;
                     if let Some(code) = code.try_cast::<Bytecode>(mt) {
-                        let clovers_len = unsafe { code.as_ref().clovers_len };
+                        let clovers_len = mt.borrow(code).clovers_len;
                         if len != clovers_len {
                             return Err(IndexedErr {err: Err::CloversArgc(len), byte_index: byte_path(bp, amt.pc)});
                         }
@@ -248,10 +248,8 @@ pub fn verify(mt: &Mutator, code: &Bytecode) -> Result<(), IndexedErr<Vec<usize>
                         }
 
                         // Recurse into closure:
-                        unsafe {
-                            let clovers = &amt.regs.as_slice()[amt.regs.len() - clovers_len..];
-                            verify_in(mt, &byte_path(bp, amt.pc), clovers, code.as_ref())?;
-                        }
+                        let clovers = &amt.regs.as_slice()[amt.regs.len() - clovers_len..];
+                        verify_in(mt, &byte_path(bp, amt.pc), clovers, mt.borrow(code))?;
 
                         amt.popn(len)?;
                         amt.push(AbstractType::Closure {len})?;

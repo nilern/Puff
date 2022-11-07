@@ -157,7 +157,7 @@ fn car(mt: &mut Mutator) -> Answer {
         todo!()
     );
 
-    unsafe { mt.regs_mut()[last_index] = pair.as_ref().car(); }
+    mt.regs_mut()[last_index] = mt.borrow(pair).car();
     Answer::Ret {retc: 1}
 }
 
@@ -174,7 +174,7 @@ fn cdr(mt: &mut Mutator) -> Answer {
         todo!()
     );
 
-    unsafe { mt.regs_mut()[last_index] = pair.as_ref().cdr(); }
+    mt.regs_mut()[last_index] = mt.borrow(pair).cdr();
     Answer::Ret {retc: 1}
 }
 
@@ -192,7 +192,7 @@ fn set_car(mt: &mut Mutator) -> Answer {
     );
     let v = mt.regs()[last_index];
 
-    unsafe { pair.as_ref().set_car(v); }
+    mt.borrow(pair).set_car(v);
 
     Answer::Ret {retc: 1} // HACK: Happens to return `v`
 }
@@ -211,7 +211,7 @@ fn set_cdr(mt: &mut Mutator) -> Answer {
     );
     let v = mt.regs()[last_index];
 
-    unsafe { pair.as_ref().set_cdr(v); }
+    mt.borrow(pair).set_cdr(v);
 
     Answer::Ret {retc: 1} // HACK: Happens to return `v`
 }
@@ -237,7 +237,7 @@ fn eval_syntax(mt: &mut Mutator) -> Answer {
         println!("");
     }
 
-    if let Err(err) = unsafe { verify(mt, code.as_ref()) } {
+    if let Err(err) = verify(mt, mt.borrow(code)) {
         if mt.cfg().debug {
             println!("VerificationError: {:?}", err);
         }
@@ -260,9 +260,9 @@ pub const EVAL_SYNTAX: NativeFn = NativeFn {
 
 fn load(mt: &mut Mutator) -> Answer {
     let (s, filename) = if let Some(filename) = mt.regs()[mt.regs().len() - 1].try_cast::<String>(mt) {
-        (unsafe { fs::read_to_string(filename.as_ref().as_str()).unwrap_or_else(|_|
+        (fs::read_to_string(mt.borrow(filename).as_str()).unwrap_or_else(|_|
              todo!()
-         ) },
+         ),
          root!(mt, filename))
     } else {
         todo!()
@@ -317,9 +317,9 @@ fn apply(mt: &mut Mutator) -> Answer {
 
     let mut arglist = mt.regs_mut().pop().unwrap();
     while let Some(args_pair) = arglist.try_cast::<Pair>(mt) {
-        mt.push(unsafe { args_pair.as_ref().car() });
+        mt.push(mt.borrow(args_pair).car());
         argc += 1;
-        arglist = unsafe { args_pair.as_ref().cdr() };
+        arglist = mt.borrow(args_pair).cdr();
     }
 
     if arglist != EmptyList::instance(mt).into() {
