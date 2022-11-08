@@ -21,7 +21,19 @@
   (lambda (pair)
     (if (pair? pair)
       (field-get pair 1)
-      (error "car: non-pair" pair))))
+      (error "cdr: non-pair" pair))))
+
+(define set-car!
+  (lambda (pair car*)
+    (if (pair? pair)
+      (field-set! pair 0 car*)
+      (error "set-car!: non-pair" pair))))
+
+(define set-cdr!
+  (lambda (pair cdr*)
+    (if (pair? pair)
+      (field-set! pair 1 cdr*)
+      (error "set-cdr!: non-pair" pair))))
 
 (define list (lambda ls ls))
 

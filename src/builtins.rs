@@ -211,44 +211,6 @@ pub const CONS: NativeFn = NativeFn {
     code: cons
 };
 
-fn set_car(mt: &mut Mutator) -> Answer {
-    let last_index = mt.regs().len() - 1;
-
-    let pair = mt.regs()[last_index - 1].try_cast::<Pair>(mt).unwrap_or_else(||
-        todo!()
-    );
-    let v = mt.regs()[last_index];
-
-    mt.borrow(pair).set_car(v);
-
-    Answer::Ret {retc: 1} // HACK: Happens to return `v`
-}
-
-pub const SET_CAR: NativeFn = NativeFn {
-    min_arity: 3,
-    varargs: false,
-    code: set_car
-};
-
-fn set_cdr(mt: &mut Mutator) -> Answer {
-    let last_index = mt.regs().len() - 1;
-
-    let pair = mt.regs()[last_index - 1].try_cast::<Pair>(mt).unwrap_or_else(||
-        todo!()
-    );
-    let v = mt.regs()[last_index];
-
-    mt.borrow(pair).set_cdr(v);
-
-    Answer::Ret {retc: 1} // HACK: Happens to return `v`
-}
-
-pub const SET_CDR: NativeFn = NativeFn {
-    min_arity: 3,
-    varargs: false,
-    code: set_cdr
-};
-
 fn eval_syntax(mt: &mut Mutator) -> Answer {
     let expr = root!(mt, mt.regs()[mt.regs().len() - 1]);
 

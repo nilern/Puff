@@ -306,7 +306,7 @@ impl Mutator {
             for (name, f) in [("instance?", builtins::IS_INSTANCE), ("eq?", builtins::EQ),
                 ("field-get", builtins::FIELD_GET), ("field-set!", builtins::FIELD_SET),
                 ("fx+", builtins::FX_ADD), ("fx-", builtins::FX_SUB), ("fx*", builtins::FX_MUL),
-                ("cons", builtins::CONS), ("set-car!", builtins::SET_CAR), ("set-cdr!", builtins::SET_CDR),
+                ("cons", builtins::CONS),
                 ("eval-syntax", builtins::EVAL_SYNTAX), ("load", builtins::LOAD),
                 ("apply", builtins::APPLY), ("values", builtins::VALUES)
             ] {
