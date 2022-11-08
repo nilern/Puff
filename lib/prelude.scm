@@ -7,6 +7,8 @@
 
 (define not (lambda (obj) (if obj #f #t)))
 
+(define pair? (lambda (obj) (instance? <pair> obj)))
+
 (define null? (lambda (obj) (eq? obj '())))
 
 (define car

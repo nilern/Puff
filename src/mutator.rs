@@ -296,11 +296,17 @@ impl Mutator {
             // -----------------------------------------------------------------
 
             let ns = root!(&mut mt, mt.ns.unwrap());
+
+            for (name, t) in [("<pair>", root!(&mut mt, mt.types.pair))] {
+                let name = root!(&mut mt, Symbol::new(&mut mt, name));
+                let var = root!(&mut mt, Var::new(&mut mt, t.borrow().into()));
+                ns.clone().add(&mut mt, name.borrow(), var.borrow());
+            }
+
             for (name, f) in [("instance?", builtins::IS_INSTANCE), ("eq?", builtins::EQ),
                 ("field-get", builtins::FIELD_GET), ("field-set!", builtins::FIELD_SET),
                 ("fx+", builtins::FX_ADD), ("fx-", builtins::FX_SUB), ("fx*", builtins::FX_MUL),
-                ("pair?", builtins::IS_PAIR), ("cons", builtins::CONS),
-                ("set-car!", builtins::SET_CAR), ("set-cdr!", builtins::SET_CDR),
+                ("cons", builtins::CONS), ("set-car!", builtins::SET_CAR), ("set-cdr!", builtins::SET_CDR),
                 ("eval-syntax", builtins::EVAL_SYNTAX), ("load", builtins::LOAD),
                 ("apply", builtins::APPLY), ("values", builtins::VALUES)
             ] {

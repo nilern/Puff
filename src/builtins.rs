@@ -192,25 +192,6 @@ fn field_set(mt: &mut Mutator) -> Answer {
 
 pub const FIELD_SET: NativeFn = NativeFn {min_arity: 4, varargs: false, code: field_set};
 
-fn is_pair(mt: &mut Mutator) -> Answer {
-    let last_index = mt.regs().len() - 1;
-
-    let res = if let Ok(obj) = Gc::<()>::try_from(mt.regs()[last_index]) {
-        obj.instance_of::<Pair>(mt)
-    } else {
-        false
-    };
-
-    mt.regs_mut()[last_index] = Bool::instance(mt, res).into();
-    Answer::Ret {retc: 1}
-}
-
-pub const IS_PAIR: NativeFn = NativeFn {
-    min_arity: 2,
-    varargs: false,
-    code: is_pair
-};
-
 fn cons(mt: &mut Mutator) -> Answer {
     let last_index = mt.regs().len() - 1;
 
