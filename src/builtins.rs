@@ -99,33 +99,20 @@ pub const FX_MUL: NativeFn = NativeFn {
     code: fx_mul
 };
 
-fn type_of(mt: &mut Mutator) -> Answer {
+fn is_instance(mt: &mut Mutator) -> Answer {
     let last_index = mt.regs().len() - 1;
 
-    let t = mt.regs()[last_index].r#type();
-
-    mt.regs_mut()[last_index] = t.into();
-    Answer::Ret {retc: 1}
-}
-
-pub const TYPE_OF: NativeFn = NativeFn { min_arity: 2, varargs: false, code: type_of };
-
-fn supertype(mt: &mut Mutator) -> Answer {
-    let last_index = mt.regs().len() - 1;
-
-    let t = mt.regs()[last_index].try_cast::<Type>(mt).unwrap_or_else(|| {
+    let t = mt.regs()[last_index - 1].try_cast::<Type>(mt).unwrap_or_else(|| {
         todo!() // error
     });
-    let sup = match mt.borrow(t).supertype() {
-        Some(sup) => sup.into(),
-        None => Bool::instance(mt, false).into()
-    };
+    let v = mt.regs()[last_index];
+    let res = v.instance_of_dyn(mt, t);
 
-    mt.regs_mut()[last_index] = sup;
+    mt.regs_mut()[last_index] = Bool::instance(mt, res).into();
     Answer::Ret {retc: 1}
 }
 
-pub const SUPERTYPE: NativeFn = NativeFn { min_arity: 2, varargs: false, code: supertype };
+pub const IS_INSTANCE: NativeFn = NativeFn {min_arity: 3, varargs: false, code: is_instance};
 
 fn field_get(mt: &mut Mutator) -> Answer {
     let last_index = mt.regs().len() - 1;
@@ -163,6 +150,47 @@ fn field_get(mt: &mut Mutator) -> Answer {
 }
 
 pub const FIELD_GET: NativeFn = NativeFn { min_arity: 3, varargs: false, code: field_get };
+
+fn field_set(mt: &mut Mutator) -> Answer {
+    let last_index = mt.regs().len() - 1;
+
+    let obj = Gc::<()>::try_from(mt.regs()[last_index - 2]).unwrap_or_else(|_| {
+        todo!() // error
+    });
+    let index = isize::from(Fixnum::try_from(mt.regs()[last_index - 1]).unwrap_or_else(|_| {
+        todo!() // error
+    }));
+    let index = if index >= 0 {
+        index as usize
+    } else {
+        todo!() // error
+    };
+    let v = mt.regs()[last_index];
+
+    let t = mt.borrow(obj.r#type());
+
+    if t.has_indexed && index == t.fields().len() - 1 {
+        todo!() // Error: indexed field
+    }
+
+    let field_descr = t.fields().get(index).unwrap_or_else(|| {
+        todo!() // Error: field index out of bounds
+    });
+
+    if !v.instance_of_dyn(mt, field_descr.r#type) {
+        todo!() // error
+    }
+
+    if !mt.borrow(field_descr.r#type).inlineable {
+        unsafe { *((obj.as_ptr() as *mut u8).add(field_descr.offset) as *mut ORef) = v; }
+    } else {
+        todo!()
+    }
+
+    Answer::Ret {retc: 1} // HACK: happens to return `v`
+}
+
+pub const FIELD_SET: NativeFn = NativeFn {min_arity: 4, varargs: false, code: field_set};
 
 fn is_pair(mt: &mut Mutator) -> Answer {
     let last_index = mt.regs().len() - 1;

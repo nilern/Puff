@@ -57,12 +57,10 @@ impl ORef {
         }
     }
 
+    pub fn instance_of_dyn(self, mt: &Mutator, sup: Gc<Type>) -> bool { self.r#type().extends(mt, sup) }
+
     pub fn instance_of<T: Reify>(self, mt: &Mutator) -> bool where Gc<T::Kind>: Into<Gc<Type>> {
-        if let Ok(obj) = Gc::<()>::try_from(self) {
-            obj.instance_of::<T>(mt)
-        } else {
-            false // FIXME: instance_of e.g. Fixnum
-        }
+        self.instance_of_dyn(mt, T::reify(mt).into())
     }
 
     pub fn is_truthy(self, mt: &Mutator) -> bool { self != Bool::instance(mt, false).into() }
@@ -107,8 +105,10 @@ impl<T> Gc<T> {
 }
 
 impl<T: HeapObj> Gc<T> {
+    pub fn instance_of_dyn(self, mt: &Mutator, sup: Gc<Type>) -> bool { self.r#type().extends(mt, sup) }
+
     pub fn instance_of<U: Reify>(self, mt: &Mutator) -> bool where Gc<U::Kind>: Into<Gc<Type>> {
-        mt.borrow(self).r#type() == U::reify(mt).into()
+        self.instance_of_dyn(mt, U::reify(mt).into())
     }
 
     pub fn try_cast<U: Reify>(self, mt: &Mutator) -> Option<Gc<U>> where Gc<U::Kind>: Into<Gc<Type>> {

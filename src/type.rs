@@ -85,8 +85,14 @@ impl Type {
     }
 
     pub fn fields(&self) -> &[Field<Type>] { self.indexed_field() }
+}
 
-    pub fn supertype(&self) -> Option<Gc<Type>> { None } // FIXME
+impl Gc<Type> {
+    pub fn extends(self, mt: &Mutator, sup: Gc<Type>) -> bool {
+        // TODO: follow supertype chain
+        self == sup
+        || sup == mt.types().any // HACK
+    }
 }
 
 #[repr(C)]

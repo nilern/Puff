@@ -49,6 +49,7 @@ pub struct Cfg {
 
 #[repr(C)]
 pub struct Types {
+    pub any: Gc<Type>,
     pub r#type: Gc<IndexedType>,
     pub bool: Gc<BitsType>,
     pub symbol: Gc<IndexedType>,
@@ -277,8 +278,8 @@ impl Mutator {
                 heap,
                 handles: HandlePool::new(),
 
-                types: Types { r#type, bool, symbol, string, pair, empty_list, pos, syntax, bytecode, vector_of_any,
-                    vector_mut_of_any, closure, native_fn, r#box, namespace, var },
+                types: Types { any, r#type, bool, symbol, string, pair, empty_list, pos, syntax, bytecode, 
+                    vector_of_any, vector_mut_of_any, closure, native_fn, r#box, namespace, var },
                 singletons: Singletons { r#true, r#false, empty_list: empty_list_inst },
                 symbols: SymbolTable::new(),
                 ns: None,
@@ -295,8 +296,8 @@ impl Mutator {
             // -----------------------------------------------------------------
 
             let ns = root!(&mut mt, mt.ns.unwrap());
-            for (name, f) in [("type-of", builtins::TYPE_OF), ("supertype", builtins::SUPERTYPE),
-                ("field-get", builtins::FIELD_GET), ("eq?", builtins::EQ),
+            for (name, f) in [("instance?", builtins::IS_INSTANCE), ("eq?", builtins::EQ),
+                ("field-get", builtins::FIELD_GET), ("field-set!", builtins::FIELD_SET),
                 ("fx+", builtins::FX_ADD), ("fx-", builtins::FX_SUB), ("fx*", builtins::FX_MUL),
                 ("pair?", builtins::IS_PAIR), ("cons", builtins::CONS),
                 ("set-car!", builtins::SET_CAR), ("set-cdr!", builtins::SET_CDR),
