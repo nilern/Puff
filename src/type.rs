@@ -8,6 +8,7 @@ use crate::oref::{Reify, Gc, ORef};
 use crate::heap_obj::{HeapObj, Indexed, min_size_of_indexed, align_of_indexed,
     item_stride};
 use crate::mutator::Mutator;
+use crate::fixnum::Fixnum;
 
 #[repr(C)]
 pub struct Field<T> {
@@ -46,6 +47,7 @@ pub struct Type {
     pub is_bits: bool,
     pub has_indexed: bool,
     pub inlineable: bool,
+    pub zeroable: bool
 }
 
 unsafe impl HeapObj for Type {}
@@ -61,7 +63,7 @@ impl Reify for Type {
 }
 
 impl Type {
-    pub const TYPE_LEN: usize = 6;
+    pub const TYPE_LEN: usize = 7;
 
     pub const TYPE_SIZE: usize = min_size_of_indexed::<Type>()
         + Self::TYPE_LEN * item_stride::<Type>();
@@ -93,6 +95,8 @@ impl Gc<Type> {
         self == sup
         || sup == mt.types().any // HACK
     }
+
+    pub fn oref_zeroable(self, mt: &Mutator) -> bool { self == mt.types().any || self == Fixnum::reify(mt) }
 }
 
 #[repr(C)]
@@ -102,6 +106,18 @@ unsafe impl HeapObj for NonIndexedType {}
 
 unsafe impl Indexed for NonIndexedType {
     type Item = Field<Type>;
+}
+
+impl TryFrom<Gc<Type>> for Gc<NonIndexedType> {
+    type Error = ();
+
+    fn try_from(t: Gc<Type>) -> Result<Self, Self::Error> {
+        if !unsafe { t.as_ref().has_indexed } {
+            Ok(unsafe { t.unchecked_cast::<NonIndexedType>() })
+        } else {
+            Err(())
+        }
+    }
 }
 
 impl From<Gc<NonIndexedType>> for Gc<Type> {
@@ -140,7 +156,8 @@ impl BitsType {
             min_size: size_of::<T>(),
             is_bits: true,
             has_indexed: false,
-            inlineable
+            inlineable,
+            zeroable: true
         })
     }
 }
@@ -200,6 +217,7 @@ pub struct BootstrapTypeBuilder<T> {
     is_bits: bool,
     has_indexed: bool,
     inlineable: bool,
+    zeroable: bool,
     fields: Vec<Field<Type>>,
     phantom: PhantomData<T>
 }
@@ -212,6 +230,7 @@ impl BootstrapTypeBuilder<BitsType> {
             is_bits: true,
             has_indexed: false,
             inlineable: true,
+            zeroable: true,
             fields: Vec::new(),
             phantom: PhantomData::default()
         }
@@ -226,6 +245,7 @@ impl BootstrapTypeBuilder<NonIndexedType> {
             is_bits: false,
             has_indexed: false,
             inlineable: true,
+            zeroable: true,
             fields: Vec::new(),
             phantom: PhantomData::default()
         }
@@ -233,7 +253,7 @@ impl BootstrapTypeBuilder<NonIndexedType> {
 }
 
 impl BootstrapTypeBuilder<NonIndexedType> {
-    pub unsafe fn field(mut self, r#type: Gc<Type>, mutable: bool) -> Self {
+    pub unsafe fn field(mut self, any: Gc<Type>, fixnum: Gc<Type>, r#type: Gc<Type>, mutable: bool) -> Self {
         let field_type = r#type.as_ref();
 
         let (field_align, field_size) = if !field_type.inlineable {
@@ -247,11 +267,18 @@ impl BootstrapTypeBuilder<NonIndexedType> {
         self.min_size = offset + field_size;
         self.fields.push(Field {r#type, offset});
         self.inlineable = self.inlineable && !mutable;
+        self.zeroable = self.zeroable && if !field_type.inlineable {
+            r#type == any || r#type == fixnum
+        } else {
+            field_type.zeroable
+        };
 
         self
     }
     
-    pub unsafe fn indexed_field(mut self, r#type: Gc<Type>, mutable: bool) -> BootstrapTypeBuilder<IndexedType> {
+    pub unsafe fn indexed_field(mut self, any: Gc<Type>, fixnum: Gc<Type>, r#type: Gc<Type>, mutable: bool)
+        -> BootstrapTypeBuilder<IndexedType>
+    {
         let field_type = r#type.as_ref();
 
         let field_align = if !field_type.inlineable { align_of::<ORef>() } else { field_type.align };
@@ -266,6 +293,11 @@ impl BootstrapTypeBuilder<NonIndexedType> {
             has_indexed: true,
             inlineable: false,
             fields: self.fields,
+            zeroable: self.zeroable && if !field_type.inlineable {
+                r#type == any || r#type == fixnum
+            } else {
+                field_type.zeroable
+            },
             phantom: PhantomData::default()
         }
     }
@@ -279,7 +311,8 @@ impl<T: Indexed<Item=Field<Type>>> BootstrapTypeBuilder<T> {
                 min_size: self.min_size,
                 is_bits: self.is_bits,
                 has_indexed: self.has_indexed,
-                inlineable: self.inlineable
+                inlineable: self.inlineable,
+                zeroable: self.zeroable
             });
 
             let mut dest_field = t.as_mut().indexed_field_ptr_mut();
@@ -301,7 +334,8 @@ impl BootstrapTypeBuilder<BitsType> {
                 min_size: self.min_size,
                 is_bits: self.is_bits,
                 has_indexed: self.has_indexed,
-                inlineable: self.inlineable
+                inlineable: self.inlineable,
+                zeroable: self.zeroable
             });
 
             Gc::new_unchecked(t)

@@ -1,12 +1,20 @@
 use std::mem::transmute;
 
-use crate::oref::{Tagged, ORef, FIXNUM_TAG};
+use crate::oref::{Reify, Tagged, ORef, Gc, FIXNUM_TAG};
+use crate::mutator::Mutator;
+use crate::r#type::Type;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Fixnum(usize);
 
 impl Tagged for Fixnum {
     const TAG: usize = FIXNUM_TAG;
+}
+
+impl Reify for Fixnum {
+    type Kind = Type;
+
+    fn reify(mt: &Mutator) -> Gc<Self::Kind> { mt.types().fixnum }
 }
 
 impl Fixnum {

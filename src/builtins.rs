@@ -16,7 +16,7 @@ use crate::compiler::compile;
 use crate::closure::Closure;
 use crate::verifier::verify;
 use crate::syntax::{Pos, Syntax};
-use crate::r#type::Type;
+use crate::r#type::{Type, NonIndexedType, IndexedType};
 
 fn eq(mt: &mut Mutator) -> Answer {
     let res = mt.regs()[mt.regs().len() - 1] == mt.regs()[mt.regs().len() - 2];
@@ -114,6 +114,66 @@ fn is_instance(mt: &mut Mutator) -> Answer {
 }
 
 pub const IS_INSTANCE: NativeFn = NativeFn {min_arity: 3, varargs: false, code: is_instance};
+
+fn make_zeroed(mt: &mut Mutator) -> Answer {
+    let last_index = mt.regs().len() - 1;
+
+    let t = mt.regs()[last_index].try_cast::<Type>(mt).unwrap_or_else(|| {
+        todo!("error: not a type")
+    });
+
+    let res = if t.oref_zeroable(mt) {
+        ORef::from(Fixnum::from(0u8))
+    } else if mt.borrow(t).zeroable {
+        match Gc::<NonIndexedType>::try_from(t) {
+            Ok(t) => ORef::from(unsafe { Gc::new_unchecked(mt.alloc_nonindexed(t)) }),
+            Err(()) => todo!("error: indexed type")
+        }
+    } else {
+        todo!("error: nonzeroable")
+    };
+
+    mt.regs_mut()[last_index] = res;
+    Answer::Ret {retc: 1}
+}
+
+pub const MAKE_ZEROED: NativeFn = NativeFn {min_arity: 2, varargs: false, code: make_zeroed};
+
+fn make_indexed_zeroed(mt: &mut Mutator) -> Answer {
+    let last_index = mt.regs().len() - 1;
+
+    let t = mt.regs()[last_index - 1].try_cast::<Type>(mt).unwrap_or_else(|| {
+        todo!("error: not a type")
+    });
+    let len = match Fixnum::try_from(mt.regs()[last_index]) {
+        Ok(len) => {
+            let len = isize::from(len);
+            if len >= 0 {
+                len as usize
+            } else {
+                todo!()
+            }
+        },
+
+        Err(()) => todo!()
+    };
+
+    let res = match Gc::<IndexedType>::try_from(t) {
+        Ok(it) =>
+            if mt.borrow(t).zeroable {
+                ORef::from(unsafe { Gc::new_unchecked(mt.alloc_indexed(it, len)) })
+            } else {
+                todo!("error: nonzeroable")
+            },
+
+        Err(()) => todo!("error: nonindexed type")
+    };
+
+    mt.regs_mut()[last_index] = res;
+    Answer::Ret {retc: 1}
+}
+
+pub const MAKE_INDEXED_ZEROED: NativeFn = NativeFn {min_arity: 3, varargs: false, code: make_indexed_zeroed};
 
 fn field_ref(mt: &mut Mutator) -> Answer {
     let last_index = mt.regs().len() - 1;

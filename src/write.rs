@@ -6,7 +6,7 @@ use crate::bytecode::Bytecode;
 use crate::syntax::{Syntax, Pos};
 use crate::closure::Closure;
 use crate::native_fn::NativeFn;
-use crate::vector::Vector;
+use crate::vector::{Vector, VectorMut};
 use crate::bool::Bool;
 use crate::list::{Pair, EmptyList};
 use crate::mutator::{Mutator, WithinMt};
@@ -71,6 +71,19 @@ impl DisplayWithin for Gc<()> {
             } else {
                 write!(fmt, "#f")
             }
+        } else if let Some(vs) = self.try_cast::<VectorMut<ORef>>(mt) {
+            write!(fmt, "#(")?;
+
+            let vs = mt.borrow(vs);
+            if vs.indexed_field().len() > 0 {
+                write!(fmt, "{}", vs.indexed_field()[0].get().within(mt))?;
+
+                for v in &vs.indexed_field()[1..] {
+                    write!(fmt, " {}", v.get().within(mt))?;
+                }
+            }
+
+            write!(fmt, ")")
         } else if let Some(vs) = self.try_cast::<Vector<ORef>>(mt) {
             write!(fmt, "#(")?;
 

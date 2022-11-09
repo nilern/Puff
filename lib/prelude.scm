@@ -170,6 +170,10 @@
 
 (define vector? (lambda (obj) (if (instance? <vector> obj) #t (instance? <vector-mut> obj))))
 
+(define make-vector
+  (lambda (k)
+    (make-indexed-zeroed <vector-mut> k)))
+
 (define vector-length
   (lambda (vector)
     (if (vector? vector)
