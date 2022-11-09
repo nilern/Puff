@@ -297,7 +297,9 @@ impl Mutator {
 
             let ns = root!(&mut mt, mt.ns.unwrap());
 
-            for (name, t) in [("<pair>", root!(&mut mt, mt.types.pair))] {
+            for (name, t) in [("<pair>", root!(&mut mt, Gc::<Type>::from(mt.types.pair))),
+                ("<vector>", root!(&mut mt, Gc::<Type>::from(mt.types.vector_of_any)))
+            ] {
                 let name = root!(&mut mt, Symbol::new(&mut mt, name));
                 let var = root!(&mut mt, Var::new(&mut mt, t.borrow().into()));
                 ns.clone().add(&mut mt, name.borrow(), var.borrow());
@@ -305,6 +307,7 @@ impl Mutator {
 
             for (name, f) in [("instance?", builtins::IS_INSTANCE), ("eq?", builtins::EQ),
                 ("field-ref", builtins::FIELD_REF), ("field-set!", builtins::FIELD_SET),
+                ("indexed-ref", builtins::INDEXED_REF),
                 ("fx+", builtins::FX_ADD), ("fx-", builtins::FX_SUB), ("fx*", builtins::FX_MUL),
                 ("cons", builtins::CONS),
                 ("eval-syntax", builtins::EVAL_SYNTAX), ("load", builtins::LOAD),

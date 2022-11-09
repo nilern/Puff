@@ -1,5 +1,6 @@
 use std::fs;
 
+use crate::heap_obj::Header;
 use crate::native_fn::{NativeFn, Answer};
 use crate::mutator::Mutator;
 use crate::oref::{ORef, Gc};
@@ -191,6 +192,45 @@ fn field_set(mt: &mut Mutator) -> Answer {
 }
 
 pub const FIELD_SET: NativeFn = NativeFn {min_arity: 4, varargs: false, code: field_set};
+
+fn indexed_ref(mt: &mut Mutator) -> Answer {
+    let last_index = mt.regs().len() - 1;
+
+    let obj = Gc::<()>::try_from(mt.regs()[last_index - 1]).unwrap_or_else(|_| {
+        todo!() // error
+    });
+    let index = isize::from(Fixnum::try_from(mt.regs()[last_index]).unwrap_or_else(|_| {
+        todo!() // error
+    }));
+    let index = if index >= 0 {
+        index as usize
+    } else {
+        todo!() // error
+    };
+
+    let t = mt.borrow(obj.r#type());
+
+    if !t.has_indexed {
+        todo!() // Error: no indexed field
+    }
+
+    let field_descr = t.fields()[t.fields().len() - 1];
+
+    if index >= unsafe { *((obj.as_ptr() as *const Header).offset(-1) as *const usize).offset(-1) } {
+        todo!() // Error: out of bounds
+    }
+
+    let v = if !mt.borrow(field_descr.r#type).inlineable {
+        unsafe { *((obj.as_ptr() as *const u8).add(field_descr.offset) as *const ORef).add(index) }
+    } else {
+        todo!()
+    };
+
+    mt.regs_mut()[last_index] = v;
+    Answer::Ret {retc: 1}
+}
+
+pub const INDEXED_REF: NativeFn = NativeFn { min_arity: 3, varargs: false, code: indexed_ref };
 
 fn cons(mt: &mut Mutator) -> Answer {
     let last_index = mt.regs().len() - 1;

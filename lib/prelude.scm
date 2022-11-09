@@ -167,3 +167,11 @@
       (if (null? list)
         list
         (error "list-copy: not a list" list)))))
+
+(define vector? (lambda (obj) (instance? <vector> obj)))
+
+(define vector-ref
+  (lambda (vector k)
+    (if (vector? vector)
+      (indexed-ref vector k)
+      (error "vector-ref: non-vector" vector))))
