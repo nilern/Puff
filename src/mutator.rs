@@ -308,6 +308,7 @@ impl Mutator {
 
             for (name, f) in [("instance?", builtins::IS_INSTANCE), ("eq?", builtins::EQ),
                 ("field-ref", builtins::FIELD_REF), ("field-set!", builtins::FIELD_SET),
+                ("indexed-length", builtins::INDEXED_LENGTH),
                 ("indexed-ref", builtins::INDEXED_REF), ("indexed-set!", builtins::INDEXED_SET),
                 ("fx+", builtins::FX_ADD), ("fx-", builtins::FX_SUB), ("fx*", builtins::FX_MUL),
                 ("cons", builtins::CONS),

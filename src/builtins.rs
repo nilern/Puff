@@ -193,6 +193,28 @@ fn field_set(mt: &mut Mutator) -> Answer {
 
 pub const FIELD_SET: NativeFn = NativeFn {min_arity: 4, varargs: false, code: field_set};
 
+fn indexed_length(mt: &mut Mutator) -> Answer {
+    let last_index = mt.regs().len() - 1;
+
+    let obj = Gc::<()>::try_from(mt.regs()[last_index]).unwrap_or_else(|_| {
+        todo!() // error
+    });
+
+    let t = mt.borrow(obj.r#type());
+
+    if !t.has_indexed {
+        todo!() // Error: no indexed field
+    }
+
+    let res = Fixnum::try_from(unsafe { *((obj.as_ptr() as *const Header).offset(-1) as *const usize).offset(-1) })
+        .unwrap_or_else(|_| todo!() /* error */);
+
+    mt.regs_mut()[last_index] = res.into();
+    Answer::Ret {retc: 1}
+}
+
+pub const INDEXED_LENGTH: NativeFn = NativeFn {min_arity: 2, varargs: false, code: indexed_length};
+
 fn indexed_ref(mt: &mut Mutator) -> Answer {
     let last_index = mt.regs().len() - 1;
 

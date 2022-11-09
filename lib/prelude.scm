@@ -170,6 +170,12 @@
 
 (define vector? (lambda (obj) (if (instance? <vector> obj) #t (instance? <vector-mut> obj))))
 
+(define vector-length
+  (lambda (vector)
+    (if (vector? vector)
+      (indexed-length vector)
+      (error "vector-length: non-vector" vector))))
+
 (define vector-ref
   (lambda (vector k)
     (if (vector? vector)
