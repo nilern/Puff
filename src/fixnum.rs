@@ -1,12 +1,12 @@
 use std::mem::transmute;
 
-use crate::oref::{Tagged, ORef, Gc};
+use crate::oref::{Tagged, ORef, FIXNUM_TAG};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Fixnum(usize);
 
 impl Tagged for Fixnum {
-    const TAG: usize = Gc::<()>::TAG + 1;
+    const TAG: usize = FIXNUM_TAG;
 }
 
 impl Fixnum {
@@ -16,19 +16,16 @@ impl Fixnum {
 
     pub unsafe fn from_oref_unchecked(oref: ORef) -> Self { transmute(oref) }
 
-    pub fn checked_add(self, other: Self) -> Option<Self> {
-        self.0.checked_add(other.0)
-            .map(|n| Self(n - 1))
-    }
+    pub fn checked_add(self, other: Self) -> Option<Self> { self.0.checked_add(other.0).map(Self) }
 
     pub fn checked_sub(self, other: Self) -> Option<Self> {
-        self.0.checked_sub(other.0)
-            .map(|n| Self(n | Self::TAG))
+        (self.0 >> ORef::SHIFT).checked_sub(other.0 >> ORef::SHIFT)
+            .map(|n| Self(n << ORef::SHIFT))
     }
 
     pub fn checked_mul(self, other: Self) -> Option<Self> {
-        (self.0 & !ORef::TAG_BITS).checked_mul(other.0 & !ORef::TAG_BITS)
-            .map(|n| Self((n >> ORef::SHIFT) | Self::TAG))
+        self.0.checked_mul(other.0)
+            .map(|n| Self(n >> ORef::SHIFT))
     }
 }
 
@@ -41,7 +38,7 @@ impl TryFrom<ORef> for Fixnum {
 
     fn try_from(oref: ORef) -> Result<Self, Self::Error> {
         if oref.tag() == Self::TAG {
-            Ok(unsafe { transmute(oref) })
+            Ok(unsafe { Self::from_oref_unchecked(oref) })
         } else {
             Err(())
         }
@@ -54,7 +51,7 @@ impl TryFrom<isize> for Fixnum {
     fn try_from(n: isize) -> Result<Self, Self::Error> {
         // Bounds check `MIN <= n <= MAX` from Hacker's Delight 4-1:
         if (n - Fixnum::MIN) as usize <= (Fixnum::MAX - Fixnum::MIN) as usize {
-            Ok(Fixnum(((n as usize) << ORef::SHIFT) | Fixnum::TAG))
+            Ok(Fixnum((n as usize) << ORef::SHIFT))
         } else {
             Err(())
         }
@@ -70,7 +67,7 @@ impl TryFrom<usize> for Fixnum {
 
     fn try_from(n: usize) -> Result<Self, Self::Error> {
         if n <= Fixnum::MAX as usize {
-            Ok(Fixnum((n << ORef::SHIFT) | Fixnum::TAG))
+            Ok(Fixnum(n << ORef::SHIFT))
         } else {
             Err(())
         }
@@ -78,7 +75,7 @@ impl TryFrom<usize> for Fixnum {
 }
 
 impl From<u8> for Fixnum {
-    fn from(n: u8) -> Self { Self((n as usize) << ORef::SHIFT | Fixnum::TAG) }
+    fn from(n: u8) -> Self { Self((n as usize) << ORef::SHIFT) }
 }
 
 

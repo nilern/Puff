@@ -1,5 +1,5 @@
 use std::ptr::NonNull;
-use std::mem::{transmute, size_of, align_of};
+use std::mem::{size_of, align_of};
 use std::slice;
 
 use crate::r#type::{Type, NonIndexedType};
@@ -15,12 +15,14 @@ impl Header {
 
     const MARK_BIT: usize = 1;
 
-    pub fn new(r#type: Gc<Type>) -> Self {
-        Self(unsafe { transmute::<Gc<Type>, usize>(r#type) })
-    }
+    pub fn new(r#type: Gc<Type>) -> Self { Self(r#type.as_ptr() as usize) }
 
     pub fn r#type(&self) -> Gc<Type> {
-        unsafe { Gc::new_unchecked(NonNull::new_unchecked((self.0 & !Self::TAG_BITS) as *mut Type)) }
+        unsafe { Gc::new_unchecked(NonNull::new_unchecked(((self.0 & !Self::TAG_BITS) | Gc::<()>::TAG) as *mut Type)) }
+    }
+
+    pub unsafe fn set_type(&mut self, r#type: Gc<Type>) {
+        self.0 = (r#type.as_ptr() as usize) | (self.0 & Self::TAG_BITS);
     }
 
     pub unsafe fn initialize_indexed<T>(obj: NonNull<T>, header: Self, len: usize) {
@@ -32,7 +34,9 @@ impl Header {
 
     pub fn forwarding_address(&self) -> Option<Gc<()>> {
         if (self.0 & Self::MARK_BIT) == 1 {
-            Some(unsafe { Gc::new_unchecked(NonNull::new_unchecked((self.0 & !Self::TAG_BITS) as *mut ())) })
+            Some(unsafe {
+                Gc::new_unchecked(NonNull::new_unchecked(((self.0 & !Self::TAG_BITS) | Gc::<()>::TAG) as *mut ()))
+            })
         } else {
             None
         }

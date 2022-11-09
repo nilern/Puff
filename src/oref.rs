@@ -1,6 +1,7 @@
 use std::fmt::{self, Debug};
-use std::mem::size_of;
+use std::mem::{size_of, transmute};
 use std::ptr::NonNull;
+use std::marker::PhantomData;
 use pretty::RcDoc;
 
 use crate::r#type::{Type, IndexedType};
@@ -11,6 +12,11 @@ use crate::bool::Bool;
 use crate::fixnum::Fixnum;
 use crate::flonum::Flonum;
 use crate::char::Char;
+
+pub const FIXNUM_TAG: usize = 0;
+pub const OBJ_TAG: usize = FIXNUM_TAG + 1;
+pub const FLONUM_TAG: usize = OBJ_TAG + 1;
+pub const CHAR_TAG: usize = FLONUM_TAG + 1;
 
 pub trait Tagged {
     const TAG: usize;
@@ -83,7 +89,7 @@ pub enum ORefEnum {
 impl From<ORef> for ORefEnum {
     fn from(oref: ORef) -> Self {
         match oref.tag() {
-            Gc::<()>::TAG => Self::Gc(unsafe { Gc(NonNull::new_unchecked(oref.0 as *mut ())) }),
+            Gc::<()>::TAG => Self::Gc(unsafe { Gc::from_oref_unchecked(oref) }),
             Fixnum::TAG => Self::Fixnum(unsafe { Fixnum::from_oref_unchecked(oref) }.into()),
             Flonum::TAG => Self::Flonum(unsafe { Flonum::from_oref_unchecked(oref) }.into()),
             Char::TAG => Self::Char(unsafe { Char::from_oref_unchecked(oref) }.into()),
@@ -98,10 +104,13 @@ pub trait Reify {
     fn reify(mt: &Mutator) -> Gc<Self::Kind>;
 }
 
-pub struct Gc<T>(NonNull<T>);
+pub struct Gc<T> {
+    oref: usize,
+    phantom: PhantomData<NonNull<T>>
+}
 
 impl<T> Gc<T> {
-    pub const TAG: usize = 0;
+    pub const TAG: usize = OBJ_TAG;
 }
 
 impl<T: HeapObj> Gc<T> {
@@ -136,23 +145,23 @@ impl<T: HeapObj> Gc<T> {
 impl<T> Debug for Gc<T> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         fmt.debug_tuple("Gc")
-            .field(&self.0)
+            .field(&self.oref)
             .finish()
     }
 }
 
 impl<T> Clone for Gc<T> {
-    fn clone(&self) -> Self { Self(self.0) }
+    fn clone(&self) -> Self { Gc {oref: self.oref, phantom: self.phantom} }
 }
 
 impl<T> Copy for Gc<T> {}
 
 impl<T> PartialEq for Gc<T> {
-    fn eq(&self, other: &Self) -> bool { self.0 == other.0 }
+    fn eq(&self, other: &Self) -> bool { self.oref == other.oref }
 }
 
 impl<T> From<Gc<T>> for ORef {
-    fn from(obj: Gc<T>) -> Self { Self(obj.0.as_ptr() as usize) }
+    fn from(obj: Gc<T>) -> Self { Self(obj.oref) }
 }
 
 impl TryFrom<ORef> for Gc<()> {
@@ -168,15 +177,22 @@ impl TryFrom<ORef> for Gc<()> {
 }
 
 impl<T> Gc<T> {
-    pub unsafe fn new_unchecked(ptr: NonNull<T>) -> Self { Self(ptr) }
+    unsafe fn from_oref_unchecked(oref: ORef) -> Self { Gc {oref: oref.0, phantom: PhantomData::default()} }
 
-    pub fn as_ptr(self) -> *const T { self.0.as_ptr() }
+    pub unsafe fn new_unchecked(nptr: NonNull<T>) -> Self {
+        Gc {
+            oref: (nptr.as_ptr() as usize) | Self::TAG,
+            phantom: PhantomData::default()
+        }
+    }
 
-    pub unsafe fn as_ref(&self) -> &T { self.0.as_ref() }
+    pub fn as_ptr(self) -> *const T { (self.oref & !ORef::TAG_BITS) as *const T }
 
-    fn header(&self) -> &Header { unsafe { &*((self.0.as_ptr() as *const Header).offset(-1)) } }
+    pub unsafe fn as_ref(&self) -> &T { transmute::<*const T, &T>(self.as_ptr()) }
 
-    fn header_mut(self) -> *mut Header { unsafe { (self.0.as_ptr() as *mut Header).offset(-1) } }
+    fn header(&self) -> &Header { unsafe { &*((self.as_ptr() as *const Header).offset(-1)) } }
+
+    pub fn header_mut(self) -> *mut Header { unsafe { (self.as_ptr() as *mut Header).offset(-1) } }
 
     pub fn r#type(self) -> Gc<Type> { self.header().r#type() }
 
@@ -188,7 +204,7 @@ impl<T> Gc<T> {
         (*self.header_mut()).set_forwarding_address(copy.unchecked_cast::<()>());
     }
 
-    pub unsafe fn unchecked_cast<R>(self) -> Gc<R> { Gc::<R>(self.0.cast()) }
+    pub unsafe fn unchecked_cast<R>(self) -> Gc<R> { Gc {oref: self.oref, phantom: PhantomData::default()} }
 
     pub fn within(self, mt: &Mutator) -> WithinMt<Self> { WithinMt {v: self, mt} }
 }

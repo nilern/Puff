@@ -124,7 +124,7 @@ impl Heap {
         })
     }
 
-    unsafe fn shallow_copy(&mut self, obj: Gc<()>) -> Option<Gc<()>> {
+    unsafe fn shallow_copy<T>(&mut self, obj: Gc<T>) -> Option<Gc<T>> {
         let r#type = obj.r#type();
 
         if !self.borrow(r#type).has_indexed {
@@ -137,7 +137,7 @@ impl Heap {
                 header.write(Header::new(r#type.into()));
                 nptr.as_ptr().copy_from_nonoverlapping(obj.as_ptr() as *const u8, layout.size());
 
-                Gc::<()>::new_unchecked(nptr.cast::<()>())
+                Gc::<T>::new_unchecked(nptr.cast::<T>())
             })
         } else {
             let r#type = r#type.unchecked_cast::<IndexedType>();
@@ -149,7 +149,7 @@ impl Heap {
                 Header::initialize_indexed(nptr, Header::new(r#type.into()), len);
                 nptr.as_ptr().copy_from_nonoverlapping(obj.as_ptr() as *const u8, layout.size());
 
-                Gc::<()>::new_unchecked(nptr.cast::<()>())
+                Gc::<T>::new_unchecked(nptr.cast::<T>())
             })
         }
     }
@@ -167,8 +167,8 @@ impl Heap {
 
     pub unsafe fn collect(&mut self) {
         while let Some(obj) = self.next_grey() {
-            self.mark((obj.as_ptr() as *mut Gc<Type>).offset(-1) as *mut usize); // type
-            self.scan_fields(obj.r#type(), obj.as_ptr() as *mut u8); // data
+            self.scan_header(obj);
+            self.scan_fields(obj.r#type(), obj.as_ptr() as *mut u8);
         }
     }
 
@@ -187,33 +187,36 @@ impl Heap {
         None
     }
 
-    pub unsafe fn mark(&mut self, field: *mut usize) {
-        let oref = *field;
-
-        if oref != 0 { // Initialized?
-            let oref = transmute::<usize, ORef>(oref);
-
-            if let Ok(obj) = Gc::<()>::try_from(oref) { // Heap object?
-                *field = transmute::<Gc<()>, usize>(match obj.forwarding_address() {
-                    None => {
-                        let copy = self.shallow_copy(obj).unwrap().into();
-                        obj.set_forwarding_address(copy);
-                        let granule_index =
-                            (copy.as_ptr() as usize - self.tospace.start as usize) / size_of::<Granule>();
-                        self.starts[granule_index] = true;
-                        copy
-                    },
-
-                    Some(copy) => copy
-                });
-            }
+    pub unsafe fn mark_inplace(&mut self, field: *mut ORef) {
+        if let Ok(obj) = Gc::<()>::try_from(*field) {
+            *field = self.mark(obj).into();
         }
+    }
+
+    unsafe fn mark<T>(&mut self, obj: Gc<T>) -> Gc<T> {
+        match obj.forwarding_address() {
+            None => {
+                let copy = self.shallow_copy(obj).unwrap().into();
+                obj.set_forwarding_address(copy);
+                let granule_index =
+                    (copy.as_ptr() as usize - self.tospace.start as usize) / size_of::<Granule>();
+                self.starts[granule_index] = true;
+                copy
+            },
+
+            Some(copy) => copy
+        }
+    }
+
+    unsafe fn scan_header(&mut self, obj: Gc<()>) {
+        let header = obj.header_mut();
+        (*header).set_type(self.mark((*header).r#type()));
     }
 
     // TODO: Avoid scan_field & scan_fields mutual recursion (although it is unlikely to be very deep):
     unsafe fn scan_field(&mut self, r#type: Gc<Type>, data: *mut u8) {
         if !self.borrow(r#type).inlineable {
-            self.mark(data as *mut usize);
+            self.mark_inplace(data as *mut ORef);
         } else {
             self.scan_fields(r#type, data);
         }
@@ -366,10 +369,7 @@ impl Heap {
         }
 
         if !self.borrow(descr.r#type).inlineable {
-            let oref = data as *const usize;
-            if *oref != 0 {
-                self.verify_oref(*(oref as *const ORef))?;
-            }
+            self.verify_oref(*(data as *const ORef))?;
         } else {
             self.verify_fields(obj, self.borrow(descr.r#type), data)?;
         }

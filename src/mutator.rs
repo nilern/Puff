@@ -416,7 +416,7 @@ impl Mutator {
 
     unsafe fn mark_roots(&mut self) {
         self.handles.for_each_mut_root_freeing(|oref|
-            self.heap.mark(transmute::<&mut ORef, *mut usize>(oref))
+            self.heap.mark_inplace(transmute::<&mut ORef, *mut ORef>(oref))
         );
 
         let types = slice::from_raw_parts_mut(
@@ -424,7 +424,7 @@ impl Mutator {
             size_of::<Types>() / size_of::<Gc<Type>>()
         );
         for r#type in types {
-            self.heap.mark(transmute::<&mut Gc<Type>, *mut usize>(r#type));
+            self.heap.mark_inplace(transmute::<&mut Gc<Type>, *mut ORef>(r#type));
         }
 
         let singletons = slice::from_raw_parts_mut(
@@ -432,27 +432,27 @@ impl Mutator {
             size_of::<Singletons>() / size_of::<ORef>()
         );
         for singleton in singletons {
-            self.heap.mark(transmute::<&mut ORef, *mut usize>(singleton));
+            self.heap.mark_inplace(transmute::<&mut ORef, *mut ORef>(singleton));
         }
 
         for ns in self.ns.iter_mut() {
-            self.heap.mark(transmute::<&mut Gc<Namespace>, *mut usize>(ns));
+            self.heap.mark_inplace(transmute::<&mut Gc<Namespace>, *mut ORef>(ns));
         }
 
         for code in self.code.iter_mut() {
-            self.heap.mark(transmute::<&mut Gc<Bytecode>, *mut usize>(code));
+            self.heap.mark_inplace(transmute::<&mut Gc<Bytecode>, *mut ORef>(code));
         }
 
         for consts in self.consts.iter_mut() {
-            self.heap.mark(transmute::<&mut Gc<Vector<ORef>>, *mut usize>(consts));
+            self.heap.mark_inplace(transmute::<&mut Gc<Vector<ORef>>, *mut ORef>(consts));
         }
 
         for reg in self.regs.as_mut_slice().iter_mut() {
-            self.heap.mark(transmute::<&mut ORef, *mut usize>(reg));
+            self.heap.mark_inplace(transmute::<&mut ORef, *mut ORef>(reg));
         }
 
         for slot in self.stack.iter_mut() {
-            self.heap.mark(transmute::<&mut ORef, *mut usize>(slot));
+            self.heap.mark_inplace(transmute::<&mut ORef, *mut ORef>(slot));
         }
     }
 

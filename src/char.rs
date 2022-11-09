@@ -1,13 +1,12 @@
 use std::mem::transmute;
 
-use crate::oref::{ORef, Tagged};
-use crate::flonum::Flonum;
+use crate::oref::{ORef, Tagged, CHAR_TAG};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Char(usize);
 
 impl Tagged for Char {
-    const TAG: usize = Flonum::TAG + 1;
+    const TAG: usize = CHAR_TAG;
 }
 
 impl From<Char> for ORef {
