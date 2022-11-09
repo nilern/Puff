@@ -194,17 +194,24 @@
         (error "vector-set!: immutable vector" vector)
         (error "vector-set!: non-vector" vector)))))
 
+(define vector-fold
+  (lambda (proc acc vector)
+    (letrec ((len (vector-length vector))
+             (vector-fold (lambda (i acc)
+                            (if (not (eq? i len))
+                              (vector-fold (+ i 1) (proc i acc (vector-ref vector i)))
+                              acc))))
+      (vector-fold 0 acc))))
+
+(define vector-fold-right
+  (lambda (proc acc vector)
+    (letrec ((vector-fold-right (lambda (i acc)
+                                  (if (not (eq? i 0))
+                                    (letrec ((i* (- i 1)))
+                                      (vector-fold-right i* (proc i* acc (vector-ref vector i*))))
+                                    acc))))
+      (vector-fold-right (vector-length vector) acc))))
+
 (define vector->list
   (lambda (vector)
-    (letrec ((length (vector-length vector)))
-      (if (not (eq? length 0))
-        (letrec ((list (cons (vector-ref vector 0) '()))
-                 (tail->list! (lambda (i last-pair)
-                                (if (not (eq? i length))
-                                  (letrec ((pair (cons (vector-ref vector i) '())))
-                                    (begin
-                                      (set-cdr! last-pair pair)
-                                      (tail->list! (+ i 1) pair)))
-                                  list))))
-          (tail->list! 1 list))
-        '()))))
+    (vector-fold-right (lambda (_ list v) (cons v list)) '() vector)))
