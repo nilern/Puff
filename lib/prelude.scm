@@ -194,6 +194,19 @@
         (error "vector-set!: immutable vector" vector)
         (error "vector-set!: non-vector" vector)))))
 
+(define vector-unfold
+  (lambda (f length seed)
+    (letrec ((vector (make-vector length))
+             (unfold (lambda (i seed)
+                       (if (not (eq? i length))
+                         (call-with-values (lambda () (f i seed))
+                                           (lambda (v seed)
+                                             (begin
+                                               (vector-set! vector i v)
+                                               (unfold (+ i 1) seed))))
+                         vector))))
+      (unfold 0 seed))))
+
 (define vector-fold
   (lambda (proc acc vector)
     (letrec ((len (vector-length vector))
@@ -215,3 +228,9 @@
 (define vector->list
   (lambda (vector)
     (vector-fold-right (lambda (_ list v) (cons v list)) '() vector)))
+
+(define list->vector
+  (lambda (list)
+    (vector-unfold (lambda (_ ls) (values (car ls) (cdr ls)))
+                   (length list)
+                   list)))
