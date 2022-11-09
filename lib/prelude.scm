@@ -189,3 +189,18 @@
       (if (instance? <vector> vector)
         (error "vector-set!: immutable vector" vector)
         (error "vector-set!: non-vector" vector)))))
+
+(define vector->list
+  (lambda (vector)
+    (letrec ((length (vector-length vector)))
+      (if (not (eq? length 0))
+        (letrec ((list (cons (vector-ref vector 0) '()))
+                 (tail->list! (lambda (i last-pair)
+                                (if (not (eq? i length))
+                                  (letrec ((pair (cons (vector-ref vector i) '())))
+                                    (begin
+                                      (set-cdr! last-pair pair)
+                                      (tail->list! (+ i 1) pair)))
+                                  list))))
+          (tail->list! 1 list))
+        '()))))
