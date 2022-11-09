@@ -168,10 +168,18 @@
         list
         (error "list-copy: not a list" list)))))
 
-(define vector? (lambda (obj) (instance? <vector> obj)))
+(define vector? (lambda (obj) (if (instance? <vector> obj) #t (instance? <vector-mut> obj))))
 
 (define vector-ref
   (lambda (vector k)
     (if (vector? vector)
       (indexed-ref vector k)
       (error "vector-ref: non-vector" vector))))
+
+(define vector-set!
+  (lambda (vector k obj)
+    (if (instance? <vector-mut> vector)
+      (indexed-set! vector k obj)
+      (if (instance? <vector> vector)
+        (error "vector-set!: immutable vector" vector)
+        (error "vector-set!: non-vector" vector)))))
