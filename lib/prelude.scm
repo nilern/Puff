@@ -14,13 +14,13 @@
 (define car
   (lambda (pair)
     (if (pair? pair)
-      (field-get pair 0)
+      (field-ref pair 0)
       (error "car: non-pair" pair))))
 
 (define cdr
   (lambda (pair)
     (if (pair? pair)
-      (field-get pair 1)
+      (field-ref pair 1)
       (error "cdr: non-pair" pair))))
 
 (define set-car!

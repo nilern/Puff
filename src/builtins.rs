@@ -114,7 +114,7 @@ fn is_instance(mt: &mut Mutator) -> Answer {
 
 pub const IS_INSTANCE: NativeFn = NativeFn {min_arity: 3, varargs: false, code: is_instance};
 
-fn field_get(mt: &mut Mutator) -> Answer {
+fn field_ref(mt: &mut Mutator) -> Answer {
     let last_index = mt.regs().len() - 1;
 
     let obj = Gc::<()>::try_from(mt.regs()[last_index - 1]).unwrap_or_else(|_| {
@@ -149,7 +149,7 @@ fn field_get(mt: &mut Mutator) -> Answer {
     Answer::Ret {retc: 1}
 }
 
-pub const FIELD_GET: NativeFn = NativeFn { min_arity: 3, varargs: false, code: field_get };
+pub const FIELD_REF: NativeFn = NativeFn { min_arity: 3, varargs: false, code: field_ref };
 
 fn field_set(mt: &mut Mutator) -> Answer {
     let last_index = mt.regs().len() - 1;
