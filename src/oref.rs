@@ -43,11 +43,11 @@ impl ORef {
         WithinMt {v: self, mt}
     }
 
-    pub fn r#type(self) -> Gc<Type> {
+    pub fn r#type(self, mt: &Mutator) -> Gc<Type> {
         if let Ok(obj) = Gc::<()>::try_from(self) {
             obj.r#type()
         } else {
-            todo!()
+            mt.tag_type(self.tag())
         }
     }
 
@@ -63,7 +63,7 @@ impl ORef {
         }
     }
 
-    pub fn instance_of_dyn(self, mt: &Mutator, sup: Gc<Type>) -> bool { self.r#type().extends(mt, sup) }
+    pub fn instance_of_dyn(self, mt: &Mutator, sup: Gc<Type>) -> bool { self.r#type(mt).extends(mt, sup) }
 
     pub fn instance_of<T: Reify>(self, mt: &Mutator) -> bool where Gc<T::Kind>: Into<Gc<Type>> {
         self.instance_of_dyn(mt, T::reify(mt).into())

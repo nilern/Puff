@@ -11,6 +11,8 @@
 
 (define null? (lambda (obj) (eq? obj '())))
 
+(define cons (lambda (car cdr) (make <pair> car cdr)))
+
 (define car
   (lambda (pair)
     (if (pair? pair)

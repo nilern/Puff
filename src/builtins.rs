@@ -441,25 +441,6 @@ fn indexed_set(mt: &mut Mutator) -> Answer {
 
 pub const INDEXED_SET: NativeFn = NativeFn {min_arity: 4, varargs: false, code: indexed_set};
 
-fn cons(mt: &mut Mutator) -> Answer {
-    let last_index = mt.regs().len() - 1;
-
-    let pair = unsafe {
-        let nptr = mt.alloc_static::<Pair>();
-        nptr.as_ptr().write(Pair::new(mt.regs()[last_index - 1], mt.regs()[last_index]));
-        Gc::new_unchecked(nptr)
-    };
-
-    mt.regs_mut()[last_index] = pair.into();
-    Answer::Ret {retc: 1}
-}
-
-pub const CONS: NativeFn = NativeFn {
-    min_arity: 3,
-    varargs: false,
-    code: cons
-};
-
 fn eval_syntax(mt: &mut Mutator) -> Answer {
     let expr = root!(mt, mt.regs()[mt.regs().len() - 1]);
 

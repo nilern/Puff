@@ -21,6 +21,8 @@ use crate::native_fn::{self, NativeFn, Answer};
 use crate::builtins;
 use crate::bool::Bool;
 use crate::fixnum::Fixnum;
+use crate::flonum::Flonum;
+use crate::char::Char;
 
 const USIZE_TYPE_SIZE: usize = min_size_of_indexed::<Type>();
 
@@ -65,8 +67,10 @@ pub struct Cfg {
 
 #[repr(C)]
 pub struct Types {
-    pub fixnum: Gc<Type>,
+    pub fixnum: Gc<Type>, // Must be at FIXNUM_TAG:th
     pub any: Gc<Type>,
+    pub flonum: Gc<Type>, // Must be at FIXNUM_TAG:th
+    pub char: Gc<Type>, // Must be at FIXNUM_TAG:th
     pub r#type: Gc<IndexedType>,
     pub bool: Gc<BitsType>,
     pub symbol: Gc<IndexedType>,
@@ -173,8 +177,8 @@ impl Mutator {
             let fixnum = Gc::new_unchecked(fixnum_nptr);
             Header::initialize_indexed(fixnum_nptr, Header::new(r#type.into()), 0);
             fixnum_nptr.as_ptr().write(Type {
-                min_size: size_of::<ORef>(),
-                align: align_of::<ORef>(),
+                min_size: size_of::<Fixnum>(),
+                align: align_of::<Fixnum>(),
                 is_bits: false,
                 has_indexed: false,
                 inlineable: false,
@@ -209,6 +213,24 @@ impl Mutator {
 
             // Create other `.types`:
             // -----------------------------------------------------------------
+
+            let flonum = Type::bootstrap_new(&mut heap, r#type, Type {
+                min_size: size_of::<Flonum>(),
+                align: size_of::<Flonum>(),
+                is_bits: false,
+                has_indexed: false,
+                inlineable: false,
+                zeroable: false
+            }, &[])?;
+
+            let char = Type::bootstrap_new(&mut heap, r#type, Type {
+                min_size: size_of::<Char>(),
+                align: size_of::<Char>(),
+                is_bits: false,
+                has_indexed: false,
+                inlineable: false,
+                zeroable: false
+            }, &[])?;
 
             let u8_type = BootstrapTypeBuilder::<BitsType>::new::<u8>()
                 .build(|| heap.alloc_indexed(r#type, 0).map(NonNull::cast))?;
@@ -312,8 +334,8 @@ impl Mutator {
                 heap,
                 handles: HandlePool::new(),
 
-                types: Types { fixnum, any, r#type, bool, symbol, string, pair, empty_list, pos, syntax, bytecode, 
-                    vector_of_any, vector_mut_of_any, closure, native_fn, r#box, namespace, var },
+                types: Types { fixnum, any, flonum, char, r#type, bool, symbol, string, pair, empty_list, pos, syntax,
+                    bytecode, vector_of_any, vector_mut_of_any, closure, native_fn, r#box, namespace, var },
                 singletons: Singletons { r#true, r#false, empty_list: empty_list_inst },
                 symbols: SymbolTable::new(),
                 ns: None,
@@ -346,7 +368,6 @@ impl Mutator {
                 ("make-indexed-zeroed", builtins::MAKE_INDEXED_ZEROED), ("indexed-length", builtins::INDEXED_LENGTH),
                 ("indexed-ref", builtins::INDEXED_REF), ("indexed-set!", builtins::INDEXED_SET),
                 ("fx+", builtins::FX_ADD), ("fx-", builtins::FX_SUB), ("fx*", builtins::FX_MUL),
-                ("cons", builtins::CONS),
                 ("eval-syntax", builtins::EVAL_SYNTAX), ("load", builtins::LOAD),
                 ("apply", builtins::APPLY), ("values", builtins::VALUES)
             ] {
@@ -365,6 +386,10 @@ impl Mutator {
     pub fn cfg(&self) -> &Cfg { &self.cfg }
 
     pub fn types(&self) -> &Types { &self.types }
+
+    pub fn tag_type(&self, tag: usize) -> Gc<Type> {
+        unsafe { *((&self.types as *const Types) as *const Gc<Type>).add(tag) }
+    }
 
     pub fn singletons(&self) -> &Singletons { &self.singletons }
 
