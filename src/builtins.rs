@@ -441,6 +441,38 @@ fn indexed_set(mt: &mut Mutator) -> Answer {
 
 pub const INDEXED_SET: NativeFn = NativeFn {min_arity: 4, varargs: false, code: indexed_set};
 
+fn indexed_fill(mt: &mut Mutator) -> Answer {
+    let last_index = mt.regs().len() - 1;
+
+    let obj = Gc::<()>::try_from(mt.regs()[last_index - 1]).unwrap_or_else(|_| {
+        todo!() // error
+    });
+    let v = mt.regs()[last_index];
+
+    let t = mt.borrow(obj.r#type());
+
+    if !t.has_indexed {
+        todo!() // Error: no indexed field
+    }
+
+    let field_descr = t.fields()[t.fields().len() - 1];
+    for i in 0..unsafe { *((obj.as_ptr() as *const Header).offset(-1) as *const usize).offset(-1) } {
+        if !v.instance_of_dyn(mt, field_descr.r#type) {
+            todo!("error: field type");
+        }
+
+        if !mt.borrow(field_descr.r#type).inlineable {
+            unsafe { *((obj.as_ptr() as *mut u8).add(field_descr.offset) as *mut ORef).add(i) = v; }
+        } else {
+            todo!()
+        }
+    }
+
+    Answer::Ret {retc: 1} // HACK: happens to return `v`
+}
+
+pub const INDEXED_FILL: NativeFn = NativeFn {min_arity: 3, varargs: false, code: indexed_fill};
+
 fn eval_syntax(mt: &mut Mutator) -> Answer {
     let expr = root!(mt, mt.regs()[mt.regs().len() - 1]);
 

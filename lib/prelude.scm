@@ -275,3 +275,11 @@
     (vector-unfold (lambda (_ ls) (values (car ls) (cdr ls)))
                    (length list)
                    list)))
+
+(define vector-fill!
+  (lambda (vector fill)
+    (if (instance? <vector-mut> vector)
+      (indexed-fill! vector fill)
+      (if (instance? <vector> vector)
+        (error "vector-fill!: immutable vector" vector)
+        (error "vector-fill!: non-vector" vector)))))
