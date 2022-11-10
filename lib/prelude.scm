@@ -11,7 +11,15 @@
 
 (define null? (lambda (obj) (eq? obj '())))
 
+(define list?
+  (lambda (obj)
+    (if (pair? obj)
+      (list? (cdr obj))
+      (null? obj))))
+
 (define cons (lambda (car cdr) (make <pair> car cdr)))
+
+(define list (lambda ls ls))
 
 (define car
   (lambda (pair)
@@ -36,8 +44,6 @@
     (if (pair? pair)
       (field-set! pair 1 cdr*)
       (error "set-cdr!: non-pair" pair))))
-
-(define list (lambda ls ls))
 
 (define fold
   (lambda (proc acc list1)
