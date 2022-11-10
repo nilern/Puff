@@ -341,7 +341,7 @@ impl Mutator {
             }
 
             for (name, f) in [("instance?", builtins::IS_INSTANCE), ("eq?", builtins::EQ),
-                ("make-zeroed", builtins::MAKE_ZEROED),
+                ("make-zeroed", builtins::MAKE_ZEROED), ("make", builtins::MAKE),
                 ("field-ref", builtins::FIELD_REF), ("field-set!", builtins::FIELD_SET),
                 ("make-indexed-zeroed", builtins::MAKE_INDEXED_ZEROED), ("indexed-length", builtins::INDEXED_LENGTH),
                 ("indexed-ref", builtins::INDEXED_REF), ("indexed-set!", builtins::INDEXED_SET),

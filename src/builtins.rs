@@ -175,6 +175,90 @@ fn make_indexed_zeroed(mt: &mut Mutator) -> Answer {
 
 pub const MAKE_INDEXED_ZEROED: NativeFn = NativeFn {min_arity: 3, varargs: false, code: make_indexed_zeroed};
 
+fn make(mt: &mut Mutator) -> Answer {
+    let t = mt.regs()[1].try_cast::<Type>(mt).unwrap_or_else(|| {
+        todo!("error: not a type")
+    });
+
+    if mt.borrow(t).is_bits {
+        todo!("error: bits type");
+    }
+
+    let field_argc = mt.regs().len() - 2;
+
+    let obj = if !mt.borrow(t).has_indexed {
+        if field_argc != mt.borrow(t).fields().len() {
+            todo!("error: field_argc");
+        }
+
+        let obj = unsafe { mt.alloc_nonindexed(t.unchecked_cast::<NonIndexedType>()) };
+        let t = unsafe { mt.regs()[1].unchecked_cast::<Type>() }; // Reload in case GC happened
+
+        for (i, field_descr) in mt.borrow(t).fields().iter().enumerate() {
+            let v = mt.regs()[i + 2];
+
+            if !v.instance_of_dyn(mt, field_descr.r#type) {
+                todo!("error: field type");
+            }
+
+            if !mt.borrow(field_descr.r#type).inlineable {
+                unsafe { *((obj.as_ptr() as *mut u8).add(field_descr.offset) as *mut ORef) = v; }
+            } else {
+                todo!()
+            }
+        }
+
+        unsafe { Gc::new_unchecked(obj) }
+    } else {
+        let non_indexed_fieldc = mt.borrow(t).fields().len() - 1;
+
+        if field_argc < non_indexed_fieldc {
+            todo!("error: field_argc");
+        }
+
+        let indexed_len = field_argc - non_indexed_fieldc;
+        let obj = unsafe { mt.alloc_indexed(t.unchecked_cast::<IndexedType>(), indexed_len) };
+        let t = unsafe { mt.regs()[1].unchecked_cast::<Type>() }; // Reload in case GC happened
+
+        for (i, field_descr) in mt.borrow(t).fields()[0..non_indexed_fieldc].iter().enumerate() {
+            let v = mt.regs()[2 + i];
+
+            if !v.instance_of_dyn(mt, field_descr.r#type) {
+                todo!("error: field type");
+            }
+
+            if !mt.borrow(field_descr.r#type).inlineable {
+                unsafe { *((obj.as_ptr() as *mut u8).add(field_descr.offset) as *mut ORef) = v; }
+            } else {
+                todo!()
+            }
+        }
+
+        let field_descr = mt.borrow(t).fields()[non_indexed_fieldc];
+        for i in 0..indexed_len {
+            let v = mt.regs()[2 + non_indexed_fieldc + i];
+
+            if !v.instance_of_dyn(mt, field_descr.r#type) {
+                todo!("error: field type");
+            }
+
+            if !mt.borrow(field_descr.r#type).inlineable {
+                unsafe { *((obj.as_ptr() as *mut u8).add(field_descr.offset) as *mut ORef).add(i) = v; }
+            } else {
+                todo!()
+            }
+        }
+
+        unsafe { Gc::new_unchecked(obj) }
+    };
+
+    let last_index = mt.regs_mut().len() - 1;
+    mt.regs_mut()[last_index] = obj.into();
+    Answer::Ret {retc: 1}
+}
+
+pub const MAKE: NativeFn = NativeFn {min_arity: 2, varargs: true, code: make};
+
 fn field_ref(mt: &mut Mutator) -> Answer {
     let last_index = mt.regs().len() - 1;
 

@@ -194,6 +194,8 @@
         (error "vector-set!: immutable vector" vector)
         (error "vector-set!: non-vector" vector)))))
 
+(define vector (lambda vs (apply make <vector-mut> vs)))
+
 (define vector-unfold
   (lambda (f length seed)
     (letrec ((vector (make-vector length))

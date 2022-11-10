@@ -132,7 +132,7 @@ impl<T> Handle<T> {
         HandleRef(unsafe { transmute::<&ORef, &Gc<T>>(&(*self.handle.0).oref) })
     }
 
-    unsafe fn unchecked_cast<U>(self) -> Handle<U> { Handle {handle: self.handle, phantom: PhantomData::default()} }
+    pub unsafe fn unchecked_cast<U>(self) -> Handle<U> { Handle {handle: self.handle, phantom: PhantomData::default()} }
 }
 
 impl<T: HeapObj> Handle<T> {
