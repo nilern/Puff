@@ -128,7 +128,25 @@
 
 (define length (lambda (list) (fold (lambda (_ len) (+ len 1)) 0 list)))
 
-(define append (lambda (list1 list2) (fold-right cons list2 list1)))
+(define append
+  (lambda (list1 list2)
+    (if (pair? list1)
+      (letrec ((ls* (cons (car list1) '()))
+               (append! (lambda (ls last-pair)
+                            (if (pair? ls)
+                              (letrec ((pair (cons (car ls) '())))
+                                (begin
+                                  (set-cdr! last-pair pair)
+                                  (append! (cdr ls) pair)))
+                              (if (null? ls)
+                                (begin
+                                  (set-cdr! last-pair list2)
+                                  ls*)
+                                (error "append: improper list" list1))))))
+        (append! (cdr list1) ls*))
+      (if (null? list1)
+        list2
+        (error "append: not a list" list1)))))
 
 (define reverse (lambda (list1) (fold cons '() list1)))
 
@@ -188,24 +206,6 @@
       (assoc alist))))
 
 (define assq (lambda (obj alist) (assoc obj alist eq?)))
-
-(define list-copy
-  (lambda (list)
-    (if (pair? list)
-      (letrec ((ls* (cons (car list) '()))
-               (copy-tail! (lambda (ls last-pair)
-                            (if (pair? ls)
-                              (letrec ((pair (cons (car ls) '())))
-                                (begin
-                                  (set-cdr! last-pair pair)
-                                  (copy-tail! (cdr ls) pair)))
-                              (begin
-                                (set-cdr! last-pair ls)
-                                ls*)))))
-        (copy-tail! (cdr list) ls*))
-      (if (null? list)
-        list
-        (error "list-copy: not a list" list)))))
 
 (define vector? (lambda (obj) (if (instance? <vector> obj) #t (instance? <vector-mut> obj))))
 
