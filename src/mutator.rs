@@ -385,7 +385,7 @@ impl Mutator {
                 ("field-ref", builtins::FIELD_REF), ("field-set!", builtins::FIELD_SET),
                 ("make-indexed-zeroed", builtins::MAKE_INDEXED_ZEROED), ("indexed-length", builtins::INDEXED_LENGTH),
                 ("indexed-ref", builtins::INDEXED_REF), ("indexed-set!", builtins::INDEXED_SET),
-                ("indexed-fill!", builtins::INDEXED_FILL),
+                ("indexed-fill!", builtins::INDEXED_FILL), ("indexed-copy!", builtins::INDEXED_COPY),
                 ("string-ref", builtins::STRING_REF), ("string-mut-ref", builtins::STRING_MUT_REF),
                 ("string-set!", builtins::STRING_SET),
                 ("fx+", builtins::FX_ADD), ("fx-", builtins::FX_SUB), ("fx*", builtins::FX_MUL),

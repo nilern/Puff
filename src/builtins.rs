@@ -1,4 +1,5 @@
 use std::fs;
+use std::mem::size_of;
 
 use crate::heap_obj::Header;
 use crate::native_fn::{NativeFn, Answer};
@@ -442,6 +443,68 @@ fn indexed_set(mt: &mut Mutator) -> Answer {
 
 pub const INDEXED_SET: NativeFn = NativeFn {min_arity: 4, varargs: false, code: indexed_set};
 
+fn indexed_copy(mt: &mut Mutator) -> Answer {
+    let to = Gc::<()>::try_from(mt.regs()[1]).unwrap_or_else(|()| {
+        todo!("to not a heap object");
+    });
+    let to_type = mt.borrow(to.r#type());
+    if !to_type.has_indexed {
+        todo!("to not indexed");
+    }
+    let to_len = unsafe { *((to.as_ptr() as *const Header).offset(-1) as *const usize).offset(-1) };
+
+    let at = isize::from(Fixnum::try_from(mt.regs()[2]).unwrap_or_else(|_| {
+        todo!("at not a fixnum");
+    }));
+    let at = if at >= 0 { at as usize } else { todo!("negative at"); };
+    if at >= to_len { todo!("at out of bounds"); }
+
+    let from = Gc::<()>::try_from(mt.regs()[3]).unwrap_or_else(|()| {
+        todo!("from not a heap object");
+    });
+    let from_type = mt.borrow(from.r#type());
+    if !from_type.has_indexed {
+        todo!("from not indexed");
+    }
+    let from_len = unsafe { *((from.as_ptr() as *const Header).offset(-1) as *const usize).offset(-1) };
+
+    let start = isize::from(Fixnum::try_from(mt.regs()[4]).unwrap_or_else(|_| {
+        todo!("at not a fixnum");
+    }));
+    let start = if start >= 0 { start as usize } else { todo!("negative start"); };
+    if start >= from_len { todo!("start out of bounds"); }
+
+    let end = isize::from(Fixnum::try_from(mt.regs()[5]).unwrap_or_else(|_| {
+        todo!("at not a fixnum");
+    }));
+    let end = if end >= 0 { end as usize } else { todo!("negative end"); };
+    if end > from_len { todo!("end out of bounds"); }
+
+    if start > end { todo!("start > end"); }
+
+    let to_field_descr = to_type.fields()[to_type.fields().len() - 1];
+    let from_field_descr = from_type.fields()[from_type.fields().len() - 1];
+
+    if !from_field_descr.r#type.extends(mt, to_field_descr.r#type) {
+        todo!()
+    }
+
+    let stride = if !mt.borrow(from_field_descr.r#type).inlineable {
+        size_of::<ORef>()
+    } else {
+        unsafe { mt.borrow(to_field_descr.r#type.unchecked_cast::<NonIndexedType>()).stride() }
+    };
+    unsafe {
+        let to_ptr = (to.as_ptr() as *mut u8).add(to_field_descr.offset).add(stride * at);
+        let from_ptr = (from.as_ptr() as *const u8).add(from_field_descr.offset).add(stride * start);
+        to_ptr.copy_from(from_ptr, stride * (end - start));
+    }
+
+    Answer::Ret {retc: 1} // HACK: happens to return `end`
+}
+
+pub const INDEXED_COPY: NativeFn = NativeFn {min_arity: 6, varargs: false, code: indexed_copy};
+
 fn indexed_fill(mt: &mut Mutator) -> Answer {
     let last_index = mt.regs().len() - 1;
 
@@ -457,16 +520,16 @@ fn indexed_fill(mt: &mut Mutator) -> Answer {
     }
 
     let field_descr = t.fields()[t.fields().len() - 1];
-    for i in 0..unsafe { *((obj.as_ptr() as *const Header).offset(-1) as *const usize).offset(-1) } {
-        if !v.instance_of_dyn(mt, field_descr.r#type) {
-            todo!("error: field type");
-        }
-
-        if !mt.borrow(field_descr.r#type).inlineable {
+    if !v.instance_of_dyn(mt, field_descr.r#type) {
+        todo!("error: field type");
+    }
+    
+    if !mt.borrow(field_descr.r#type).inlineable {
+        for i in 0..unsafe { *((obj.as_ptr() as *const Header).offset(-1) as *const usize).offset(-1) } {
             unsafe { *((obj.as_ptr() as *mut u8).add(field_descr.offset) as *mut ORef).add(i) = v; }
-        } else {
-            todo!()
         }
+    } else {
+        todo!()
     }
 
     Answer::Ret {retc: 1} // HACK: happens to return `v`

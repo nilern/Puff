@@ -280,7 +280,15 @@
         (error "vector-fill!: immutable vector" vector)
         (error "vector-fill!: non-vector" vector)))))
 
+(define bytevector? (lambda (obj) (instance? <bytevector-mut> obj)))
+
 (define make-bytevector (lambda (k) (make-indexed-zeroed <bytevector-mut> k)))
+
+(define bytevector-length
+  (lambda (bytevector)
+    (if (bytevector? bytevector)
+      (indexed-length bytevector)
+      (error "bytevector-length: non-bytevector" bytevector))))
 
 (define string? (lambda (obj) (if (instance? <string> obj) #t (instance? <string-mut> obj))))
 
@@ -293,6 +301,22 @@
       (if (instance? <string-mut> string)
         (field-ref string 0)
         (error "string-length: non-string" string)))))
+
+(define string-byte-length
+  (lambda (string)
+    (if (instance? <string> string)
+      (indexed-length string)
+      (if (instance? <string-mut> string)
+        (field-ref string 1)
+        (error "string-byte-length: non-string" string)))))
+
+(define string-mut-bytes
+  (lambda (string)
+    (if (instance? <string-mut> string)
+      (field-ref string 2)
+      (if (instance? <string> string)
+        (error "string-byte-length: immutable string" string)
+        (error "string-byte-length: non-string" string)))))
 
 (define string-ref
   (letrec ((string-immut-ref string-ref))
@@ -313,3 +337,38 @@
       (string-fold-right (string-length vector) acc))))
 
 (define string->list (lambda (string) (string-fold-right (lambda (_ list c) (cons c list)) '() string)))
+
+(define string-append
+  (letrec ((strings-lengths
+            (lambda (strings)
+              (letrec ((strings-lengths (lambda (strings char-len byte-len)
+                                          (if (pair? strings)
+                                            (letrec ((string (car strings)))
+                                              (strings-lengths (cdr strings)
+                                                               (+ char-len (string-length string))
+                                                               (+ byte-len (string-byte-length string))))
+                                            (values char-len byte-len)))))
+                (strings-lengths strings 0 0))))
+
+           (string-bytevector-copy!
+            (lambda (bytes at string)
+              (if (instance? <string> string)
+                (indexed-copy! bytes at string 0 (string-byte-length string))
+                (if (instance? <string-mut> string)
+                  (letrec ((string-bytes (string-mut-bytes string)))
+                    (indexed-copy! bytes at string-bytes 0 (bytevector-length string-bytes)))
+                  (error "string-append: non-string" string))))))
+
+    (lambda strings
+      (if (pair? strings)
+        (call-with-values (lambda () (strings-lengths strings))
+                          (lambda (char-len byte-len)
+                            (letrec ((bytes (make-bytevector byte-len)))
+                              (begin
+                                (fold (lambda (string at)
+                                        (begin
+                                          (string-bytevector-copy! bytes at string)
+                                          (+ at (string-byte-length string))))
+                                      0 strings)
+                                (make <string-mut> char-len byte-len bytes)))))
+        (make-string 0)))))
