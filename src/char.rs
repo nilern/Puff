@@ -9,6 +9,18 @@ impl Tagged for Char {
     const TAG: usize = CHAR_TAG;
 }
 
+impl TryFrom<ORef> for Char {
+    type Error = ();
+
+    fn try_from(oref: ORef) -> Result<Char, Self::Error> {
+        if oref.tag() == Self::TAG {
+            Ok(unsafe { Self::from_oref_unchecked(oref) })
+        } else {
+            Err(())
+        }
+    }
+}
+
 impl From<Char> for ORef {
     fn from(c: Char) -> Self { unsafe { transmute(c) } }
 }

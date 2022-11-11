@@ -1,6 +1,8 @@
 use std::str;
 use std::ptr::NonNull;
 use std::slice;
+use std::cmp::Ordering;
+use std::cell::Cell;
 
 use crate::mutator::Mutator;
 use crate::oref::{Reify, Gc};
@@ -8,6 +10,7 @@ use crate::heap_obj::{Indexed, HeapObj};
 use crate::r#type::{IndexedType, NonIndexedType};
 use crate::fixnum::Fixnum;
 use crate::vector::VectorMut;
+use crate::handle::HandleRef;
 
 #[repr(C)]
 pub struct String {
@@ -49,7 +52,8 @@ impl String {
 #[repr(C)]
 pub struct StringMut {
     char_len: Fixnum,
-    chars: Gc<VectorMut<u8>>
+    byte_len: Cell<Fixnum>,
+    chars: Cell<Gc<VectorMut<u8>>>
 }
 
 impl Reify for StringMut {
@@ -59,11 +63,75 @@ impl Reify for StringMut {
 }
 
 impl StringMut {
-    pub fn as_str(&self) -> &str {
+    fn buf_as_bytes(&self) -> &[u8] {
         unsafe {
-            let byte_cells = self.chars.as_ref().indexed_field();
-            let bytes = slice::from_raw_parts(byte_cells.as_ptr() as *const u8, byte_cells.len());
-            str::from_utf8_unchecked(bytes)
+            let chars = self.chars.get();
+            let byte_cells = chars.as_ref().indexed_field();
+            slice::from_raw_parts(byte_cells.as_ptr() as *const u8, byte_cells.len())
         }
+    }
+
+    fn buf_as_mut_bytes(&self) -> &mut [u8] {
+        unsafe {
+            let chars = self.chars.get();
+            let byte_cells = chars.as_ref().indexed_field();
+            slice::from_raw_parts_mut(byte_cells.as_ptr() as *mut u8, byte_cells.len())
+        }
+    }
+
+    pub fn as_str(&self) -> &str {
+        let bytes = self.buf_as_bytes();
+        let byte_len = isize::from(self.byte_len.get()) as usize; // `self.byte_len` should always be >= 0
+        unsafe { str::from_utf8_unchecked(slice::from_raw_parts_mut(bytes.as_ptr() as *mut u8, byte_len)) }
+    }
+}
+
+impl<'a> HandleRef<'a, StringMut> {
+    pub fn set_nth(self, mt: &mut Mutator, i: usize, c: char) -> Result<(), ()> {
+        let (start, old_c) = self.as_str().char_indices().nth(i).ok_or(())?;
+        let c_len = c.len_utf8();
+        let old_c_len = old_c.len_utf8();
+        let delta = c_len as isize - old_c_len as isize;
+
+        match delta.cmp(&0) {
+            Ordering::Equal => { c.encode_utf8(&mut self.buf_as_mut_bytes()[start..]); },
+
+            Ordering::Less => {
+                let bytes = self.buf_as_mut_bytes();
+
+                c.encode_utf8(&mut bytes[start..]);
+                bytes.copy_within((start + old_c_len).., start + c_len);
+
+                self.byte_len.set(self.byte_len.get().checked_add(Fixnum::try_from(delta).unwrap()).unwrap());
+            },
+
+            Ordering::Greater => {
+                let bytes = self.buf_as_mut_bytes();
+
+                let byte_len = isize::from(self.byte_len.get()) as usize; // `self.byte_len` should always be >= 0
+                if delta <= bytes.len() as isize - byte_len as isize {
+                    bytes.copy_within((start + old_c_len).., start + c_len);
+                    c.encode_utf8(&mut bytes[start..]);
+
+                    self.byte_len.set(self.byte_len.get().checked_add(Fixnum::try_from(delta).unwrap()).unwrap());
+                } else {
+                    let chars = VectorMut::<u8>::zeros(mt, (byte_len as isize + delta) as usize);
+                    let byte_cells = unsafe { chars.as_ref().indexed_field() };
+                    let bytes = unsafe { slice::from_raw_parts_mut(byte_cells.as_ptr() as *mut u8, byte_cells.len()) };
+
+                    // Reload in case GC happened:
+                    let old_bytes = self.buf_as_mut_bytes();
+
+                    bytes[..start].copy_from_slice(&old_bytes[..start]);
+                    c.encode_utf8(&mut bytes[start..]);
+                    bytes[(start + c_len)..].copy_from_slice(&old_bytes[(start + old_c_len)..]);
+
+                    self.chars.set(chars);
+                    self.byte_len.set(self.byte_len.get().checked_add(Fixnum::try_from(delta).unwrap()).unwrap());
+                }
+            }
+        }
+
+        Ok(())
     }
 }

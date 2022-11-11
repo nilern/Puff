@@ -269,6 +269,7 @@ impl Mutator {
 
             let string_mut = BootstrapTypeBuilder::<NonIndexedType>::new()
                 .field(any, fixnum, fixnum, true)
+                .field(any, fixnum, fixnum, true)
                 .field(any, fixnum, vector_mut_of_byte.into(), true)
                 .build(|len| heap.alloc_indexed(r#type, len).map(NonNull::cast))?;
 
@@ -386,6 +387,7 @@ impl Mutator {
                 ("indexed-ref", builtins::INDEXED_REF), ("indexed-set!", builtins::INDEXED_SET),
                 ("indexed-fill!", builtins::INDEXED_FILL),
                 ("string-ref", builtins::STRING_REF), ("string-mut-ref", builtins::STRING_MUT_REF),
+                ("string-set!", builtins::STRING_SET),
                 ("fx+", builtins::FX_ADD), ("fx-", builtins::FX_SUB), ("fx*", builtins::FX_MUL),
                 ("eval-syntax", builtins::EVAL_SYNTAX), ("load", builtins::LOAD),
                 ("apply", builtins::APPLY), ("values", builtins::VALUES)

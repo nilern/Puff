@@ -5,7 +5,7 @@ use crate::mutator::Mutator;
 use crate::r#type::Type;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Fixnum(usize);
+pub struct Fixnum(isize);
 
 impl Tagged for Fixnum {
     const TAG: usize = FIXNUM_TAG;
@@ -59,7 +59,7 @@ impl TryFrom<isize> for Fixnum {
     fn try_from(n: isize) -> Result<Self, Self::Error> {
         // Bounds check `MIN <= n <= MAX` from Hacker's Delight 4-1:
         if (n - Fixnum::MIN) as usize <= (Fixnum::MAX - Fixnum::MIN) as usize {
-            Ok(Fixnum((n as usize) << ORef::SHIFT))
+            Ok(Fixnum(n << ORef::SHIFT))
         } else {
             Err(())
         }
@@ -75,7 +75,7 @@ impl TryFrom<usize> for Fixnum {
 
     fn try_from(n: usize) -> Result<Self, Self::Error> {
         if n <= Fixnum::MAX as usize {
-            Ok(Fixnum(n << ORef::SHIFT))
+            Ok(Fixnum((n << ORef::SHIFT) as isize))
         } else {
             Err(())
         }
@@ -83,7 +83,7 @@ impl TryFrom<usize> for Fixnum {
 }
 
 impl From<u8> for Fixnum {
-    fn from(n: u8) -> Self { Self((n as usize) << ORef::SHIFT) }
+    fn from(n: u8) -> Self { Self((n as isize) << ORef::SHIFT) }
 }
 
 

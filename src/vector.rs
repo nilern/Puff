@@ -3,7 +3,6 @@ use std::cell::Cell;
 
 use crate::heap_obj::Indexed;
 use crate::oref::{Reify, ORef, Gc};
-use crate::fixnum::Fixnum;
 use crate::handle::HandleAny;
 use crate::mutator::Mutator;
 use crate::r#type::IndexedType;
@@ -63,17 +62,23 @@ impl Reify for VectorMut<u8> {
 }
 
 impl VectorMut<ORef> {
-    // OPTIMIZE: Make Fixnum::TAG 0b00, so that allocator has already initialized this:
     pub fn zeros(mt: &mut Mutator, len: usize) -> Gc<Self> {
         unsafe {
-            let mut nptr = mt.alloc_indexed(Self::reify(mt), len).cast::<Self>();
+            let nptr = mt.alloc_indexed(Self::reify(mt), len).cast::<Self>();
 
             nptr.as_ptr().write(VectorMut {phantom: Default::default()});
-            let mut v = nptr.as_mut().indexed_field_ptr_mut();
-            for _ in 0..len {
-                v.write(Cell::new(Fixnum::from(0u8).into()));
-                v = v.add(1);
-            }
+
+            Gc::new_unchecked(nptr)
+        }
+    }
+}
+
+impl VectorMut<u8> {
+    pub fn zeros(mt: &mut Mutator, len: usize) -> Gc<Self> {
+        unsafe {
+            let nptr = mt.alloc_indexed(Self::reify(mt), len).cast::<Self>();
+
+            nptr.as_ptr().write(VectorMut {phantom: Default::default()});
 
             Gc::new_unchecked(nptr)
         }

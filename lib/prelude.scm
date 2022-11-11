@@ -286,7 +286,7 @@
 
 (define string? (lambda (obj) (if (instance? <string> obj) #t (instance? <string-mut> obj))))
 
-(define make-string (lambda (k) (make <string-mut> k (make-bytevector k))))
+(define make-string (lambda (k) (make <string-mut> k k (make-bytevector k))))
 
 (define string-length
   (lambda (string)

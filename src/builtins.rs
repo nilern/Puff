@@ -524,6 +524,31 @@ fn string_mut_ref(mt: &mut Mutator) -> Answer {
 
 pub const STRING_MUT_REF: NativeFn = NativeFn {min_arity: 3, varargs: false, code: string_mut_ref};
 
+fn string_set(mt: &mut Mutator) -> Answer {
+    let s = mt.regs()[1].try_cast::<StringMut>(mt).unwrap_or_else(|| {
+        todo!("not a string");
+    });
+    let i = isize::from(Fixnum::try_from(mt.regs()[2]).unwrap_or_else(|_| {
+        todo!("index not a fixnum");
+    }));
+    let i = if i >= 0 {
+        i as usize
+    } else {
+        todo!("negative index");
+    };
+    let c = char::from(Char::try_from(mt.regs()[3]).unwrap_or_else(|_| {
+        todo!("not a char");
+    }));
+
+    root!(mt, s).borrow().set_nth(mt, i, c).unwrap_or_else(|_| {
+        todo!("out of bounds");
+    });
+
+    Answer::Ret {retc: 1} // HACK: happens to return `c`
+}
+
+pub const STRING_SET: NativeFn = NativeFn {min_arity: 4, varargs: false, code: string_set};
+
 fn eval_syntax(mt: &mut Mutator) -> Answer {
     let expr = root!(mt, mt.regs()[mt.regs().len() - 1]);
 
