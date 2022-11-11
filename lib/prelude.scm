@@ -282,10 +282,25 @@
         (error "vector-fill!: immutable vector" vector)
         (error "vector-fill!: non-vector" vector)))))
 
-(define string? (lambda (obj) (instance? <string> obj)))
+(define make-bytevector (lambda (k) (make-indexed-zeroed <bytevector-mut> k)))
+
+(define string? (lambda (obj) (if (instance? <string> obj) #t (instance? <string-mut> obj))))
+
+(define make-string (lambda (k) (make <string-mut> k (make-bytevector k))))
 
 (define string-length
   (lambda (string)
-    (if (string? string)
+    (if (instance? <string> string)
       (field-ref string 0)
-      (error "string-length: non-string" string))))
+      (if (instance? <string-mut> string)
+        (field-ref string 0)
+        (error "string-length: non-string" string)))))
+
+(define string-ref
+  (letrec ((string-immut-ref string-ref))
+    (lambda (string k)
+      (if (instance? <string> string)
+        (string-immut-ref string k)
+        (if (instance? <string-mut> string)
+          (string-mut-ref string k)
+          (error "string-ref: non-string" string))))))

@@ -56,6 +56,12 @@ impl Reify for VectorMut<ORef> {
     fn reify(mt: &Mutator) -> Gc<Self::Kind> { mt.types().vector_mut_of_any }
 }
 
+impl Reify for VectorMut<u8> {
+    type Kind = IndexedType;
+
+    fn reify(mt: &Mutator) -> Gc<Self::Kind> { mt.types().vector_mut_of_byte }
+}
+
 impl VectorMut<ORef> {
     // OPTIMIZE: Make Fixnum::TAG 0b00, so that allocator has already initialized this:
     pub fn zeros(mt: &mut Mutator, len: usize) -> Gc<Self> {

@@ -75,10 +75,12 @@ pub struct Types {
     pub bool: Gc<BitsType>,
     pub symbol: Gc<IndexedType>,
     pub string: Gc<IndexedType>,
+    pub string_mut: Gc<NonIndexedType>,
     pub pair: Gc<NonIndexedType>,
     pub empty_list: Gc<NonIndexedType>,
     pub vector_of_any: Gc<IndexedType>,
     pub vector_mut_of_any: Gc<IndexedType>,
+    pub vector_mut_of_byte: Gc<IndexedType>,
     pub pos: Gc<NonIndexedType>,
     pub syntax: Gc<NonIndexedType>,
     pub bytecode: Gc<IndexedType>,
@@ -261,6 +263,15 @@ impl Mutator {
                 .indexed_field(any, fixnum, any, true)
                 .build(|len| heap.alloc_indexed(r#type, len).map(NonNull::cast))?;
 
+            let vector_mut_of_byte = BootstrapTypeBuilder::<NonIndexedType>::new()
+                .indexed_field(any, fixnum, u8_type.into(), true)
+                .build(|len| heap.alloc_indexed(r#type, len).map(NonNull::cast))?;
+
+            let string_mut = BootstrapTypeBuilder::<NonIndexedType>::new()
+                .field(any, fixnum, fixnum, true)
+                .field(any, fixnum, vector_mut_of_byte.into(), true)
+                .build(|len| heap.alloc_indexed(r#type, len).map(NonNull::cast))?;
+
             let pos = BootstrapTypeBuilder::<NonIndexedType>::new()
                 .field(any, fixnum, any, false)
                 .field(any, fixnum, any, false)
@@ -335,8 +346,10 @@ impl Mutator {
                 heap,
                 handles: HandlePool::new(),
 
-                types: Types { fixnum, any, flonum, char, r#type, bool, symbol, string, pair, empty_list, pos, syntax,
-                    bytecode, vector_of_any, vector_mut_of_any, closure, native_fn, r#box, namespace, var },
+                types: Types { fixnum, any, flonum, char, r#type, bool, symbol, string, string_mut, pair, empty_list,
+                    pos, syntax, bytecode, vector_of_any, vector_mut_of_any, vector_mut_of_byte, closure, native_fn,
+                    r#box, namespace, var
+                },
                 singletons: Singletons { r#true, r#false, empty_list: empty_list_inst },
                 symbols: SymbolTable::new(),
                 ns: None,
@@ -357,7 +370,9 @@ impl Mutator {
             for (name, t) in [("<pair>", root!(&mut mt, Gc::<Type>::from(mt.types.pair))),
                 ("<vector>", root!(&mut mt, Gc::<Type>::from(mt.types.vector_of_any))),
                 ("<vector-mut>", root!(&mut mt, Gc::<Type>::from(mt.types.vector_mut_of_any))),
-                ("<string>", root!(&mut mt, Gc::<Type>::from(mt.types.string)))
+                ("<bytevector-mut>", root!(&mut mt, Gc::<Type>::from(mt.types.vector_mut_of_byte))),
+                ("<string>", root!(&mut mt, Gc::<Type>::from(mt.types.string))),
+                ("<string-mut>", root!(&mut mt, Gc::<Type>::from(mt.types.string_mut)))
             ] {
                 let name = root!(&mut mt, Symbol::new(&mut mt, name));
                 let var = root!(&mut mt, Var::new(&mut mt, t.borrow().into()));
@@ -370,7 +385,7 @@ impl Mutator {
                 ("make-indexed-zeroed", builtins::MAKE_INDEXED_ZEROED), ("indexed-length", builtins::INDEXED_LENGTH),
                 ("indexed-ref", builtins::INDEXED_REF), ("indexed-set!", builtins::INDEXED_SET),
                 ("indexed-fill!", builtins::INDEXED_FILL),
-                ("string-ref", builtins::STRING_REF),
+                ("string-ref", builtins::STRING_REF), ("string-mut-ref", builtins::STRING_MUT_REF),
                 ("fx+", builtins::FX_ADD), ("fx-", builtins::FX_SUB), ("fx*", builtins::FX_MUL),
                 ("eval-syntax", builtins::EVAL_SYNTAX), ("load", builtins::LOAD),
                 ("apply", builtins::APPLY), ("values", builtins::VALUES)

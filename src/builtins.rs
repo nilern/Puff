@@ -7,7 +7,7 @@ use crate::oref::{ORef, Gc};
 use crate::handle::{Handle, Root, root};
 use crate::fixnum::Fixnum;
 use crate::bool::Bool;
-use crate::string::String;
+use crate::string::{String, StringMut};
 use crate::char::Char;
 use crate::list::{Pair, EmptyList};
 use crate::heap_obj::Singleton;
@@ -498,6 +498,31 @@ fn string_ref(mt: &mut Mutator) -> Answer {
 }
 
 pub const STRING_REF: NativeFn = NativeFn {min_arity: 3, varargs: false, code: string_ref};
+
+fn string_mut_ref(mt: &mut Mutator) -> Answer {
+    let last_index = mt.regs().len() - 1;
+
+    let s = mt.regs()[last_index - 1].try_cast::<StringMut>(mt).unwrap_or_else(|| {
+        todo!("not a string");
+    });
+    let i = isize::from(Fixnum::try_from(mt.regs()[last_index]).unwrap_or_else(|_| {
+        todo!("index not a fixnum");
+    }));
+    let i = if i >= 0 {
+        i as usize
+    } else {
+        todo!("negative index");
+    };
+
+    let c = mt.borrow(s).as_str().chars().nth(i).unwrap_or_else(|| {
+        todo!("out of bounds");
+    });
+
+    mt.regs_mut()[last_index] = Char::from(c).into();
+    Answer::Ret {retc: 1}
+}
+
+pub const STRING_MUT_REF: NativeFn = NativeFn {min_arity: 3, varargs: false, code: string_mut_ref};
 
 fn eval_syntax(mt: &mut Mutator) -> Answer {
     let expr = root!(mt, mt.regs()[mt.regs().len() - 1]);

@@ -11,7 +11,7 @@ use crate::bool::Bool;
 use crate::list::{Pair, EmptyList};
 use crate::mutator::{Mutator, WithinMt};
 use crate::symbol::Symbol;
-use crate::string::String;
+use crate::string::{String, StringMut};
 use crate::r#box::Box;
 use crate::r#type::Type;
 
@@ -29,7 +29,7 @@ impl DisplayWithin for ORef {
             ORefEnum::Gc(obj) => obj.fmt_within(mt, fmt),
             ORefEnum::Fixnum(n) => write!(fmt, "{}", n),
             ORefEnum::Flonum(f) => write!(fmt, "{}", f),
-            ORefEnum::Char(c) => write!(fmt, "{}", c)
+            ORefEnum::Char(c) => write!(fmt, "#\\{}", c)
         }
     }
 }
@@ -65,6 +65,8 @@ impl DisplayWithin for Gc<()> {
             write!(fmt, "()")
         } else if let Some(s) = self.try_cast::<String>(mt) {
             write!(fmt, "\"{}\"", mt.borrow(s).as_str())
+        } else if let Some(s) = self.try_cast::<StringMut>(mt) {
+            write!(fmt, "\"{}\"", mt.borrow(s).as_str())
         } else if let Some(b) = self.try_cast::<Bool>(mt) {
             if bool::from(mt.borrow(b).0) {
                 write!(fmt, "#t")
@@ -93,6 +95,19 @@ impl DisplayWithin for Gc<()> {
 
                 for v in &vs.indexed_field()[1..] {
                     write!(fmt, " {}", v.within(mt))?;
+                }
+            }
+
+            write!(fmt, ")")
+        } else if let Some(bytes) = self.try_cast::<VectorMut<u8>>(mt) {
+            write!(fmt, "#vu8(")?;
+
+            let bytes = mt.borrow(bytes);
+            if bytes.indexed_field().len() > 0 {
+                write!(fmt, "{}", bytes.indexed_field()[0].get())?;
+
+                for v in &bytes.indexed_field()[1..] {
+                    write!(fmt, " {}", v.get())?;
                 }
             }
 
