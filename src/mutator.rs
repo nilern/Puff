@@ -355,7 +355,8 @@ impl Mutator {
 
             for (name, t) in [("<pair>", root!(&mut mt, Gc::<Type>::from(mt.types.pair))),
                 ("<vector>", root!(&mut mt, Gc::<Type>::from(mt.types.vector_of_any))),
-                ("<vector-mut>", root!(&mut mt, Gc::<Type>::from(mt.types.vector_mut_of_any)))
+                ("<vector-mut>", root!(&mut mt, Gc::<Type>::from(mt.types.vector_mut_of_any))),
+                ("<string>", root!(&mut mt, Gc::<Type>::from(mt.types.string)))
             ] {
                 let name = root!(&mut mt, Symbol::new(&mut mt, name));
                 let var = root!(&mut mt, Var::new(&mut mt, t.borrow().into()));

@@ -283,3 +283,5 @@
       (if (instance? <vector> vector)
         (error "vector-fill!: immutable vector" vector)
         (error "vector-fill!: non-vector" vector)))))
+
+(define string? (lambda (obj) (instance? <string> obj)))
