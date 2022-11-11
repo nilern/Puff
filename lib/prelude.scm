@@ -338,6 +338,15 @@
 
 (define string->list (lambda (string) (string-fold-right (lambda (_ list c) (cons c list)) '() string)))
 
+(define string-bytevector-copy!
+  (lambda (bytes at string)
+    (if (instance? <string> string)
+      (indexed-copy! bytes at string 0 (string-byte-length string))
+      (if (instance? <string-mut> string)
+        (letrec ((string-bytes (string-mut-bytes string)))
+          (indexed-copy! bytes at string-bytes 0 (bytevector-length string-bytes)))
+        (error "string-append: non-string" string)))))
+
 (define string-append
   (letrec ((strings-lengths
             (lambda (strings)
@@ -348,17 +357,7 @@
                                                                (+ char-len (string-length string))
                                                                (+ byte-len (string-byte-length string))))
                                             (values char-len byte-len)))))
-                (strings-lengths strings 0 0))))
-
-           (string-bytevector-copy!
-            (lambda (bytes at string)
-              (if (instance? <string> string)
-                (indexed-copy! bytes at string 0 (string-byte-length string))
-                (if (instance? <string-mut> string)
-                  (letrec ((string-bytes (string-mut-bytes string)))
-                    (indexed-copy! bytes at string-bytes 0 (bytevector-length string-bytes)))
-                  (error "string-append: non-string" string))))))
-
+                (strings-lengths strings 0 0)))))
     (lambda strings
       (if (pair? strings)
         (call-with-values (lambda () (strings-lengths strings))
@@ -372,3 +371,11 @@
                                       0 strings)
                                 (make <string-mut> char-len byte-len bytes)))))
         (make-string 0)))))
+
+(define string-copy
+  (lambda (string)
+    (letrec ((byte-len (string-byte-length string)))
+      (letrec ((bytes (make-bytevector byte-len)))
+        (begin
+          (string-bytevector-copy! bytes 0 string)
+          (make <string-mut> (string-length string) byte-len bytes))))))
