@@ -264,9 +264,7 @@
                                     acc))))
       (vector-fold-right (vector-length vector) acc))))
 
-(define vector->list
-  (lambda (vector)
-    (vector-fold-right (lambda (_ list v) (cons v list)) '() vector)))
+(define vector->list (lambda (vector) (vector-fold-right (lambda (_ list v) (cons v list)) '() vector)))
 
 (define list->vector
   (lambda (list)
@@ -304,3 +302,14 @@
         (if (instance? <string-mut> string)
           (string-mut-ref string k)
           (error "string-ref: non-string" string))))))
+
+(define string-fold-right
+  (lambda (proc acc vector)
+    (letrec ((string-fold-right (lambda (i acc)
+                                  (if (not (eq? i 0))
+                                    (letrec ((i* (- i 1)))
+                                      (string-fold-right i* (proc i* acc (string-ref vector i*))))
+                                    acc))))
+      (string-fold-right (string-length vector) acc))))
+
+(define string->list (lambda (string) (string-fold-right (lambda (_ list c) (cons c list)) '() string)))
