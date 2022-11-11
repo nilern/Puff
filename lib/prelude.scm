@@ -209,9 +209,7 @@
 
 (define vector? (lambda (obj) (if (instance? <vector> obj) #t (instance? <vector-mut> obj))))
 
-(define make-vector
-  (lambda (k)
-    (make-indexed-zeroed <vector-mut> k)))
+(define make-vector (lambda (k) (make-indexed-zeroed <vector-mut> k)))
 
 (define vector-length
   (lambda (vector)
@@ -285,3 +283,9 @@
         (error "vector-fill!: non-vector" vector)))))
 
 (define string? (lambda (obj) (instance? <string> obj)))
+
+(define string-length
+  (lambda (string)
+    (if (string? string)
+      (field-ref string 0)
+      (error "string-length: non-string" string))))

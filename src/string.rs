@@ -5,9 +5,12 @@ use crate::mutator::Mutator;
 use crate::oref::{Reify, Gc};
 use crate::heap_obj::{Indexed, HeapObj};
 use crate::r#type::IndexedType;
+use crate::fixnum::Fixnum;
 
 #[repr(C)]
-pub struct String;
+pub struct String {
+    char_len: Fixnum
+}
 
 unsafe impl HeapObj for String {}
 
@@ -26,6 +29,11 @@ impl String {
         unsafe {
             let nptr: NonNull<Self> = mt.alloc_indexed(Self::reify(mt), chars.len()).cast();
 
+            let char_len = Fixnum::try_from(chars.chars().count()).unwrap_or_else(|_| {
+                todo!("String length overflows fixnum");
+            });
+
+            nptr.as_ptr().write(String {char_len});
             (*nptr.as_ptr()).indexed_field_ptr_mut()
                 .copy_from_nonoverlapping(chars.as_ptr(), chars.len());
 

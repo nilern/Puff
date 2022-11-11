@@ -241,6 +241,7 @@ impl Mutator {
                 .build(|len| heap.alloc_indexed(r#type, len).map(NonNull::cast))?;
 
             let string = BootstrapTypeBuilder::<NonIndexedType>::new()
+                .field(any, fixnum, fixnum, false)
                 .indexed_field(any, fixnum, u8_type.into(), false)
                 .build(|len| heap.alloc_indexed(r#type, len).map(NonNull::cast))?;
 
