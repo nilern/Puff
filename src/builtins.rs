@@ -2,7 +2,7 @@ use std::fs;
 use std::mem::size_of;
 use std::slice;
 
-use crate::heap_obj::Header;
+use crate::heap_obj::{Header, Indexed};
 use crate::native_fn::{NativeFn, Answer};
 use crate::mutator::Mutator;
 use crate::oref::{ORef, Gc};
@@ -20,6 +20,7 @@ use crate::closure::Closure;
 use crate::verifier::verify;
 use crate::syntax::{Pos, Syntax};
 use crate::r#type::{Type, NonIndexedType, IndexedType};
+use crate::vector::VectorMut;
 
 fn eq(mt: &mut Mutator) -> Answer {
     let res = mt.regs()[mt.regs().len() - 1] == mt.regs()[mt.regs().len() - 2];
@@ -588,6 +589,37 @@ fn indexed_char_utf8_set(mt: &mut Mutator) -> Answer {
 }
 
 pub const INDEXED_CHAR_UTF8_SET: NativeFn = NativeFn {min_arity: 4, varargs: false, code: indexed_char_utf8_set};
+
+fn string(mt: &mut Mutator) -> Answer {
+    let char_len = mt.regs().len() - 1;
+    let mut byte_len = 0;
+    for &c in &mt.regs().as_slice()[1..] {
+        let c = char::from(Char::try_from(c).unwrap_or_else(|()| {
+            todo!("not a char");
+        }));
+
+        byte_len += c.len_utf8();
+    }
+
+    let bytes = root!(mt, VectorMut::<u8>::zeros(mt, byte_len));
+
+    let byte_cells = bytes.indexed_field();
+    let bytes_slice = unsafe { slice::from_raw_parts_mut(byte_cells.as_ptr() as *mut u8, byte_cells.len()) };
+    let mut i = 0;
+    for &c in &mt.regs().as_slice()[1..] {
+        let c = char::from(unsafe { Char::from_oref_unchecked(c) });
+        i += c.encode_utf8(&mut bytes_slice[i..]).len();
+    }
+
+    mt.regs_mut()[char_len] = StringMut::new(mt,
+        Fixnum::try_from(char_len).unwrap(),
+        Fixnum::try_from(byte_len).unwrap(),
+        bytes.borrow()
+    ).into();
+    Answer::Ret {retc: 1}
+}
+
+pub const STRING: NativeFn = NativeFn {min_arity: 1, varargs: true, code: string};
 
 fn string_ref(mt: &mut Mutator) -> Answer {
     let last_index = mt.regs().len() - 1;

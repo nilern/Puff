@@ -6,7 +6,7 @@ use std::cell::Cell;
 
 use crate::mutator::Mutator;
 use crate::oref::{Reify, Gc};
-use crate::heap_obj::{Indexed, HeapObj};
+use crate::heap_obj::{Indexed, NonIndexed, HeapObj};
 use crate::r#type::{IndexedType, NonIndexedType};
 use crate::fixnum::Fixnum;
 use crate::vector::VectorMut;
@@ -62,7 +62,23 @@ impl Reify for StringMut {
     fn reify(mt: &Mutator) -> Gc<Self::Kind> { mt.types().string_mut }
 }
 
+unsafe impl NonIndexed for StringMut {}
+
 impl StringMut {
+    pub fn new(mt: &mut Mutator, char_len: Fixnum, byte_len: Fixnum, chars: HandleRef<VectorMut<u8>>) -> Gc<Self> {
+        unsafe {
+            let nptr = mt.alloc_static::<Self>();
+
+            nptr.as_ptr().write(Self {
+                char_len,
+                byte_len: Cell::new(byte_len),
+                chars: Cell::new(chars.oref())
+            });
+
+            Gc::new_unchecked(nptr)
+        }
+    }
+
     fn buf_as_bytes(&self) -> &[u8] {
         unsafe {
             let chars = self.chars.get();
