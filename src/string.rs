@@ -51,9 +51,9 @@ impl String {
 
 #[repr(C)]
 pub struct StringMut {
-    char_len: Fixnum,
-    byte_len: Cell<Fixnum>,
-    chars: Cell<Gc<VectorMut<u8>>>
+    pub char_len: Fixnum,
+    pub byte_len: Cell<Fixnum>,
+    pub chars: Cell<Gc<VectorMut<u8>>>
 }
 
 impl Reify for StringMut {

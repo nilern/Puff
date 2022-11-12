@@ -696,6 +696,46 @@ fn string_set(mt: &mut Mutator) -> Answer {
 
 pub const STRING_SET: NativeFn = NativeFn {min_arity: 4, varargs: false, code: string_set};
 
+fn string_fill(mt: &mut Mutator) -> Answer {
+    let s = root!(mt, mt.regs()[1].try_cast::<StringMut>(mt).unwrap_or_else(|| {
+        todo!("not a string");
+    }));
+
+    let c = char::from(Char::try_from(mt.regs()[2]).unwrap_or_else(|()| {
+        todo!("not a char");
+    }));
+
+    let mut char_bytes = [0; 4];
+    let char_bytes = c.encode_utf8(&mut char_bytes).as_bytes();
+    let char_len = char_bytes.len();
+
+    let string_char_len = isize::from(s.char_len) as usize; // `s.char_len` should always be >= 0
+    let byte_len = char_len * string_char_len;
+
+    let bytes = s.chars.get();
+    let bytes = if mt.borrow(bytes).indexed_field().len() >= byte_len {
+        bytes
+    } else {
+        VectorMut::<u8>::zeros(mt, byte_len)
+    };
+    
+    let byte_cells = mt.borrow(bytes).indexed_field();
+    let bytes_slice = unsafe { slice::from_raw_parts_mut(byte_cells.as_ptr() as *mut u8, byte_cells.len()) };
+    let mut i = 0;
+    for _ in 0..string_char_len {
+        let end = i + char_len;
+        bytes_slice[i..end].copy_from_slice(char_bytes);
+        i = end;
+    }
+
+    s.byte_len.set(Fixnum::try_from(byte_len).unwrap());
+    s.chars.set(bytes);
+    
+    Answer::Ret {retc: 1} // HACK: happens to return `c`
+}
+
+pub const STRING_FILL: NativeFn = NativeFn {min_arity: 3, varargs: false, code: string_fill};
+
 fn eval_syntax(mt: &mut Mutator) -> Answer {
     let expr = root!(mt, mt.regs()[mt.regs().len() - 1]);
 

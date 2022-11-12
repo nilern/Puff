@@ -389,6 +389,7 @@ impl Mutator {
                 ("indexed-char-utf8-set!", builtins::INDEXED_CHAR_UTF8_SET),
                 ("string", builtins::STRING), ("string-ref", builtins::STRING_REF),
                 ("string-mut-ref", builtins::STRING_MUT_REF), ("string-set!", builtins::STRING_SET),
+                ("string-fill!", builtins::STRING_FILL),
                 ("fx+", builtins::FX_ADD), ("fx-", builtins::FX_SUB), ("fx*", builtins::FX_MUL),
                 ("char-length-utf8", builtins::CHAR_LENGTH_UTF8),
                 ("eval-syntax", builtins::EVAL_SYNTAX), ("load", builtins::LOAD),
