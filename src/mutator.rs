@@ -632,11 +632,11 @@ impl Mutator {
             let min_arity = unsafe { self.borrow(self.code()).min_arity };
             if ! unsafe { self.borrow(self.code()).varargs } {
                 if argc != min_arity {
-                    todo!()
+                    todo!("non-varargs closure argc")
                 }
             } else {
                 if argc < min_arity {
-                    todo!()
+                    todo!("varargs closure argc")
                 }
 
                 let varargs_len = argc - min_arity;
@@ -662,11 +662,11 @@ impl Mutator {
             let min_arity = self.borrow(callee).min_arity;
             if !self.borrow(callee).varargs {
                 if argc != min_arity {
-                    todo!()
+                    todo!("non-varargs native-fn argc")
                 }
             } else {
                 if argc < min_arity {
-                    todo!()
+                    todo!("varargs native-fn argc")
                 }
             }
 

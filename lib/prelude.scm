@@ -362,6 +362,18 @@
                                     0 list)
                               (make <string-mut> char-len byte-len bytes))))))))
 
+(define substring
+  (lambda (string start end)
+    (letrec ((byte-len (string-byte-length string)))
+      (letrec ((bytes (make-bytevector byte-len)))
+        (begin
+          (if (instance? <string> string)
+            (indexed-copy! bytes 0 string start end)
+            (if (instance? <string-mut> string)
+              (indexed-copy! bytes 0 (string-mut-bytes string) start end)
+              (error "substring: non-string" string)))
+          (make <string-mut> (- end start) byte-len bytes))))))
+
 (define string-bytevector-copy!
   (lambda (bytes at string)
     (if (instance? <string> string)
