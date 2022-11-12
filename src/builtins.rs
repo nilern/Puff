@@ -21,6 +21,7 @@ use crate::verifier::verify;
 use crate::syntax::{Pos, Syntax};
 use crate::r#type::{Type, NonIndexedType, IndexedType};
 use crate::vector::VectorMut;
+use crate::continuation::Continuation;
 
 fn eq(mt: &mut Mutator) -> Answer {
     let res = mt.regs()[mt.regs().len() - 1] == mt.regs()[mt.regs().len() - 2];
@@ -730,7 +731,7 @@ fn string_fill(mt: &mut Mutator) -> Answer {
 
     s.byte_len.set(Fixnum::try_from(byte_len).unwrap());
     s.chars.set(bytes);
-    
+
     Answer::Ret {retc: 1} // HACK: happens to return `c`
 }
 
@@ -858,3 +859,24 @@ pub const VALUES: NativeFn = NativeFn {
     varargs: true,
     code: values
 };
+
+fn call_cc(mt: &mut Mutator) -> Answer {
+    mt.regs_mut()[0] = mt.regs()[1];
+    mt.regs_mut()[1] = Continuation::current(mt).into();
+
+    Answer::TailCall {argc: 2}
+}
+
+pub const CALL_CC: NativeFn = NativeFn {min_arity: 2, varargs: false, code: call_cc};
+
+fn r#continue(mt: &mut Mutator) -> Answer {
+    let k = mt.regs()[1].try_cast::<Continuation>(mt).unwrap_or_else(|| {
+        todo!("not a continuation")
+    });
+
+    mt.reinstate_continuation(k);
+
+    Answer::Ret {retc: mt.regs().len() - 2}
+}
+
+pub const CONTINUE: NativeFn = NativeFn {min_arity: 2, varargs: true, code: r#continue};

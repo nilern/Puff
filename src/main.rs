@@ -17,6 +17,7 @@ mod list;
 mod vector;
 mod closure;
 mod native_fn;
+mod continuation;
 mod write;
 mod builtins;
 mod r#box;

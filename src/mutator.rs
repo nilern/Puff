@@ -23,6 +23,7 @@ use crate::bool::Bool;
 use crate::fixnum::Fixnum;
 use crate::flonum::Flonum;
 use crate::char::Char;
+use crate::continuation::Continuation;
 
 const USIZE_TYPE_SIZE: usize = min_size_of_indexed::<Type>();
 
@@ -86,6 +87,7 @@ pub struct Types {
     pub bytecode: Gc<IndexedType>,
     pub closure: Gc<IndexedType>,
     pub native_fn: Gc<NonIndexedType>,
+    pub continuation: Gc<IndexedType>,
     pub r#box: Gc<NonIndexedType>,
     pub namespace: Gc<NonIndexedType>,
     pub var: Gc<NonIndexedType>
@@ -309,6 +311,10 @@ impl Mutator {
                 .field(any, fixnum, fn_ptr.into(), false)
                 .build(|len| heap.alloc_indexed(r#type, len).map(NonNull::cast))?;
 
+            let continuation = BootstrapTypeBuilder::<NonIndexedType>::new()
+                .indexed_field(any, fixnum, any, false)
+                .build(|len| heap.alloc_indexed(r#type, len).map(NonNull::cast))?;
+
             let r#box = BootstrapTypeBuilder::<NonIndexedType>::new()
                 .field(any, fixnum, any, true)
                 .build(|len| heap.alloc_indexed(r#type, len).map(NonNull::cast))?;
@@ -349,7 +355,7 @@ impl Mutator {
 
                 types: Types { fixnum, any, flonum, char, r#type, bool, symbol, string, string_mut, pair, empty_list,
                     pos, syntax, bytecode, vector_of_any, vector_mut_of_any, vector_mut_of_byte, closure, native_fn,
-                    r#box, namespace, var
+                    continuation, r#box, namespace, var
                 },
                 singletons: Singletons { r#true, r#false, empty_list: empty_list_inst },
                 symbols: SymbolTable::new(),
@@ -393,7 +399,8 @@ impl Mutator {
                 ("fx+", builtins::FX_ADD), ("fx-", builtins::FX_SUB), ("fx*", builtins::FX_MUL),
                 ("char-length-utf8", builtins::CHAR_LENGTH_UTF8),
                 ("eval-syntax", builtins::EVAL_SYNTAX), ("load", builtins::LOAD),
-                ("apply", builtins::APPLY), ("values", builtins::VALUES)
+                ("apply", builtins::APPLY), ("values", builtins::VALUES),
+                ("call-with-current-continuation", builtins::CALL_CC), ("continue", builtins::CONTINUE)
             ] {
                 let name = root!(&mut mt, Symbol::new(&mut mt, name));
                 let f = root!(&mut mt, NativeFn::new(&mut mt, f));
@@ -465,6 +472,14 @@ impl Mutator {
     pub fn pop(&mut self) -> Option<ORef> { self.regs.pop() }
 
     pub fn dump_regs(&self) { self.regs.dump(self); }
+
+    pub fn stack(&self) -> &[ORef] { &self.stack }
+
+    // OPTIMIZE: The simplest, most inefficient continuation reinstatement:
+    pub fn reinstate_continuation(&mut self, k: Gc<Continuation>) {
+        self.stack.truncate(0);
+        unsafe { self.stack.extend(k.as_ref().indexed_field()); }
+    }
 
     pub unsafe fn alloc_nonindexed(&mut self, r#type: Gc<NonIndexedType>) -> NonNull<u8> {
         let type_hdl = root!(self, r#type);

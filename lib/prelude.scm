@@ -1,5 +1,10 @@
 (define call-with-values (lambda (producer consumer) (call-with-values* producer consumer)))
 
+(define call-with-current-continuation
+  (letrec ((call-cc call-with-current-continuation))
+    (lambda (proc)
+      (call-cc (lambda (k) (proc (lambda vs (apply continue k vs))))))))
+
 (define + fx+)
 (define - fx-)
 (define * fx*)
