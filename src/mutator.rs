@@ -386,9 +386,11 @@ impl Mutator {
                 ("make-indexed-zeroed", builtins::MAKE_INDEXED_ZEROED), ("indexed-length", builtins::INDEXED_LENGTH),
                 ("indexed-ref", builtins::INDEXED_REF), ("indexed-set!", builtins::INDEXED_SET),
                 ("indexed-fill!", builtins::INDEXED_FILL), ("indexed-copy!", builtins::INDEXED_COPY),
+                ("indexed-char-utf8-set!", builtins::INDEXED_CHAR_UTF8_SET),
                 ("string-ref", builtins::STRING_REF), ("string-mut-ref", builtins::STRING_MUT_REF),
                 ("string-set!", builtins::STRING_SET),
                 ("fx+", builtins::FX_ADD), ("fx-", builtins::FX_SUB), ("fx*", builtins::FX_MUL),
+                ("char-length-utf8", builtins::CHAR_LENGTH_UTF8),
                 ("eval-syntax", builtins::EVAL_SYNTAX), ("load", builtins::LOAD),
                 ("apply", builtins::APPLY), ("values", builtins::VALUES)
             ] {

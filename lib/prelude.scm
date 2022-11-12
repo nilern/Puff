@@ -2,6 +2,7 @@
 
 (define + fx+)
 (define - fx-)
+(define * fx*)
 
 (define zero? (lambda (n) (eq? n 0)))
 
@@ -338,6 +339,29 @@
 
 (define string->list (lambda (string) (string-fold-right (lambda (_ list c) (cons c list)) '() string)))
 
+(define list->string
+  (letrec ((chars-lengths
+            (lambda (chars)
+              (letrec ((chars-lengths (lambda (chars char-len byte-len)
+                                        (if (pair? chars)
+                                          (letrec ((string (car chars)))
+                                            (chars-lengths (cdr chars)
+                                                           (+ char-len 1)
+                                                           (+ byte-len (char-length-utf8 string))))
+                                          (values char-len byte-len)))))
+                (chars-lengths chars 0 0)))))
+    (lambda (list)
+      (call-with-values (lambda () (chars-lengths list))
+                        (lambda (char-len byte-len)
+                          (letrec ((bytes (make-bytevector byte-len)))
+                            (begin
+                              (fold (lambda (char at)
+                                      (begin
+                                        (indexed-char-utf8-set! bytes at char)
+                                        (+ at (char-length-utf8 char))))
+                                    0 list)
+                              (make <string-mut> char-len byte-len bytes))))))))
+
 (define string-bytevector-copy!
   (lambda (bytes at string)
     (if (instance? <string> string)
@@ -359,18 +383,16 @@
                                             (values char-len byte-len)))))
                 (strings-lengths strings 0 0)))))
     (lambda strings
-      (if (pair? strings)
-        (call-with-values (lambda () (strings-lengths strings))
-                          (lambda (char-len byte-len)
-                            (letrec ((bytes (make-bytevector byte-len)))
-                              (begin
-                                (fold (lambda (string at)
-                                        (begin
-                                          (string-bytevector-copy! bytes at string)
-                                          (+ at (string-byte-length string))))
-                                      0 strings)
-                                (make <string-mut> char-len byte-len bytes)))))
-        (make-string 0)))))
+      (call-with-values (lambda () (strings-lengths strings))
+                        (lambda (char-len byte-len)
+                          (letrec ((bytes (make-bytevector byte-len)))
+                            (begin
+                              (fold (lambda (string at)
+                                      (begin
+                                        (string-bytevector-copy! bytes at string)
+                                        (+ at (string-byte-length string))))
+                                    0 strings)
+                              (make <string-mut> char-len byte-len bytes))))))))
 
 (define string-copy
   (lambda (string)

@@ -1,5 +1,6 @@
 use std::fs;
 use std::mem::size_of;
+use std::slice;
 
 use crate::heap_obj::Header;
 use crate::native_fn::{NativeFn, Answer};
@@ -101,6 +102,18 @@ pub const FX_MUL: NativeFn = NativeFn {
     varargs: false,
     code: fx_mul
 };
+
+fn char_length_utf8(mt: &mut Mutator) -> Answer {
+    let c = char::from(Char::try_from(mt.regs()[1]).unwrap_or_else(|()| {
+        todo!("not a char");
+    }));
+
+    let last_index = mt.regs().len() - 1;
+    mt.regs_mut()[last_index] = Fixnum::from(c.len_utf8() as u8).into();
+    Answer::Ret {retc: 1}
+}
+
+pub const CHAR_LENGTH_UTF8: NativeFn = NativeFn {min_arity: 2, varargs: false, code: char_length_utf8};
 
 fn is_instance(mt: &mut Mutator) -> Answer {
     let last_index = mt.regs().len() - 1;
@@ -536,6 +549,45 @@ fn indexed_fill(mt: &mut Mutator) -> Answer {
 }
 
 pub const INDEXED_FILL: NativeFn = NativeFn {min_arity: 3, varargs: false, code: indexed_fill};
+
+fn indexed_char_utf8_set(mt: &mut Mutator) -> Answer {
+    let bytes = Gc::<()>::try_from(mt.regs()[1]).unwrap_or_else(|()| {
+        todo!("not a heap object");
+    });
+    let bytes_type = mt.borrow(bytes.r#type());
+    if !bytes_type.has_indexed {
+        todo!("nonindexed");
+    }
+    let field_descr = bytes_type.fields()[bytes_type.fields().len() - 1];
+    if !mt.borrow(field_descr.r#type).inlineable {
+        todo!("indexed field not bytes")
+    }
+    if !mt.borrow(field_descr.r#type).min_size == 1 {
+        todo!("indexed field not bytes")
+    }
+
+    let at = isize::from(Fixnum::try_from(mt.regs()[2]).unwrap_or_else(|()| {
+        todo!("at not a fixnum");
+    }));
+    let at = if at >= 0 { at as usize } else { todo!("negative at") };
+    let bytes_length = unsafe { *((bytes.as_ptr() as *const Header).offset(-1) as *const usize).offset(-1) };
+    if at >= bytes_length { todo!("at out of bounds"); }
+
+    let c = char::from(Char::try_from(mt.regs()[3]).unwrap_or_else(|()| {
+        todo!("not a char");
+    }));
+    let c_len = c.len_utf8();
+    if at + c_len > bytes_length { todo!("char does not fit"); }
+
+    unsafe {
+        let ptr = (bytes.as_ptr() as *mut u8).add(field_descr.offset).add(at);
+        c.encode_utf8(slice::from_raw_parts_mut(ptr, c_len));
+    }
+
+    Answer::Ret {retc: 1} // HACK: happens to return `c`
+}
+
+pub const INDEXED_CHAR_UTF8_SET: NativeFn = NativeFn {min_arity: 4, varargs: false, code: indexed_char_utf8_set};
 
 fn string_ref(mt: &mut Mutator) -> Answer {
     let last_index = mt.regs().len() - 1;
