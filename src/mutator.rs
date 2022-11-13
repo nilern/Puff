@@ -72,6 +72,8 @@ pub struct Types {
     pub any: Gc<Type>,
     pub flonum: Gc<Type>, // Must be at FIXNUM_TAG:th
     pub char: Gc<Type>, // Must be at FIXNUM_TAG:th
+    pub isize: Gc<BitsType>,
+    pub usize: Gc<BitsType>,
     pub r#type: Gc<IndexedType>,
     pub bool: Gc<BitsType>,
     pub symbol: Gc<IndexedType>,
@@ -239,6 +241,12 @@ impl Mutator {
             let u8_type = BootstrapTypeBuilder::<BitsType>::new::<u8>()
                 .build(|| heap.alloc_indexed(r#type, 0).map(NonNull::cast))?;
 
+            let isize = BootstrapTypeBuilder::<BitsType>::new::<isize>()
+                .build(|| heap.alloc_indexed(r#type, 0).map(NonNull::cast))?;
+
+            let usize = BootstrapTypeBuilder::<BitsType>::new::<usize>()
+                .build(|| heap.alloc_indexed(r#type, 0).map(NonNull::cast))?;
+
             let symbol = BootstrapTypeBuilder::<NonIndexedType>::new()
                 .field(any, fixnum, any, false)
                 .indexed_field(any, fixnum, u8_type.into(), false)
@@ -353,9 +361,9 @@ impl Mutator {
                 heap,
                 handles: HandlePool::new(),
 
-                types: Types { fixnum, any, flonum, char, r#type, bool, symbol, string, string_mut, pair, empty_list,
-                    pos, syntax, bytecode, vector_of_any, vector_mut_of_any, vector_mut_of_byte, closure, native_fn,
-                    continuation, r#box, namespace, var
+                types: Types { fixnum, any, flonum, char, isize, usize, r#type, bool, symbol, string, string_mut, pair,
+                    empty_list, pos, syntax, bytecode, vector_of_any, vector_mut_of_any, vector_mut_of_byte, closure,
+                    native_fn, continuation, r#box, namespace, var
                 },
                 singletons: Singletons { r#true, r#false, empty_list: empty_list_inst },
                 symbols: SymbolTable::new(),
@@ -401,7 +409,8 @@ impl Mutator {
                 ("char-length-utf8", builtins::CHAR_LENGTH_UTF8),
                 ("eval-syntax", builtins::EVAL_SYNTAX), ("load", builtins::LOAD),
                 ("apply", builtins::APPLY), ("values", builtins::VALUES),
-                ("call-with-current-continuation", builtins::CALL_CC), ("continue", builtins::CONTINUE)
+                ("call-with-current-continuation", builtins::CALL_CC), ("continue", builtins::CONTINUE),
+                ("open", builtins::OPEN), ("read", builtins::READ)
             ] {
                 let name = root!(&mut mt, Symbol::new(&mut mt, name));
                 let f = root!(&mut mt, NativeFn::new(&mut mt, f));

@@ -1,6 +1,7 @@
 pub mod oref;
 mod handle;
 pub mod fixnum;
+mod integers;
 mod flonum;
 mod char;
 mod r#type;

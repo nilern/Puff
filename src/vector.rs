@@ -1,5 +1,6 @@
 use std::marker::PhantomData;
 use std::cell::Cell;
+use std::slice;
 
 use crate::heap_obj::Indexed;
 use crate::oref::{Reify, ORef, Gc};
@@ -82,5 +83,10 @@ impl VectorMut<u8> {
 
             Gc::new_unchecked(nptr)
         }
+    }
+
+    pub unsafe fn as_bytes(&self) -> &mut [u8] {
+        let byte_cells = self.indexed_field();
+        slice::from_raw_parts_mut(byte_cells.as_ptr() as *mut u8, byte_cells.len())
     }
 }

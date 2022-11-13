@@ -131,6 +131,10 @@ impl DisplayWithin for Gc<()> {
             write!(fmt, "#<box>")
         } else if let Some(code) = self.try_cast::<Bytecode>(mt) {
             write!(fmt, "{}", code.within(mt))
+        } else if let Some(n) = self.try_cast::<isize>(mt) {
+            write!(fmt, "{}", mt.borrow(n))
+        } else if let Some(n) = self.try_cast::<usize>(mt) {
+            write!(fmt, "{}", mt.borrow(n))
         } else {
             write!(fmt, "#<object @ {:p}>", mt.borrow(*self))
         }

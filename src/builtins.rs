@@ -1,6 +1,10 @@
 use std::fs;
 use std::mem::size_of;
 use std::slice;
+use libc::c_int;
+use nix::unistd;
+use nix::sys::stat;
+use nix::fcntl;
 
 use crate::heap_obj::{Header, Indexed};
 use crate::native_fn::{NativeFn, Answer};
@@ -895,3 +899,44 @@ fn r#continue(mt: &mut Mutator) -> Answer {
 }
 
 pub const CONTINUE: NativeFn = NativeFn {min_arity: 2, varargs: true, code: r#continue};
+
+fn open(mt: &mut Mutator) -> Answer {
+    let filename = mt.regs()[1].try_cast::<String>(mt).unwrap_or_else(|| {
+        todo!("not a string");
+    });
+    let oflag = isize::from(Fixnum::try_from(mt.regs()[2]).unwrap_or_else(|()| {
+        todo!("not a fixnum");
+    }));
+
+    let fd = fcntl::open(
+        mt.borrow(filename).as_str(),
+        unsafe { fcntl::OFlag::from_bits_unchecked(oflag as c_int) },
+        stat::Mode::empty()
+    ).unwrap();
+
+    let last_index = mt.regs().len() - 1;
+    mt.regs_mut()[last_index] = Gc::<isize>::new(mt, fd as isize).into();
+    Answer::Ret {retc: 1}
+}
+
+pub const OPEN: NativeFn = NativeFn {min_arity: 3, varargs: false, code: open};
+
+fn read(mt: &mut Mutator) -> Answer {
+    let fd = mt.regs()[1].try_cast::<isize>(mt).unwrap_or_else(|| {
+        todo!("not an isize");
+    });
+    let buf = mt.regs()[2].try_cast::<VectorMut<u8>>(mt).unwrap_or_else(|| {
+        todo!("not a mutable bytevector");
+    });
+
+    let readc = unistd::read(
+        *mt.borrow(fd) as c_int,
+        unsafe { mt.borrow(buf).as_bytes() }
+    ).unwrap();
+
+    let last_index = mt.regs().len() - 1;
+    mt.regs_mut()[last_index] = Gc::<usize>::new(mt, readc).into();
+    Answer::Ret {retc: 1}
+}
+
+pub const READ: NativeFn = NativeFn {min_arity: 3, varargs: false, code: read};
