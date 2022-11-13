@@ -105,6 +105,21 @@ pub const FX_MUL: NativeFn = NativeFn {
     code: fx_mul
 };
 
+fn fx_gt(mt: &mut Mutator) -> Answer {
+    let a = Fixnum::try_from(mt.regs()[1]).unwrap_or_else(|()| {
+        todo!("non-fixnum a");
+    });
+    let b = Fixnum::try_from(mt.regs()[2]).unwrap_or_else(|()| {
+        todo!("non-fixnum b");
+    });
+
+    let last_index = mt.regs().len() - 1;
+    mt.regs_mut()[last_index] = Bool::instance(mt, a > b).into();
+    Answer::Ret {retc: 1}
+}
+
+pub const FX_GT: NativeFn = NativeFn {min_arity: 3, varargs: false, code: fx_gt};
+
 fn char_length_utf8(mt: &mut Mutator) -> Answer {
     let c = char::from(Char::try_from(mt.regs()[1]).unwrap_or_else(|()| {
         todo!("not a char");
@@ -340,7 +355,7 @@ fn field_set(mt: &mut Mutator) -> Answer {
     });
 
     if !v.instance_of_dyn(mt, field_descr.r#type) {
-        todo!() // error
+        todo!() // error(fx+ 1 (call-with-current-continuation (lambda (k*)
     }
 
     if !mt.borrow(field_descr.r#type).inlineable {

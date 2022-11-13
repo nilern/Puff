@@ -153,7 +153,7 @@ pub fn analyze(cmp: &mut Compiler, expr: HandleAny) -> anf::PosExpr {
         });
         let body = root!(cmp.mt, cmp.mt.borrow(args).car());
         if cmp.mt.borrow(args).cdr() != EmptyList::instance(cmp.mt).into() {
-            todo!() // error
+            todo!("error: body length > 1");
         }
 
         let (env, bindings) = bindings(cmp, env, sexpr_bindings);

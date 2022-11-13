@@ -4,7 +4,7 @@ use crate::oref::{Reify, Tagged, ORef, Gc, FIXNUM_TAG};
 use crate::mutator::Mutator;
 use crate::r#type::Type;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Fixnum(isize);
 
 impl Tagged for Fixnum {

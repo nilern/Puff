@@ -1,13 +1,68 @@
 (define call-with-values (lambda (producer consumer) (call-with-values* producer consumer)))
 
+(define winders '())
+
 (define call-with-current-continuation
-  (letrec ((call-cc call-with-current-continuation))
+  (letrec ((call-cc call-with-current-continuation)
+
+           (common-tail
+            (lambda (list1 list2)
+              (letrec ((len1 (length list1))
+                       (len2 (length list2))
+                       (common-tail (lambda (ls1 ls2)
+                                      (if (not (eq? ls1 ls2))
+                                        (common-tail (cdr ls1) (cdr ls2))
+                                        ls1))))
+                (common-tail (if (> len1 len2) (list-tail list1 (- len1 len2)) list1)
+                             (if (> len2 len1) (list-tail list2 (- len2 len1)) list2)))))
+
+           (do-wind
+            (lambda (winders*)
+              (letrec ((common (common-tail winders* winders)))
+                (begin
+                  (letrec ((wind-out (lambda (ls)
+                                       (if (not (eq? ls common))
+                                         (begin
+                                           (set! winders (cdr ls))
+                                           ((cdar ls))
+                                           (wind-out (cdr ls)))
+                                         '()))))
+                    (wind-out winders))
+                  (letrec ((wind-in (lambda (ls)
+                                      (if (not (eq? ls common))
+                                        (begin
+                                          (wind-in (cdr ls))
+                                          ((caar ls))
+                                          (set! winders ls))
+                                        '()))))
+                    (wind-in winders*)))))))
     (lambda (proc)
-      (call-cc (lambda (k) (proc (lambda vs (apply continue k vs))))))))
+      (call-cc (lambda (k)
+                 (letrec ((saved-winders winders))
+                   (proc (lambda vs
+                           (begin
+                             (if (eq? winders saved-winders)
+                               '()
+                               (do-wind saved-winders))
+                             (apply continue k vs))))))))))
+
+(define dynamic-wind
+  (lambda (in body out)
+    (begin
+      (in)
+      (set! winders (cons (cons in out) winders))
+      (call-with-values body
+                        (lambda vs
+                          (begin
+                            (set! winders (cdr winders))
+                            (out)
+                            (apply values vs)))))))
 
 (define + fx+)
 (define - fx-)
 (define * fx*)
+
+(define > fx>)
 
 (define zero? (lambda (n) (eq? n 0)))
 

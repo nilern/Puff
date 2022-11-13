@@ -271,7 +271,13 @@ fn emit_expr(cmp: &mut Compiler, env: &mut Env, builder: &mut CfgBuilder, cont: 
             if let Cont::Ret = cont {
                 /* ret/tailcall will take care of popping */
             } else {
-                let prunes = env.prune_mask(/* Don't prune body value: */ 1, &live_outs);
+                let preserve_c = match cont {
+                    Cont::Next {ignore_values} | Cont::Label {ignore_values, label: _} =>
+                        if !ignore_values { /* Don't prune body value: */ 1 } else { 0 },
+
+                    Cont::Ret => unreachable!()
+                };
+                let prunes = env.prune_mask(preserve_c, &live_outs);
                 if prunes.iter().any(|&prune| prune) {
                     env.prune(&prunes);
                     builder.push(Instr::Prune(prunes), body_pos);
