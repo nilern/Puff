@@ -5,6 +5,7 @@ use crate::heap_obj::Indexed;
 use crate::bytecode::Bytecode;
 use crate::syntax::{Syntax, Pos};
 use crate::closure::Closure;
+use crate::case_fn::CaseFn;
 use crate::native_fn::NativeFn;
 use crate::vector::{Vector, VectorMut};
 use crate::bool::Bool;
@@ -116,9 +117,11 @@ impl DisplayWithin for Gc<()> {
         } else if let Some(_) = self.try_cast::<Type>(mt) {
             write!(fmt, "#<type>")
         } else if let Some(_) = self.try_cast::<Closure>(mt) {
-            write!(fmt, "#<fn @ {:p}>", mt.borrow(*self))
+            write!(fmt, "#<procedure @ {:p}>", mt.borrow(*self))
+        } else if let Some(_) = self.try_cast::<CaseFn>(mt) {
+            write!(fmt, "#<procedure case @ {:p}>", mt.borrow(*self))
         } else if let Some(_) = self.try_cast::<NativeFn>(mt) {
-            write!(fmt, "#<fn native @ {:p}>", mt.borrow(*self))
+            write!(fmt, "#<procedure native @ {:p}>", mt.borrow(*self))
         } else if let Some(_) = self.try_cast::<Syntax>(mt) {
             write!(fmt, "#<syntax>") // TODO: show unwrapped .expr
         } else if let Some(pos) = self.try_cast::<Pos>(mt) {

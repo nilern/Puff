@@ -14,6 +14,7 @@ use crate::list::{EmptyList, Pair};
 use crate::bytecode::{Opcode, Bytecode, decode_prune_mask};
 use crate::vector::Vector;
 use crate::closure::Closure;
+use crate::case_fn::CaseFn;
 use crate::regs::Regs;
 use crate::r#box::Box;
 use crate::namespace::{Namespace, Var};
@@ -89,6 +90,7 @@ pub struct Types {
     pub syntax: Gc<NonIndexedType>,
     pub bytecode: Gc<IndexedType>,
     pub closure: Gc<IndexedType>,
+    pub case_fn: Gc<IndexedType>,
     pub native_fn: Gc<NonIndexedType>,
     pub continuation: Gc<IndexedType>,
     pub r#box: Gc<NonIndexedType>,
@@ -314,6 +316,10 @@ impl Mutator {
                 .indexed_field(any, fixnum, any, false)
                 .build(|len| heap.alloc_indexed(r#type, len).map(NonNull::cast))?;
 
+            let case_fn = BootstrapTypeBuilder::<NonIndexedType>::new()
+                .indexed_field(any, fixnum, closure.into(), false)
+                .build(|len| heap.alloc_indexed(r#type, len).map(NonNull::cast))?;
+
             let fn_ptr = BootstrapTypeBuilder::<BitsType>::new::<native_fn::Code>()
                 .build(|| heap.alloc_indexed(r#type, 0).map(NonNull::cast))?;
 
@@ -378,7 +384,7 @@ impl Mutator {
 
                 types: Types { fixnum, any, flonum, char, isize, usize, r#type, bool, symbol, string, string_mut, pair,
                     empty_list, pos, syntax, bytecode, vector_of_any, vector_mut_of_any, vector_mut_of_byte, closure,
-                    native_fn, continuation, r#box, namespace, var, port, eof
+                    case_fn, native_fn, continuation, r#box, namespace, var, port, eof
                 },
                 singletons: Singletons { r#true, r#false, empty_list: empty_list_inst, eof: eof_inst },
                 symbols: SymbolTable::new(),
@@ -672,8 +678,8 @@ impl Mutator {
             // TODO: GC safepoint (only becomes necessary with multithreading)
 
             // Check arity:
-            let min_arity = unsafe { self.borrow(self.code()).min_arity };
-            if ! unsafe { self.borrow(self.code()).varargs } {
+            let min_arity = unsafe { self.borrow(code).min_arity };
+            if ! unsafe { self.borrow(code).varargs } {
                 if argc != min_arity {
                     todo!("non-varargs closure argc")
                 }
@@ -697,6 +703,58 @@ impl Mutator {
             }
 
             None
+        } else if let Some(callee) = callee.try_cast::<CaseFn>(self) {
+            for &clause in self.borrow(callee).indexed_field() {
+                let code = self.borrow(clause).code;
+
+                let min_arity = unsafe { self.borrow(code).min_arity };
+                if ! unsafe { self.borrow(code).varargs } {
+                    if argc == min_arity {
+                        // Pass arguments:
+                        self.regs.enter(argc);
+
+                        // Jump:
+                        self.set_code(code);
+
+                        // Ensure register space, reclaim garbage regs prefix and extend regs if necessary:
+                        self.regs.ensure(self.borrow(code).max_regs);
+
+                        // TODO: GC safepoint (only becomes necessary with multithreading)
+
+                        return None;
+                    }
+                } else {
+                    if argc >= min_arity {
+                        // Pass arguments:
+                        self.regs.enter(argc);
+
+                        // Jump:
+                        self.set_code(code);
+
+                        // Ensure register space, reclaim garbage regs prefix and extend regs if necessary:
+                        self.regs.ensure(self.borrow(code).max_regs);
+
+                        // TODO: GC safepoint (only becomes necessary with multithreading)
+
+                        let varargs_len = argc - min_arity;
+                        let acc_index = self.regs.len();
+                        self.regs.push(EmptyList::instance(self).into());
+                        for i in ((acc_index - varargs_len)..acc_index).rev() {
+                            unsafe {
+                                let pair = self.alloc_static::<Pair>();
+                                pair.as_ptr().write(Pair::new(self.regs[i], self.regs[acc_index]));
+                                self.regs[acc_index] = Gc::new_unchecked(pair).into();
+                            }
+                        }
+
+                        unsafe { self.regs.popnnt_unchecked(varargs_len); }
+
+                        return None;
+                    }
+                }
+            }
+
+            todo!("error: case-fn argc")
         } else if let Some(callee) = callee.try_cast::<NativeFn>(self) {
             // Pass arguments:
             self.regs.enter(argc);
@@ -987,7 +1045,15 @@ impl Mutator {
                         unsafe { self.regs.push_unchecked(closure.into()); }
                     },
 
-                    Opcode::CaseFn => todo!(),
+                    Opcode::CaseFn => {
+                        let clausec = self.next_oparg();
+
+                        unsafe {
+                            let case_fn = CaseFn::new(self, clausec);
+                            self.regs.popn_unchecked(clausec);
+                            self.regs.push_unchecked(case_fn.into());
+                        }
+                    },
 
                     Opcode::Call => {
                         let argc = self.next_oparg();

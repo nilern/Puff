@@ -17,6 +17,7 @@ mod bool;
 mod list;
 mod vector;
 mod closure;
+mod case_fn;
 mod native_fn;
 mod continuation;
 mod ports;
