@@ -259,7 +259,17 @@ pub fn verify(mt: &Mutator, code: &Bytecode) -> Result<(), IndexedErr<Vec<usize>
                     }
                 },
 
-                &DecodedInstr::CaseFn {clausec} => todo!(),
+                &DecodedInstr::CaseFn {clausec} => {
+                    for _ in 0..clausec {
+                        match amt.pop()? {
+                            AbstractType::Closure {..} => (),
+                            _ => return Err(IndexedErr {err: Err::TypeError, byte_index: byte_path(bp, amt.pc)})
+                        }
+                    }
+
+                    amt.push(AbstractType::CaseFn)?;
+                    amt.pc += 2;
+                },
 
                 &DecodedInstr::Call {argc, prunes} => { // TODO: Warn about unnecessarily long prune mask
                     amt.popn(argc)?; // Callee and args
@@ -423,6 +433,7 @@ pub fn verify(mt: &Mutator, code: &Bytecode) -> Result<(), IndexedErr<Vec<usize>
 enum AbstractType {
     Bytecode,
     Closure {len: usize},
+    CaseFn,
     Box,
     Symbol,
     Any
@@ -454,6 +465,11 @@ impl AbstractType {
 
             Closure {len: llen} => match *other {
                 Closure {len: rlen} if rlen == llen => Closure {len: llen},
+                _ => Any
+            },
+
+            CaseFn => match *other {
+                CaseFn => CaseFn,
                 _ => Any
             },
 
