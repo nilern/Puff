@@ -914,6 +914,18 @@ fn open_file(mt: &mut Mutator) -> Answer {
 
 pub const OPEN_FILE: NativeFn = NativeFn {min_arity: 3, varargs: false, code: open_file};
 
+fn close_port(mt: &mut Mutator) -> Answer {
+    let port = mt.regs()[1].try_cast::<Port>(mt).unwrap_or_else(|| {
+        todo!("not a port");
+    });
+
+    mt.borrow(port).close();
+
+    Answer::Ret {retc: 1} // HACK: Happens to return `port`    
+}
+
+pub const CLOSE_PORT: NativeFn = NativeFn {min_arity: 2, varargs: false, code: close_port};
+
 fn read_char(mt: &mut Mutator) -> Answer {
     let port = mt.regs()[1].try_cast::<Port>(mt).unwrap_or_else(|| {
         todo!("not a port");

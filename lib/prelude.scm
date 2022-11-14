@@ -479,3 +479,6 @@
 
 (define open-input-file (lambda (filename) (open-file filename +o-rdonly+)))
 (define open-output-file (lambda (filename) (open-file filename +o-wronly+)))
+
+(define close-input-port (lambda (port) (close-port port)))
+(define close-output-port (lambda (port) (close-port port)))

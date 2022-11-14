@@ -33,7 +33,8 @@ pub struct Port {
     fd: RawFd,
     buf: Gc<VectorMut<u8>>,
     buf_start: Cell<usize>,
-    buf_len: Cell<usize>
+    buf_len: Cell<usize>,
+    open: Cell<bool>
 }
 
 impl Reify for Port {
@@ -57,7 +58,7 @@ impl Port {
 
         unsafe {
             let nptr = mt.alloc_static::<Self>();
-            nptr.as_ptr().write(Port {fd, buf, buf_start: Cell::new(0), buf_len: Cell::new(0)});
+            nptr.as_ptr().write(Port {fd, buf, buf_start: Cell::new(0), buf_len: Cell::new(0), open: Cell::new(true)});
             Gc::new_unchecked(nptr)
         }
     }
@@ -69,6 +70,10 @@ impl Port {
 
     // OPTIMIZE:
     pub fn peek_char(&self) -> Option<char> {
+        if !self.open.get() {
+            todo!("error: closed port");
+        }
+
         if self.buf_len.get() == 0 {
             self.fill_buf();
         }
@@ -103,8 +108,19 @@ impl Port {
 
     // OPTIMIZE: Unbuffered
     pub fn write_char(&self, c: char) {
+        if !self.open.get() {
+            todo!("error: closed port");
+        }
+
         let mut bytes = [0; 4];
         let s = c.encode_utf8(&mut bytes);
         unistd::write(self.fd as c_int, s.as_bytes()).unwrap();
+    }
+
+    pub fn close(&self) {
+        if self.open.get() {
+            unistd::close(self.fd).unwrap();
+            self.open.set(false);
+        }
     }
 }

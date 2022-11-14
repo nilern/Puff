@@ -347,6 +347,7 @@ impl Mutator {
                 .field(any, fixnum, vector_mut_of_byte.into(), false)
                 .field(any, fixnum, usize.into(), true)
                 .field(any, fixnum, usize.into(), true)
+                .field(any, fixnum, bool.into(), true)
                 .build(|len| heap.alloc_indexed(r#type, len).map(NonNull::cast))?;
 
             let eof = BootstrapTypeBuilder::<NonIndexedType>::new()
@@ -424,8 +425,9 @@ impl Mutator {
                 ("eval-syntax", builtins::EVAL_SYNTAX), ("load", builtins::LOAD),
                 ("apply", builtins::APPLY), ("values", builtins::VALUES),
                 ("call-with-current-continuation", builtins::CALL_CC), ("continue", builtins::CONTINUE),
-                ("open-file", builtins::OPEN_FILE), ("read-char", builtins::READ_CHAR),
-                ("peek-char", builtins::PEEK_CHAR), ("write-char", builtins::WRITE_CHAR)
+                ("open-file", builtins::OPEN_FILE), ("close-port", builtins::CLOSE_PORT),
+                ("read-char", builtins::READ_CHAR), ("peek-char", builtins::PEEK_CHAR),
+                ("write-char", builtins::WRITE_CHAR)
             ] {
                 let name = root!(&mut mt, Symbol::new(&mut mt, name));
                 let f = root!(&mut mt, NativeFn::new(&mut mt, f));
