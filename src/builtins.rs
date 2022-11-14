@@ -931,6 +931,23 @@ fn read_char(mt: &mut Mutator) -> Answer {
 
 pub const READ_CHAR: NativeFn = NativeFn {min_arity: 2, varargs: false, code: read_char};
 
+fn peek_char(mt: &mut Mutator) -> Answer {
+    let port = mt.regs()[1].try_cast::<Port>(mt).unwrap_or_else(|| {
+        todo!("not a port");
+    });
+
+    let res = match mt.borrow(port).peek_char() {
+        Some(c) => ORef::from(Char::from(c)),
+        None => ORef::from(Eof::instance(mt))
+    };
+
+    let last_index = mt.regs().len() - 1;
+    mt.regs_mut()[last_index] = res;
+    Answer::Ret {retc: 1}
+}
+
+pub const PEEK_CHAR: NativeFn = NativeFn {min_arity: 2, varargs: false, code: peek_char};
+
 fn write_char(mt: &mut Mutator) -> Answer {
     let c = Char::try_from(mt.regs()[1]).unwrap_or_else(|()| {
         todo!("not a char");

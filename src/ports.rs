@@ -68,7 +68,7 @@ impl Port {
     }
 
     // OPTIMIZE:
-    pub fn read_char(&self) -> Option<char> {
+    pub fn peek_char(&self) -> Option<char> {
         if self.buf_len.get() == 0 {
             self.fill_buf();
         }
@@ -87,16 +87,18 @@ impl Port {
             }
         };
 
-        let mut cis = s.char_indices();
-        let (_, c) = cis.next().unwrap();
-        let c_len = match cis.next() {
-            Some((len, _)) => len,
-            None => s.len()
-        };
+        Some(s.chars().next().unwrap())
+    }
 
-        self.buf_start.set(self.buf_start.get() + c_len);
-        self.buf_len.set(self.buf_len.get() - c_len);
-        Some(c)
+    // OPTIMIZE:
+    pub fn read_char(&self) -> Option<char> {
+        self.peek_char().map(|c| {
+            let c_len = c.len_utf8();
+            self.buf_start.set(self.buf_start.get() + c_len);
+            self.buf_len.set(self.buf_len.get() - c_len);
+
+            c
+        })
     }
 
     // OPTIMIZE: Unbuffered
