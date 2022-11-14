@@ -2,6 +2,7 @@ use molysite::reader::Reader;
 use molysite::mutator::Mutator;
 use molysite::compiler::compile;
 use molysite::closure::Closure;
+use molysite::case_fn::CaseFn;
 use molysite::verifier::verify;
 use molysite::oref::{ORef, Gc};
 use molysite::fixnum::Fixnum;
@@ -144,6 +145,25 @@ fn test_lambda() {
     assert_list_equal(&mt, ls1.oref(), ls2);
 
     assert_eq!(eval_string(&mut mt, "(letrec ((f (lambda () 42))) (f))"), Fixnum::try_from(42isize).unwrap().into());
+}
+
+#[test]
+fn test_case_lambda() {
+    let mut mt = Mutator::new(1 << 20, false).unwrap();
+
+    let f = eval_string(&mut mt, "(case-lambda)");
+    assert!(f.instance_of::<CaseFn>(&mt));
+    let f = eval_string(&mut mt, "(case-lambda (() 42))");
+    assert!(f.instance_of::<Closure>(&mt));
+    let f = eval_string(&mut mt, "(case-lambda (() 42) ((x) x))");
+    assert!(f.instance_of::<CaseFn>(&mt));
+
+    assert_eq!(eval_string(&mut mt, "((case-lambda (() 42) ((x) x)))"), Fixnum::try_from(42isize).unwrap().into());
+
+    assert_eq!(eval_string(&mut mt, "((case-lambda (() 42) ((x) x)) 5)"), Fixnum::try_from(5isize).unwrap().into());
+
+    assert_eq!(eval_string(&mut mt, "((case-lambda ((x . xs) x) ((x) 42)) 5)"),
+        Fixnum::try_from(5isize).unwrap().into());
 }
 
 #[test]

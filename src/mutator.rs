@@ -678,8 +678,8 @@ impl Mutator {
             // TODO: GC safepoint (only becomes necessary with multithreading)
 
             // Check arity:
-            let min_arity = unsafe { self.borrow(code).min_arity };
-            if ! unsafe { self.borrow(code).varargs } {
+            let min_arity = self.borrow(code).min_arity;
+            if !self.borrow(code).varargs {
                 if argc != min_arity {
                     todo!("non-varargs closure argc")
                 }
@@ -707,8 +707,8 @@ impl Mutator {
             for &clause in self.borrow(callee).indexed_field() {
                 let code = self.borrow(clause).code;
 
-                let min_arity = unsafe { self.borrow(code).min_arity };
-                if ! unsafe { self.borrow(code).varargs } {
+                let min_arity = self.borrow(code).min_arity;
+                if !self.borrow(code).varargs {
                     if argc == min_arity {
                         // Pass arguments:
                         self.regs.enter(argc);

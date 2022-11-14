@@ -17,7 +17,7 @@ mod bool;
 pub mod list;
 pub mod vector;
 pub mod closure;
-mod case_fn;
+pub mod case_fn;
 mod native_fn;
 mod continuation;
 mod ports;
