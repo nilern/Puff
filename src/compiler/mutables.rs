@@ -35,6 +35,8 @@ pub fn mutables(expr: &anf::PosExpr) -> HashSet<Id> {
 
             Fn(_, _, _, ref body) => expr_mutables(mutables, body),
 
+            CaseFn(ref clauses) => for (_, _, _, _, ref body) in clauses { expr_mutables(mutables, body); },
+
             Call(ref cargs, _) =>
                 for (_, val_expr) in cargs { expr_mutables(mutables, val_expr); },
 
@@ -270,6 +272,11 @@ pub fn letrec(cmp: &mut Compiler, mutables: &HashSet<Id>, expr: anf::PosExpr) ->
             Fn(fvs, params, varargs, body) =>
                 Fn(fvs, params, varargs, boxed::Box::new(convert(cmp, mutables, env, *body))),
 
+            CaseFn(clauses) =>
+                CaseFn(clauses.into_iter().map(|(pos, fvs, params, varargs, body)|
+                    (pos, fvs, params, varargs, convert(cmp, mutables, env, body))
+                ).collect()),
+
             Call(cargs, live_outs) =>
                 // Callee and args ids are not from source code and so cannot be recursively bound:
                 Call(cargs.into_iter().map(|(id, val_expr)| (id, convert(cmp, mutables, env, val_expr))).collect(),
@@ -308,6 +315,37 @@ pub fn letrec(cmp: &mut Compiler, mutables: &HashSet<Id>, expr: anf::PosExpr) ->
 pub fn convert_mutables(cmp: &mut Compiler, mutables: &HashSet<Id>, expr: anf::PosExpr) -> anf::PosExpr {
     use anf::Expr::*;
     use anf::Triv::*;
+
+    fn convert_fn_clause(cmp: &mut Compiler, mutables: &HashSet<Id>, pos: HandleAny, params: anf::Params,
+        body: anf::PosExpr
+    ) -> (anf::Params, anf::PosExpr)
+    {
+        let mut bindings = Vec::new();
+
+        let params = params.into_iter()
+            .map(|id|
+                if mutables.contains(&id) {
+                    let new_id = Id::freshen(cmp, id);
+                    bindings.push((id, PosExpr {
+                        expr: Box(boxed::Box::new(PosExpr {expr: Triv(Use(new_id)), pos: pos.clone()})),
+                        pos: pos.clone()
+                    }));
+                    new_id
+                } else {
+                    id
+                }
+            )
+            .collect();
+
+        let body = convert_mutables(cmp, mutables, body);
+        let body = if bindings.len() == 0 {
+            body
+        } else {
+            PosExpr {expr: Let(bindings, boxed::Box::new(body), anf::LiveVars::new()), pos: pos.clone()}
+        };
+
+        (params, body)
+    }
 
     let PosExpr {expr, pos} = expr;
     let expr = match expr {
@@ -360,32 +398,15 @@ pub fn convert_mutables(cmp: &mut Compiler, mutables: &HashSet<Id>, expr: anf::P
         CheckedBoxGet {guard, r#box} => CheckedBoxGet {guard, r#box},
 
         Fn(fvs, params, varargs, body) => {
-            let mut bindings = Vec::new();
-
-            let params = params.into_iter()
-                .map(|id|
-                    if mutables.contains(&id) {
-                        let new_id = Id::freshen(cmp, id);
-                        bindings.push((id, PosExpr {
-                            expr: Box(boxed::Box::new(PosExpr {expr: Triv(Use(new_id)), pos: pos.clone()})),
-                            pos: pos.clone()
-                        }));
-                        new_id
-                    } else {
-                        id
-                    }
-                )
-                .collect();
-
-            let body = convert_mutables(cmp, mutables, *body);
-
-            Fn(fvs, params, varargs, boxed::Box::new(
-                if bindings.len() == 0 {
-                    body
-                } else {
-                    PosExpr {expr: Let(bindings, boxed::Box::new(body), anf::LiveVars::new()), pos: pos.clone()}
-                }))
+            let (params, body) = convert_fn_clause(cmp, mutables, pos.clone(), params, *body);
+            Fn(fvs, params, varargs, boxed::Box::new(body))
         },
+
+        CaseFn(clauses) =>
+            CaseFn(clauses.into_iter().map(|(pos, fvs, params, varargs, body)| {
+                let (params, body) = convert_fn_clause(cmp, mutables, pos.clone(), params, body);
+                (pos, fvs, params, varargs, body)
+            }).collect()),
 
         Call(cargs, live_outs) =>
             // Callee and args ids are not from source code and so cannot be mutable:

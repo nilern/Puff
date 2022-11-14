@@ -6,7 +6,7 @@ use crate::vector::Vector;
 use crate::bool::Bool;
 use crate::handle::{HandleAny, Root, root};
 use crate::compiler::cfg::{Fn, Instr, Label, PosInstr};
-use crate::compiler::anf::{self, PosExpr};
+use crate::compiler::anf::{self, PosExpr, LiveVars};
 use crate::compiler::{Compiler, Id};
 
 struct CfgBuilder {
@@ -227,6 +227,21 @@ fn emit_use(env: &mut Env, builder: &mut CfgBuilder, r#use: Id, pos: HandleAny) 
     }
 }
 
+fn emit_fn_clause(cmp: &mut Compiler, env: &mut Env, builder: &mut CfgBuilder, pos: HandleAny, fvs: LiveVars,
+    params: anf::Params, varargs: bool, body: PosExpr
+) {
+    let fvs = fvs.iter().map(|&id| id).collect::<Vec<Id>>();
+
+    for &fv in fvs.iter() {
+        emit_use(env, builder, fv, pos.clone());
+    }
+
+    let code = emit_fn(cmp, &fvs, &params, varargs, body);
+    builder.push(Instr::Fn(code, fvs.len()), pos.clone());
+    env.popn(fvs.len());
+    env.push();
+}
+
 fn emit_expr(cmp: &mut Compiler, env: &mut Env, builder: &mut CfgBuilder, cont: Cont, expr: PosExpr) {
     let PosExpr {pos, expr} = expr;
 
@@ -382,20 +397,25 @@ fn emit_expr(cmp: &mut Compiler, env: &mut Env, builder: &mut CfgBuilder, cont: 
             cont.goto(env, builder, pos);
         },
 
-        anf::Expr::Fn(ref fvs, ref params, varargs, body) => {
-            let fvs = fvs.iter().map(|&id| id).collect::<Vec<Id>>();
-
-            for &fv in fvs.iter() {
-                emit_use(env, builder, fv, pos.clone());
-            }
-
-            let code = emit_fn(cmp, &fvs, params, varargs, *body);
-            builder.push(Instr::Fn(code, fvs.len()), pos.clone());
-            env.popn(fvs.len());
-            env.push();
+        anf::Expr::Fn(fvs, params, varargs, body) => {
+            emit_fn_clause(cmp, env, builder, pos.clone(), fvs, params, varargs, *body);
 
             cont.goto(env, builder, pos);
         },
+
+        anf::Expr::CaseFn(clauses) => {
+            let clausec = clauses.len();
+
+            for (pos, fvs, params, varargs, body) in clauses {
+                emit_fn_clause(cmp, env, builder, pos, fvs, params, varargs, body);
+            }
+
+            builder.push(Instr::CaseFn(clausec), pos.clone());
+            env.popn(clausec);
+            env.push();
+
+            cont.goto(env, builder, pos);
+        }
 
         anf::Expr::Call(cargs, live_outs) => {
             let cargc = cargs.len();

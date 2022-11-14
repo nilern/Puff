@@ -987,6 +987,8 @@ impl Mutator {
                         unsafe { self.regs.push_unchecked(closure.into()); }
                     },
 
+                    Opcode::CaseFn => todo!(),
+
                     Opcode::Call => {
                         let argc = self.next_oparg();
 

@@ -44,6 +44,7 @@ pub enum Instr {
     Goto(Label),
 
     Fn(Fn, usize),
+    CaseFn(usize),
     Call(usize, Vec<bool>),
     CheckOneReturnValue,
     IgnoreReturnValues,
@@ -87,6 +88,7 @@ impl Instr {
                 writeln!(fmt, "{}fn {}", indent, len)?;
                 code.fmt(mt, fmt, &(indent.to_string() + "  "))
             },
+            &CaseFn(clausec) => writeln!(fmt, "{}case-fn {}", indent, clausec),
 
             &Call(argc, ref prunes) => {
                 write!(fmt, "{}call {} #b", indent, argc)?;

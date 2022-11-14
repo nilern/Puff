@@ -1,8 +1,23 @@
+use crate::compiler::Id;
 use crate::compiler::anf::{self, PosExpr};
 
 pub fn liveness(expr: &mut anf::PosExpr) {
     use anf::Expr::*;
     use anf::Triv::*;
+
+    fn fn_clause_free_vars(params: &[Id], body: &mut PosExpr) -> anf::LiveVars {
+        let mut free_vars = {
+            let mut live_outs = anf::LiveVars::new();
+            live_outs.insert(params[0]); // "self" closure should always be live
+            live_ins(body, live_outs)
+        };
+
+        for param in params {
+            free_vars.remove(param);
+        }
+
+        free_vars
+    }
 
     fn live_ins(expr: &mut PosExpr, mut live_outs: anf::LiveVars) -> anf::LiveVars {
         match expr.expr {
@@ -62,19 +77,23 @@ pub fn liveness(expr: &mut anf::PosExpr) {
             }
 
             r#Fn(ref mut fvs, ref params, _, ref mut body) => {
-                let mut free_vars = {
-                    let mut live_outs = anf::LiveVars::new();
-                    live_outs.insert(params[0]); // "self" closure should always be live
-                    live_ins(body, live_outs)
-                };
-
-                for param in params {
-                    free_vars.remove(param);
-                }
+                let free_vars = fn_clause_free_vars(params, body);
 
                 *fvs = free_vars.clone();
 
                 live_outs.extend(free_vars);
+                live_outs
+            },
+
+            CaseFn(ref mut clauses) => {
+                for (_, ref mut fvs, ref params, _, ref mut body) in clauses.iter_mut() {
+                    let free_vars = fn_clause_free_vars(params, body);
+
+                    *fvs = free_vars.clone();
+
+                    live_outs.extend(free_vars);
+                }
+
                 live_outs
             },
 

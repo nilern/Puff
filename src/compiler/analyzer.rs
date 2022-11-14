@@ -63,6 +63,9 @@ pub fn analyze(cmp: &mut Compiler, expr: HandleAny) -> anf::PosExpr {
                 } else if cmp.mt.borrow(callee_sym).name() == "lambda" {
                     let args = root!(cmp.mt, cmp.mt.borrow(ls).cdr());
                     return analyze_lambda(cmp, env, args, pos);
+                } else if cmp.mt.borrow(callee_sym).name() == "case-lambda" {
+                    let args = root!(cmp.mt, cmp.mt.borrow(ls).cdr());
+                    return analyze_case_lambda(cmp, env, args, pos);
                 } else if cmp.mt.borrow(callee_sym).name() == "begin" {
                     let args = root!(cmp.mt, cmp.mt.borrow(ls).cdr());
                     return analyze_begin(cmp, env, args, pos);
@@ -191,22 +194,25 @@ pub fn analyze(cmp: &mut Compiler, expr: HandleAny) -> anf::PosExpr {
         }
     }
 
-    fn analyze_lambda(cmp: &mut Compiler, env: &Rc<Env>, args: HandleAny, pos: HandleAny) -> anf::PosExpr {
+    fn analyze_lambda_clause(cmp: &mut Compiler, env: &Rc<Env>, args: HandleAny)
+        -> (HandleAny, HashSet<Id>, Vec<Id>, bool, PosExpr)
+    {
         // TODO: Reject duplicate parameter names:
-        fn analyze_params(cmp: &mut Compiler, env: &Rc<Env>, params: ORef) -> (Rc<Env>, anf::Params, bool) {
+        fn analyze_params(cmp: &mut Compiler, env: &Rc<Env>, params: ORef) -> (HandleAny, Rc<Env>, anf::Params, bool) {
             let mut anf_ps = vec![Id::fresh(cmp)]; // Id for "self" closure
             let mut env = env.clone();
 
             let params = params.try_cast::<Syntax>(cmp.mt).unwrap_or_else(|| {
                 todo!() // error
             });
+            let pos = root!(cmp.mt, cmp.mt.borrow(params).pos);
 
             if let Some(param) = cmp.mt.borrow(params).expr.try_cast::<Symbol>(cmp.mt) { // (lambda args ...
                 let param = root!(cmp.mt, param);
                 let id = Id::src_fresh(cmp, param.clone());
                 anf_ps.push(id);
 
-                return (Rc::new(Env::Binding(id, param, env.clone())), anf_ps, true)
+                return (pos, Rc::new(Env::Binding(id, param, env.clone())), anf_ps, true)
             } else { // (lambda (...
                 let mut params = cmp.mt.borrow(params).expr;
 
@@ -228,7 +234,7 @@ pub fn analyze(cmp: &mut Compiler, expr: HandleAny) -> anf::PosExpr {
                 }
 
                 if params == EmptyList::instance(cmp.mt).into() { // (lambda (arg*) ...
-                    return (env, anf_ps, false)
+                    return (pos, env, anf_ps, false)
                 } else if let Some(param) = params.try_cast::<Syntax>(cmp.mt) { // (lambda (arg* . args) ...
                     if let Some(param) = cmp.mt.borrow(param).expr.try_cast::<Symbol>(cmp.mt) {
                         let param = root!(cmp.mt, param);
@@ -236,7 +242,7 @@ pub fn analyze(cmp: &mut Compiler, expr: HandleAny) -> anf::PosExpr {
                         anf_ps.push(id);
                         env = Rc::new(Env::Binding(id, param, env.clone()));
 
-                        return (env, anf_ps, true)
+                        return (pos, env, anf_ps, true)
                     }
                 }
             }
@@ -256,10 +262,40 @@ pub fn analyze(cmp: &mut Compiler, expr: HandleAny) -> anf::PosExpr {
             todo!() // error
         }
 
-        let (env, params, varargs) = analyze_params(cmp, env, params);
+        let (pos, env, params, varargs) = analyze_params(cmp, env, params);
         let body = analyze_expr(cmp, &env, body);
 
-        PosExpr {expr: r#Fn(anf::LiveVars::new(), params, varargs, boxed::Box::new(body)), pos}
+        (pos, anf::LiveVars::new(), params, varargs, body)
+    }
+
+    fn analyze_lambda(cmp: &mut Compiler, env: &Rc<Env>, args: HandleAny, pos: HandleAny) -> anf::PosExpr {
+        let (_, free_vars, params, varargs, body) = analyze_lambda_clause(cmp, env, args);
+        PosExpr {expr: r#Fn(free_vars, params, varargs, boxed::Box::new(body)), pos}
+    }
+
+    fn analyze_case_lambda(cmp: &mut Compiler, env: &Rc<Env>, mut args: HandleAny, pos: HandleAny) -> anf::PosExpr {
+        let mut clauses = Vec::new();
+
+        while let Some(args_pair) = args.clone().try_cast::<Pair>(cmp.mt) {
+            let clause = root!(cmp.mt, cmp.mt.borrow(args_pair.car().try_cast::<Syntax>(cmp.mt).unwrap_or_else(|| {
+                todo!()
+            })).expr);
+            clauses.push(analyze_lambda_clause(cmp, env, clause));
+
+            args = root!(cmp.mt, args_pair.cdr());
+        }
+
+        if args.oref() == EmptyList::instance(cmp.mt).into() {
+            match clauses.len() {
+                1 => {
+                    let (_, free_vars, params, varargs, body) = clauses.pop().unwrap();
+                    PosExpr {expr: r#Fn(free_vars, params, varargs, boxed::Box::new(body)), pos}
+                },
+                _ => PosExpr {expr: CaseFn(clauses), pos}
+            }
+        } else {
+            todo!("error: case-lambda clauses")
+        }
     }
 
     fn analyze_begin(cmp: &mut Compiler, env: &Rc<Env>, mut args: HandleAny, pos: HandleAny) -> anf::PosExpr {

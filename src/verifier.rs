@@ -259,6 +259,8 @@ pub fn verify(mt: &Mutator, code: &Bytecode) -> Result<(), IndexedErr<Vec<usize>
                     }
                 },
 
+                &DecodedInstr::CaseFn {clausec} => todo!(),
+
                 &DecodedInstr::Call {argc, prunes} => { // TODO: Warn about unnecessarily long prune mask
                     amt.popn(argc)?; // Callee and args
 
@@ -768,7 +770,7 @@ impl<'a> TryFrom<&'a Bytecode> for CFG<'a> {
 
                 Define{..} | GlobalSet{..} | Global{..} | Pop | Const{..} | Local{..} | Clover{..}
                 | Box | UninitializedBox | BoxSet | CheckedBoxSet | BoxGet | CheckedBoxGet | CheckUse | Fn{..}
-                | CheckOneReturnValue | IgnoreReturnValues => {
+                | CaseFn {..} | CheckOneReturnValue | IgnoreReturnValues => {
                     i += instr_min_len;
                     if i >= instrs.len() { return Err(IndexedErr{err: Err::MissingTerminator, byte_index: i}); }
 
@@ -895,6 +897,11 @@ fn try_decode<'a>(bytes: &'a [u8], mut i: usize) -> Result<(DecodedInstr<'a>, us
                                     None => Err(IndexedErr{err: Err::MissingOpcodeArg(op), byte_index: i})
                                 }
                             },
+                            None => Err(IndexedErr{err: Err::MissingOpcodeArg(op), byte_index: i})
+                        },
+                    Opcode::CaseFn =>
+                        match bytes.get(i) {
+                            Some(clausec) => Ok((DecodedInstr::CaseFn {clausec: *clausec as usize}, 2)),
                             None => Err(IndexedErr{err: Err::MissingOpcodeArg(op), byte_index: i})
                         },
 

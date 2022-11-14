@@ -40,6 +40,7 @@ pub enum Opcode {
     Br,
 
     r#Fn,
+    CaseFn,
     Call,
     CheckOneReturnValue,
     IgnoreReturnValues,
@@ -168,6 +169,7 @@ pub enum DecodedInstr<'a> {
     Br {dist: usize},
 
     Fn {code_index: usize, len: usize},
+    CaseFn {clausec: usize},
     Call {argc: usize, prunes: &'a u8},
     CheckOneReturnValue,
     IgnoreReturnValues,
@@ -259,6 +261,11 @@ impl<'a> DecodedInstr<'a> {
                                         None => None
                                     }
                                 },
+                                None => None
+                            },
+                        Opcode::CaseFn =>
+                            match bytes.get(i) {
+                                Some(clausec) => Some((DecodedInstr::CaseFn {clausec: *clausec as usize}, 2)),
                                 None => None
                             },
 
@@ -490,6 +497,12 @@ impl Bytecode {
                             } else {
                                 todo!()
                             }
+                        } else {
+                            todo!()
+                        },
+                    Opcode::CaseFn =>
+                        if let Some((_, clausec)) = instrs.next() {
+                            writeln!(fmt, "{}{}: case-fn {}", indent, i, clausec)?;
                         } else {
                             todo!()
                         },
@@ -728,6 +741,12 @@ impl Builder {
         self.instrs.push(i);
 
         self.instrs.push(u8::try_from(len).unwrap());
+        self.positions.push(pos);
+    }
+
+    pub fn case_fn(&mut self, clausec: usize, pos: HandleAny) {
+        self.instrs.push(Opcode::CaseFn as u8);
+        self.instrs.push(u8::try_from(clausec).unwrap());
         self.positions.push(pos);
     }
 
