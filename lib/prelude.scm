@@ -238,33 +238,39 @@
         (error "list-set!: out of bounds" list k)))))
 
 (define member
-  (lambda (obj list compare)
-    (letrec ((memq (lambda (ls)
-                     (if (pair? ls)
-                       (if (compare (car ls) obj)
-                         ls
-                         (memq (cdr ls)))
-                       (if (null? ls)
-                         #f
-                         (error "member: improper list" list))))))
-      (memq list))))
+  (case-lambda
+    ((obj list) (member obj list equal?))
+
+    ((obj list compare)
+     (letrec ((memq (lambda (ls)
+                      (if (pair? ls)
+                        (if (compare (car ls) obj)
+                          ls
+                          (memq (cdr ls)))
+                        (if (null? ls)
+                          #f
+                          (error "member: improper list" list))))))
+       (memq list)))))
 
 (define memq (lambda (obj list) (member obj list eq?)))
 
 (define assoc
-  (lambda (obj alist compare)
-    (letrec ((assoc (lambda (als)
-                      (if (pair? als)
-                        (letrec ((entry (car als)))
-                          (if (pair? entry)
-                            (if (compare (car entry) obj)
-                              entry
-                              (assoc (cdr als)))
-                            (error "assoc: non-pair list element" entry alist)))
-                        (if (null? als)
-                          #f
-                          (error "assoc: improper list" alist))))))
-      (assoc alist))))
+  (case-lambda
+    ((obj alist) (assoc obj alist equal?))
+
+    ((obj alist compare)
+     (letrec ((assoc (lambda (als)
+                       (if (pair? als)
+                         (letrec ((entry (car als)))
+                           (if (pair? entry)
+                             (if (compare (car entry) obj)
+                               entry
+                               (assoc (cdr als)))
+                             (error "assoc: non-pair list element" entry alist)))
+                         (if (null? als)
+                           #f
+                           (error "assoc: improper list" alist))))))
+       (assoc alist)))))
 
 (define assq (lambda (obj alist) (assoc obj alist eq?)))
 
