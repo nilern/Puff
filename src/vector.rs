@@ -85,7 +85,12 @@ impl VectorMut<u8> {
         }
     }
 
-    pub unsafe fn as_bytes(&self) -> &mut [u8] {
+    pub unsafe fn as_bytes(&self) -> &[u8] {
+        let byte_cells = self.indexed_field();
+        slice::from_raw_parts(byte_cells.as_ptr() as *const u8, byte_cells.len())
+    }
+
+    pub unsafe fn as_bytes_mut(&self) -> &mut [u8] {
         let byte_cells = self.indexed_field();
         slice::from_raw_parts_mut(byte_cells.as_ptr() as *mut u8, byte_cells.len())
     }

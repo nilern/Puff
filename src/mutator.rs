@@ -24,6 +24,7 @@ use crate::fixnum::Fixnum;
 use crate::flonum::Flonum;
 use crate::char::Char;
 use crate::continuation::Continuation;
+use crate::ports::Eof;
 
 const USIZE_TYPE_SIZE: usize = min_size_of_indexed::<Type>();
 
@@ -92,14 +93,17 @@ pub struct Types {
     pub continuation: Gc<IndexedType>,
     pub r#box: Gc<NonIndexedType>,
     pub namespace: Gc<NonIndexedType>,
-    pub var: Gc<NonIndexedType>
+    pub var: Gc<NonIndexedType>,
+    pub port: Gc<NonIndexedType>,
+    pub eof: Gc<NonIndexedType>
 }
 
 #[repr(C)]
 pub struct Singletons {
     pub r#true: Gc<Bool>,
     pub r#false: Gc<Bool>,
-    pub empty_list: Gc<EmptyList>
+    pub empty_list: Gc<EmptyList>,
+    pub eof: Gc<Eof>
 }
 
 pub struct Mutator {
@@ -338,6 +342,16 @@ impl Mutator {
                 .field(any, fixnum, any, true)
                 .build(|len| heap.alloc_indexed(r#type, len).map(NonNull::cast))?;
 
+            let port = BootstrapTypeBuilder::<NonIndexedType>::new()
+                .field(any, fixnum, isize.into(), false)
+                .field(any, fixnum, vector_mut_of_byte.into(), false)
+                .field(any, fixnum, usize.into(), true)
+                .field(any, fixnum, usize.into(), true)
+                .build(|len| heap.alloc_indexed(r#type, len).map(NonNull::cast))?;
+
+            let eof = BootstrapTypeBuilder::<NonIndexedType>::new()
+                .build(|len| heap.alloc_indexed(r#type, len).map(NonNull::cast))?;
+
             // Create singleton instances:
             // -----------------------------------------------------------------
 
@@ -349,9 +363,9 @@ impl Mutator {
             r#false.as_ptr().write(Bool(false));
             let r#false = Gc::new_unchecked(r#false);
 
-            let empty_list_inst = Gc::new_unchecked(heap.alloc_nonindexed(
-                empty_list
-            )?.cast::<EmptyList>());
+            let empty_list_inst = Gc::new_unchecked(heap.alloc_nonindexed(empty_list)?.cast::<EmptyList>());
+
+            let eof_inst = Gc::new_unchecked(heap.alloc_nonindexed(eof)?.cast::<Eof>());
 
             // -----------------------------------------------------------------
 
@@ -363,9 +377,9 @@ impl Mutator {
 
                 types: Types { fixnum, any, flonum, char, isize, usize, r#type, bool, symbol, string, string_mut, pair,
                     empty_list, pos, syntax, bytecode, vector_of_any, vector_mut_of_any, vector_mut_of_byte, closure,
-                    native_fn, continuation, r#box, namespace, var
+                    native_fn, continuation, r#box, namespace, var, port, eof
                 },
-                singletons: Singletons { r#true, r#false, empty_list: empty_list_inst },
+                singletons: Singletons { r#true, r#false, empty_list: empty_list_inst, eof: eof_inst },
                 symbols: SymbolTable::new(),
                 ns: None,
 
@@ -410,7 +424,7 @@ impl Mutator {
                 ("eval-syntax", builtins::EVAL_SYNTAX), ("load", builtins::LOAD),
                 ("apply", builtins::APPLY), ("values", builtins::VALUES),
                 ("call-with-current-continuation", builtins::CALL_CC), ("continue", builtins::CONTINUE),
-                ("open", builtins::OPEN), ("read", builtins::READ)
+                ("open-file", builtins::OPEN_FILE), ("read-char", builtins::READ_CHAR)
             ] {
                 let name = root!(&mut mt, Symbol::new(&mut mt, name));
                 let f = root!(&mut mt, NativeFn::new(&mut mt, f));

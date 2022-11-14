@@ -1,10 +1,6 @@
 use std::fs;
 use std::mem::size_of;
 use std::slice;
-use libc::c_int;
-use nix::unistd;
-use nix::sys::stat;
-use nix::fcntl;
 
 use crate::heap_obj::{Header, Indexed};
 use crate::native_fn::{NativeFn, Answer};
@@ -26,6 +22,7 @@ use crate::syntax::{Pos, Syntax};
 use crate::r#type::{Type, NonIndexedType, IndexedType};
 use crate::vector::VectorMut;
 use crate::continuation::Continuation;
+use crate::ports::{Port, Eof};
 
 fn eq(mt: &mut Mutator) -> Answer {
     let res = mt.regs()[mt.regs().len() - 1] == mt.regs()[mt.regs().len() - 2];
@@ -900,43 +897,36 @@ fn r#continue(mt: &mut Mutator) -> Answer {
 
 pub const CONTINUE: NativeFn = NativeFn {min_arity: 2, varargs: true, code: r#continue};
 
-fn open(mt: &mut Mutator) -> Answer {
-    let filename = mt.regs()[1].try_cast::<String>(mt).unwrap_or_else(|| {
+fn open_file(mt: &mut Mutator) -> Answer {
+    let filename = root!(mt, mt.regs()[1].try_cast::<String>(mt).unwrap_or_else(|| {
         todo!("not a string");
-    });
-    let oflag = isize::from(Fixnum::try_from(mt.regs()[2]).unwrap_or_else(|()| {
-        todo!("not a fixnum");
     }));
+    let oflag = Fixnum::try_from(mt.regs()[2]).unwrap_or_else(|()| {
+        todo!("not a fixnum");
+    });
 
-    let fd = fcntl::open(
-        mt.borrow(filename).as_str(),
-        unsafe { fcntl::OFlag::from_bits_unchecked(oflag as c_int) },
-        stat::Mode::empty()
-    ).unwrap();
+    let port = Port::open(mt, filename.borrow(), oflag);
 
     let last_index = mt.regs().len() - 1;
-    mt.regs_mut()[last_index] = Gc::<isize>::new(mt, fd as isize).into();
+    mt.regs_mut()[last_index] = port.into();
     Answer::Ret {retc: 1}
 }
 
-pub const OPEN: NativeFn = NativeFn {min_arity: 3, varargs: false, code: open};
+pub const OPEN_FILE: NativeFn = NativeFn {min_arity: 3, varargs: false, code: open_file};
 
-fn read(mt: &mut Mutator) -> Answer {
-    let fd = mt.regs()[1].try_cast::<isize>(mt).unwrap_or_else(|| {
-        todo!("not an isize");
-    });
-    let buf = mt.regs()[2].try_cast::<VectorMut<u8>>(mt).unwrap_or_else(|| {
-        todo!("not a mutable bytevector");
+fn read_char(mt: &mut Mutator) -> Answer {
+    let port = mt.regs()[1].try_cast::<Port>(mt).unwrap_or_else(|| {
+        todo!("not a port");
     });
 
-    let readc = unistd::read(
-        *mt.borrow(fd) as c_int,
-        unsafe { mt.borrow(buf).as_bytes() }
-    ).unwrap();
+    let res = match mt.borrow(port).read_char() {
+        Some(c) => ORef::from(Char::from(c)),
+        None => ORef::from(Eof::instance(mt))
+    };
 
     let last_index = mt.regs().len() - 1;
-    mt.regs_mut()[last_index] = Gc::<usize>::new(mt, readc).into();
+    mt.regs_mut()[last_index] = res;
     Answer::Ret {retc: 1}
 }
 
-pub const READ: NativeFn = NativeFn {min_arity: 3, varargs: false, code: read};
+pub const READ_CHAR: NativeFn = NativeFn {min_arity: 2, varargs: false, code: read_char};

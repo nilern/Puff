@@ -14,6 +14,7 @@ use crate::symbol::Symbol;
 use crate::string::{String, StringMut};
 use crate::r#box::Box;
 use crate::r#type::Type;
+use crate::ports::{Eof, Port};
 
 pub trait DisplayWithin {
     fn fmt_within(&self, mt: &Mutator, fmt: &mut fmt::Formatter) -> fmt::Result;
@@ -129,6 +130,10 @@ impl DisplayWithin for Gc<()> {
             )
         } else if let Some(_) = self.try_cast::<Box>(mt) {
             write!(fmt, "#<box>")
+        } else if let Some(_) = self.try_cast::<Port>(mt) {
+            write!(fmt, "#<port>")
+        } else if let Some(_) = self.try_cast::<Eof>(mt) {
+            write!(fmt, "#!eof")
         } else if let Some(code) = self.try_cast::<Bytecode>(mt) {
             write!(fmt, "{}", code.within(mt))
         } else if let Some(n) = self.try_cast::<isize>(mt) {

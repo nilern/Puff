@@ -473,3 +473,7 @@
         (begin
           (string-bytevector-copy! bytes 0 string)
           (make <string-mut> (string-length string) byte-len bytes))))))
+
+(define +o-rdonly+ 0)
+
+(define open-input-file (lambda (filename) (open-file filename +o-rdonly+)))
