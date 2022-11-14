@@ -662,7 +662,8 @@ impl Mutator {
     }
 
     fn tailcall(&mut self, argc: usize) -> Option<Trampoline> {
-        let callee = self.regs[self.regs.len() - argc];
+        let callee_reg = self.regs.len() - argc;
+        let callee = self.regs[callee_reg];
         if let Some(callee) = callee.try_cast::<Closure>(self) {
             let code = self.borrow(callee).code;
 
@@ -710,6 +711,9 @@ impl Mutator {
                 let min_arity = self.borrow(code).min_arity;
                 if !self.borrow(code).varargs {
                     if argc == min_arity {
+                        // Replace callee with selected method:
+                        self.regs_mut()[callee_reg] = clause.into();
+
                         // Pass arguments:
                         self.regs.enter(argc);
 
@@ -725,6 +729,9 @@ impl Mutator {
                     }
                 } else {
                     if argc >= min_arity {
+                        // Replace callee with selected method:
+                        self.regs_mut()[callee_reg] = clause.into();
+
                         // Pass arguments:
                         self.regs.enter(argc);
 
