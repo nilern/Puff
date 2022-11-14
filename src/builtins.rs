@@ -930,3 +930,18 @@ fn read_char(mt: &mut Mutator) -> Answer {
 }
 
 pub const READ_CHAR: NativeFn = NativeFn {min_arity: 2, varargs: false, code: read_char};
+
+fn write_char(mt: &mut Mutator) -> Answer {
+    let c = Char::try_from(mt.regs()[1]).unwrap_or_else(|()| {
+        todo!("not a char");
+    });
+    let port = mt.regs()[2].try_cast::<Port>(mt).unwrap_or_else(|| {
+        todo!("not a port");
+    });
+
+    mt.borrow(port).write_char(char::from(c));
+
+    Answer::Ret {retc: 1} // HACK: happens to return `port`
+}
+
+pub const WRITE_CHAR: NativeFn = NativeFn {min_arity: 3, varargs: false, code: write_char};

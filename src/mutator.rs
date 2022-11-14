@@ -424,7 +424,8 @@ impl Mutator {
                 ("eval-syntax", builtins::EVAL_SYNTAX), ("load", builtins::LOAD),
                 ("apply", builtins::APPLY), ("values", builtins::VALUES),
                 ("call-with-current-continuation", builtins::CALL_CC), ("continue", builtins::CONTINUE),
-                ("open-file", builtins::OPEN_FILE), ("read-char", builtins::READ_CHAR)
+                ("open-file", builtins::OPEN_FILE), ("read-char", builtins::READ_CHAR),
+                ("write-char", builtins::WRITE_CHAR)
             ] {
                 let name = root!(&mut mt, Symbol::new(&mut mt, name));
                 let f = root!(&mut mt, NativeFn::new(&mut mt, f));

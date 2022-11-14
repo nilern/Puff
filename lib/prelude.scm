@@ -475,5 +475,7 @@
           (make <string-mut> (string-length string) byte-len bytes))))))
 
 (define +o-rdonly+ 0)
+(define +o-wronly+ 1)
 
 (define open-input-file (lambda (filename) (open-file filename +o-rdonly+)))
+(define open-output-file (lambda (filename) (open-file filename +o-wronly+)))

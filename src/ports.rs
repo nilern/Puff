@@ -64,10 +64,7 @@ impl Port {
 
     fn fill_buf(&self) {
         self.buf_start.set(0);
-        self.buf_len.set(unistd::read(
-            self.fd as c_int,
-            unsafe { self.buf.as_ref().as_bytes_mut() }
-        ).unwrap());
+        self.buf_len.set(unistd::read(self.fd, unsafe { self.buf.as_ref().as_bytes_mut() }).unwrap());
     }
 
     // OPTIMIZE:
@@ -100,5 +97,12 @@ impl Port {
         self.buf_start.set(self.buf_start.get() + c_len);
         self.buf_len.set(self.buf_len.get() - c_len);
         Some(c)
+    }
+
+    // OPTIMIZE: Unbuffered
+    pub fn write_char(&self, c: char) {
+        let mut bytes = [0; 4];
+        let s = c.encode_utf8(&mut bytes);
+        unistd::write(self.fd as c_int, s.as_bytes()).unwrap();
     }
 }
