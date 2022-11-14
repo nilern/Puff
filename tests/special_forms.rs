@@ -1,15 +1,15 @@
-use molysite::reader::Reader;
-use molysite::mutator::Mutator;
-use molysite::compiler::compile;
-use molysite::closure::Closure;
-use molysite::case_fn::CaseFn;
-use molysite::verifier::verify;
-use molysite::oref::{ORef, Gc};
-use molysite::fixnum::Fixnum;
-use molysite::symbol::Symbol;
-use molysite::vector::Vector;
-use molysite::heap_obj::{Singleton, Indexed};
-use molysite::list::{Pair, EmptyList};
+use puff::reader::Reader;
+use puff::mutator::Mutator;
+use puff::compiler::compile;
+use puff::closure::Closure;
+use puff::case_fn::CaseFn;
+use puff::verifier::verify;
+use puff::oref::{ORef, Gc};
+use puff::fixnum::Fixnum;
+use puff::symbol::Symbol;
+use puff::vector::Vector;
+use puff::heap_obj::{Singleton, Indexed};
+use puff::list::{Pair, EmptyList};
 
 fn eval_string(mt: &mut Mutator, s: &str) -> ORef {
     let mut reader = Reader::new(s, None);

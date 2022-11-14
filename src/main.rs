@@ -48,8 +48,8 @@ struct Args {
     debug: bool
 }
 
-const PROMPT: &'static str = "molysite> ";
-const HISTORY_FILENAME: &'static str = ".molysite-history.txt";
+const PROMPT: &'static str = "puff> ";
+const HISTORY_FILENAME: &'static str = ".puff-history.txt";
     
 fn main() {
     let debug = Args::parse().debug;

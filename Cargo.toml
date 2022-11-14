@@ -1,5 +1,5 @@
 [package]
-name = "molysite"
+name = "puff"
 version = "0.1.0"
 edition = "2021"
 authors = ["Pauli Jaakkola"]
@@ -19,9 +19,9 @@ quickcheck = "1"
 quickcheck_macros = "1"
 
 [lib]
-name = "molysite"
+name = "puff"
 path = "src/lib.rs"
 
 [[bin]]
-name = "molysite"
+name = "puff"
 path = "src/main.rs"

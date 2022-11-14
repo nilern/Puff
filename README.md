@@ -1,4 +1,4 @@
-# Molysite
+# Puff
 
 Just another Scheme implementation.
 

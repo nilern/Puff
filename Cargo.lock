@@ -252,19 +252,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "molysite"
-version = "0.1.0"
-dependencies = [
- "clap",
- "libc",
- "nix 0.25.0",
- "pretty",
- "quickcheck",
- "quickcheck_macros",
- "rustyline",
-]
-
-[[package]]
 name = "nibble_vec"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -359,6 +346,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5ea3d908b0e36316caf9e9e2c4625cdde190a7e6f440d794667ed17a1855e725"
 dependencies = [
  "unicode-ident",
+]
+
+[[package]]
+name = "puff"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "libc",
+ "nix 0.25.0",
+ "pretty",
+ "quickcheck",
+ "quickcheck_macros",
+ "rustyline",
 ]
 
 [[package]]
