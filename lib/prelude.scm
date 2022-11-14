@@ -190,24 +190,33 @@
 (define length (lambda (list) (fold (lambda (_ len) (+ len 1)) 0 list)))
 
 (define append
-  (lambda (list1 list2)
-    (if (pair? list1)
-      (letrec ((ls* (cons (car list1) '()))
-               (append! (lambda (ls last-pair)
-                            (if (pair? ls)
-                              (letrec ((pair (cons (car ls) '())))
-                                (begin
-                                  (set-cdr! last-pair pair)
-                                  (append! (cdr ls) pair)))
-                              (if (null? ls)
-                                (begin
-                                  (set-cdr! last-pair list2)
-                                  ls*)
-                                (error "append: improper list" list1))))))
-        (append! (cdr list1) ls*))
-      (if (null? list1)
-        list2
-        (error "append: not a list" list1)))))
+  (case-lambda
+    (() '())
+
+    ((list) list)
+
+    ((list1 list2)
+     (if (pair? list1)
+       (letrec ((ls* (cons (car list1) '()))
+                (append! (lambda (ls last-pair)
+                             (if (pair? ls)
+                               (letrec ((pair (cons (car ls) '())))
+                                 (begin
+                                   (set-cdr! last-pair pair)
+                                   (append! (cdr ls) pair)))
+                               (if (null? ls)
+                                 (begin
+                                   (set-cdr! last-pair list2)
+                                   ls*)
+                                 (error "append: improper list" list1))))))
+         (append! (cdr list1) ls*))
+       (if (null? list1)
+         list2
+         (error "append: not a list" list1))))
+
+    (lists
+     (letrec ((rev-lists (reverse lists)))
+       (fold append (car rev-lists) (cdr rev-lists))))))
 
 (define reverse (lambda (list1) (fold cons '() list1)))
 
