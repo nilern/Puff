@@ -82,17 +82,9 @@
 
 (define list (lambda ls ls))
 
-(define car
-  (lambda (pair)
-    (if (pair? pair)
-      (field-ref pair 0)
-      (error "car: non-pair" pair))))
+(define car (lambda ((: pair <pair>)) (field-ref pair 0)))
 
-(define cdr
-  (lambda (pair)
-    (if (pair? pair)
-      (field-ref pair 1)
-      (error "cdr: non-pair" pair))))
+(define cdr (lambda ((: pair <pair>)) (field-ref pair 1)))
 
 (define caar (lambda (obj) (car (car obj))))
 (define cadr (lambda (obj) (car (cdr obj))))
@@ -125,17 +117,9 @@
 (define cdddar (lambda (obj) (cdr (cdr (cdr (car obj))))))
 (define cddddr (lambda (obj) (cdr (cdr (cdr (cdr obj))))))
 
-(define set-car!
-  (lambda (pair car*)
-    (if (pair? pair)
-      (field-set! pair 0 car*)
-      (error "set-car!: non-pair" pair))))
+(define set-car! (lambda ((: pair <pair>) car*) (field-set! pair 0 car*)))
 
-(define set-cdr!
-  (lambda (pair cdr*)
-    (if (pair? pair)
-      (field-set! pair 1 cdr*)
-      (error "set-cdr!: non-pair" pair))))
+(define set-cdr! (lambda ((: pair <pair>) cdr*) (field-set! pair 1 cdr*)))
 
 (define fold
   (lambda (proc acc list1)
@@ -292,13 +276,7 @@
       (indexed-ref vector k)
       (error "vector-ref: non-vector" vector))))
 
-(define vector-set!
-  (lambda (vector k obj)
-    (if (instance? <vector-mut> vector)
-      (indexed-set! vector k obj)
-      (if (instance? <vector> vector)
-        (error "vector-set!: immutable vector" vector)
-        (error "vector-set!: non-vector" vector)))))
+(define vector-set! (lambda ((: vector <vector-mut>) k obj) (indexed-set! vector k obj)))
 
 (define vector (lambda vs (apply make <vector-mut> vs)))
 
@@ -341,13 +319,7 @@
                    (length list)
                    list)))
 
-(define vector-fill!
-  (lambda (vector fill)
-    (if (instance? <vector-mut> vector)
-      (indexed-fill! vector fill)
-      (if (instance? <vector> vector)
-        (error "vector-fill!: immutable vector" vector)
-        (error "vector-fill!: non-vector" vector)))))
+(define vector-fill! (lambda ((: vector <vector-mut>) fill) (indexed-fill! vector fill)))
 
 (define bytevector? (lambda (obj) (instance? <bytevector-mut> obj)))
 
@@ -379,13 +351,7 @@
         (field-ref string 1)
         (error "string-byte-length: non-string" string)))))
 
-(define string-mut-bytes
-  (lambda (string)
-    (if (instance? <string-mut> string)
-      (field-ref string 2)
-      (if (instance? <string> string)
-        (error "string-byte-length: immutable string" string)
-        (error "string-byte-length: non-string" string)))))
+(define string-mut-bytes (lambda ((: string <string-mut>)) (field-ref string 2)))
 
 (define string-ref
   (letrec ((string-immut-ref string-ref))
