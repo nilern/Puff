@@ -44,6 +44,7 @@ pub enum Instr {
     Goto(Label),
 
     Fn(Fn, usize),
+    DomainFn {arity: usize, code: Fn, cloverc: usize},
     CaseFn(usize),
     Call(usize, Vec<bool>),
     CheckOneReturnValue,
@@ -86,6 +87,10 @@ impl Instr {
 
             &Fn(ref code, len) => {
                 writeln!(fmt, "{}fn {}", indent, len)?;
+                code.fmt(mt, fmt, &(indent.to_string() + "  "))
+            },
+            &DomainFn {arity, ref code, cloverc} => {
+                writeln!(fmt, "{}domain-fn {} {}", indent, arity, cloverc)?;
                 code.fmt(mt, fmt, &(indent.to_string() + "  "))
             },
             &CaseFn(clausec) => writeln!(fmt, "{}case-fn {}", indent, clausec),

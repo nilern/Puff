@@ -1,6 +1,7 @@
 use std::marker::PhantomData;
 use std::cell::Cell;
 use std::slice;
+use std::ops::Range;
 
 use crate::heap_obj::Indexed;
 use crate::oref::{Reify, ORef, Gc};
@@ -25,6 +26,21 @@ impl Reify for Vector<ORef> {
 }
 
 impl Vector<ORef> {
+    pub fn from_regs(mt: &mut Mutator, indices: Range<usize>) -> Gc<Self> {
+        unsafe {
+            let mut nptr = mt.alloc_indexed(Self::reify(mt), indices.len()).cast::<Self>();
+
+            nptr.as_ptr().write(Vector {phantom: Default::default()});
+            let mut v = nptr.as_mut().indexed_field_ptr_mut();
+            for &oref in &mt.regs().as_slice()[indices] {
+                v.write(oref);
+                v = v.add(1);
+            }
+
+            Gc::new_unchecked(nptr)
+        }
+    }
+
     pub fn from_handles(mt: &mut Mutator, handles: &[HandleAny]) -> Gc<Self> {
         unsafe {
             let mut nptr = mt.alloc_indexed(Self::reify(mt), handles.len()).cast::<Self>();

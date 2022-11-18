@@ -259,6 +259,33 @@ pub fn verify(mt: &Mutator, code: &Bytecode) -> Result<(), IndexedErr<Vec<usize>
                     }
                 },
 
+                &DecodedInstr::DomainFn {arity, code_index, len} => {
+                    let code = amt.get_const(&cfg, code_index)?;
+                    if let Some(code) = code.try_cast::<Bytecode>(mt) {
+                        let clovers_len = mt.borrow(code).clovers_len;
+                        if len != clovers_len {
+                            return Err(IndexedErr {err: Err::CloversArgc(len), byte_index: byte_path(bp, amt.pc)});
+                        }
+
+                        if amt.regs.len() < len {
+                            return Err(IndexedErr {
+                                err: Err::RegsOverrun(amt.regs.len()),
+                                byte_index: byte_path(bp, amt.pc)
+                            });
+                        }
+
+                        // Recurse into closure:
+                        let clovers = &amt.regs.as_slice()[amt.regs.len() - clovers_len..];
+                        verify_in(mt, &byte_path(bp, amt.pc), clovers, mt.borrow(code))?;
+
+                        amt.popn(arity + len)?;
+                        amt.push(AbstractType::Closure {len})?;
+                        amt.pc += 3;
+                    } else {
+                        return Err(IndexedErr {err: Err::TypeError, byte_index: byte_path(bp, amt.pc)});
+                    }
+                },
+
                 &DecodedInstr::CaseFn {clausec} => {
                     for _ in 0..clausec {
                         match amt.pop()? {
@@ -786,7 +813,7 @@ impl<'a> TryFrom<&'a Bytecode> for CFG<'a> {
 
                 Define{..} | GlobalSet{..} | Global{..} | Pop | Const{..} | Local{..} | Clover{..}
                 | Box | UninitializedBox | BoxSet | CheckedBoxSet | BoxGet | CheckedBoxGet | CheckUse | Fn{..}
-                | CaseFn {..} | CheckOneReturnValue | IgnoreReturnValues => {
+                | DomainFn {..} | CaseFn {..} | CheckOneReturnValue | IgnoreReturnValues => {
                     i += instr_min_len;
                     if i >= instrs.len() { return Err(IndexedErr{err: Err::MissingTerminator, byte_index: i}); }
 
@@ -911,6 +938,30 @@ fn try_decode<'a>(bytes: &'a [u8], mut i: usize) -> Result<(DecodedInstr<'a>, us
                                         len: *len as usize
                                     }, 3)),
                                     None => Err(IndexedErr{err: Err::MissingOpcodeArg(op), byte_index: i})
+                                }
+                            },
+                            None => Err(IndexedErr{err: Err::MissingOpcodeArg(op), byte_index: i})
+                        },
+                    Opcode::DomainFn =>
+                        match bytes.get(i) {
+                            Some(arity) => {
+                                i+= 1;
+
+                                match bytes.get(i) {
+                                    Some(code_index) => {
+                                        i+= 1;
+
+                                        match bytes.get(i) {
+                                            Some(len) => Ok((DecodedInstr::DomainFn {
+                                                arity: *arity as usize,
+                                                code_index: *code_index as usize,
+                                                len: *len as usize
+                                            }, 4)),
+                                            None => Err(IndexedErr{err: Err::MissingOpcodeArg(op), byte_index: i})
+                                        }
+                                    },
+
+                                    None => Err(IndexedErr {err: Err::MissingOpcodeArg(op), byte_index: i})
                                 }
                             },
                             None => Err(IndexedErr{err: Err::MissingOpcodeArg(op), byte_index: i})

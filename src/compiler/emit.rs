@@ -36,6 +36,10 @@ pub fn emit(cmp: &mut Compiler, f: &cfg::Fn) -> Gc<Bytecode> {
                 let code = emit(cmp, code);
                 builder.r#fn(root!(&mut cmp.mt, code), len, pos.clone());
             },
+            &DomainFn {arity, ref code, cloverc} => {
+                let code = emit(cmp, code);
+                builder.domain_fn(arity, root!(&mut cmp.mt, code), cloverc, pos.clone());
+            }
             &CaseFn(clausec) => builder.case_fn(clausec, pos.clone()),
 
             &Call(cargc, ref prunes) => builder.call(cargc, prunes, pos.clone()),

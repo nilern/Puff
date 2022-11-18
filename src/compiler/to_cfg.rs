@@ -227,19 +227,45 @@ fn emit_use(env: &mut Env, builder: &mut CfgBuilder, r#use: Id, pos: HandleAny) 
     }
 }
 
-fn emit_fn_clause(cmp: &mut Compiler, env: &mut Env, builder: &mut CfgBuilder, pos: HandleAny, fvs: LiveVars,
-    params: anf::Params, varargs: bool, body: PosExpr
+fn emit_fn_clause(cmp: &mut Compiler, env: &mut Env, builder: &mut CfgBuilder, pos: HandleAny,
+    domain: Option<anf::Domain>, fvs: LiveVars, params: anf::Params, varargs: bool, body: PosExpr
 ) {
-    let fvs = fvs.iter().map(|&id| id).collect::<Vec<Id>>();
+    let arity = domain.as_ref().map(Vec::len);
 
+    if let Some(domain) = domain {
+        for param_type in domain {
+            let param_type = match param_type {
+                Some(param_type) => param_type,
+                None => {
+                    let the_false = root!(cmp.mt, Bool::instance(cmp.mt, false));
+                    PosExpr {expr: anf::Expr::Triv(anf::Triv::Const(the_false.into())), pos: pos.clone()}
+                }
+            };
+
+            emit_expr(cmp, env, builder, Cont::Next {ignore_values: false}, param_type);
+        }
+    }
+
+    let fvs = fvs.iter().copied().collect::<Vec<Id>>();
     for &fv in fvs.iter() {
         emit_use(env, builder, fv, pos.clone());
     }
 
     let code = emit_fn(cmp, &fvs, &params, varargs, body);
-    builder.push(Instr::Fn(code, fvs.len()), pos.clone());
-    env.popn(fvs.len());
-    env.push();
+
+    match arity {
+        Some(arity) => {
+            builder.push(Instr::DomainFn {arity, code, cloverc: fvs.len()}, pos);
+            env.popn(arity + fvs.len());
+            env.push();
+        },
+
+        None => {
+            builder.push(Instr::Fn(code, fvs.len()), pos);
+            env.popn(fvs.len());
+            env.push();
+        }
+    }
 }
 
 fn emit_expr(cmp: &mut Compiler, env: &mut Env, builder: &mut CfgBuilder, cont: Cont, expr: PosExpr) {
@@ -397,8 +423,8 @@ fn emit_expr(cmp: &mut Compiler, env: &mut Env, builder: &mut CfgBuilder, cont: 
             cont.goto(env, builder, pos);
         },
 
-        anf::Expr::Fn(fvs, params, varargs, body) => {
-            emit_fn_clause(cmp, env, builder, pos.clone(), fvs, params, varargs, *body);
+        anf::Expr::Fn(domain, fvs, params, varargs, body) => {
+            emit_fn_clause(cmp, env, builder, pos.clone(), domain, fvs, params, varargs, *body);
 
             cont.goto(env, builder, pos);
         },
@@ -406,8 +432,8 @@ fn emit_expr(cmp: &mut Compiler, env: &mut Env, builder: &mut CfgBuilder, cont: 
         anf::Expr::CaseFn(clauses) => {
             let clausec = clauses.len();
 
-            for (pos, fvs, params, varargs, body) in clauses {
-                emit_fn_clause(cmp, env, builder, pos, fvs, params, varargs, body);
+            for (pos, domain, fvs, params, varargs, body) in clauses {
+                emit_fn_clause(cmp, env, builder, pos, domain, fvs, params, varargs, body);
             }
 
             builder.push(Instr::CaseFn(clausec), pos.clone());
@@ -530,7 +556,7 @@ fn emit_fn(cmp: &mut Compiler, clovers: &[Id], params: &[Id], varargs: bool, bod
 
 impl Fn {
    pub fn from_anf(cmp: &mut Compiler, expr: PosExpr) -> Self {
-        if let anf::Expr::Fn(fvs, params, varargs, body) = expr.expr {
+        if let anf::Expr::Fn(None, fvs, params, varargs, body) = expr.expr {
             let fvs = fvs.iter().map(|&id| id).collect::<Vec<Id>>();
             emit_fn(cmp, &fvs, &params, varargs, *body)
         } else {

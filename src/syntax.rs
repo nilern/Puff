@@ -2,7 +2,7 @@ use crate::oref::{Reify, ORef, Gc};
 use crate::handle::{HandleRefAny, HandleRef, Root, root};
 use crate::mutator::Mutator;
 use crate::fixnum::Fixnum;
-use crate::heap_obj::{NonIndexed, Indexed};
+use crate::heap_obj::{HeapObj, NonIndexed, Indexed};
 use crate::r#type::NonIndexedType;
 use crate::bool::Bool;
 use crate::string::String;
@@ -20,6 +20,8 @@ impl Reify for Syntax {
 
     fn reify(mt: &Mutator) -> Gc<Self::Kind> { mt.types().syntax }
 }
+
+unsafe impl HeapObj for Syntax {}
 
 unsafe impl NonIndexed for Syntax {}
 

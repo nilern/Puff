@@ -13,7 +13,7 @@ use crate::handle::{HandleAny, Handle, HandlePool, Root, root};
 use crate::list::{EmptyList, Pair};
 use crate::bytecode::{Opcode, Bytecode, decode_prune_mask};
 use crate::vector::Vector;
-use crate::closure::Closure;
+use crate::closure::{Closure, TypedClosure};
 use crate::case_fn::CaseFn;
 use crate::regs::Regs;
 use crate::r#box::Box;
@@ -90,6 +90,7 @@ pub struct Types {
     pub syntax: Gc<NonIndexedType>,
     pub bytecode: Gc<IndexedType>,
     pub closure: Gc<IndexedType>,
+    pub typed_closure: Gc<IndexedType>,
     pub case_fn: Gc<IndexedType>,
     pub native_fn: Gc<NonIndexedType>,
     pub continuation: Gc<IndexedType>,
@@ -303,6 +304,7 @@ impl Mutator {
             let bytecode = BootstrapTypeBuilder::<NonIndexedType>::new()
                 .field(any, fixnum, usize_type.into(), false)
                 .field(any, fixnum, bool.into(), false)
+                .field(any, fixnum, any, false)
                 .field(any, fixnum, usize_type.into(), false)
                 .field(any, fixnum, usize_type.into(), false)
                 .field(any, fixnum, vector_of_any.into(), false)
@@ -312,6 +314,12 @@ impl Mutator {
                 .build(|len| heap.alloc_indexed(r#type, len).map(NonNull::cast))?;
 
             let closure = BootstrapTypeBuilder::<NonIndexedType>::new()
+                .field(any, fixnum, bytecode.into(), false)
+                .indexed_field(any, fixnum, any, false)
+                .build(|len| heap.alloc_indexed(r#type, len).map(NonNull::cast))?;
+
+            let typed_closure = BootstrapTypeBuilder::<NonIndexedType>::new()
+                .field(any, fixnum, vector_of_any.into(), false)
                 .field(any, fixnum, bytecode.into(), false)
                 .indexed_field(any, fixnum, any, false)
                 .build(|len| heap.alloc_indexed(r#type, len).map(NonNull::cast))?;
@@ -326,6 +334,7 @@ impl Mutator {
             let native_fn = BootstrapTypeBuilder::<NonIndexedType>::new()
                 .field(any, fixnum, usize_type.into(), false)
                 .field(any, fixnum, bool.into(), false)
+                .field(any, fixnum, any, false)
                 .field(any, fixnum, fn_ptr.into(), false)
                 .build(|len| heap.alloc_indexed(r#type, len).map(NonNull::cast))?;
 
@@ -384,7 +393,7 @@ impl Mutator {
 
                 types: Types { fixnum, any, flonum, char, isize, usize, r#type, bool, symbol, string, string_mut, pair,
                     empty_list, pos, syntax, bytecode, vector_of_any, vector_mut_of_any, vector_mut_of_byte, closure,
-                    case_fn, native_fn, continuation, r#box, namespace, var, port, eof
+                    typed_closure, case_fn, native_fn, continuation, r#box, namespace, var, port, eof
                 },
                 singletons: Singletons { r#true, r#false, empty_list: empty_list_inst, eof: eof_inst },
                 symbols: SymbolTable::new(),
@@ -436,7 +445,7 @@ impl Mutator {
                 ("write-char", builtins::WRITE_CHAR)
             ] {
                 let name = root!(&mut mt, Symbol::new(&mut mt, name));
-                let f = root!(&mut mt, NativeFn::new(&mut mt, f));
+                let f = root!(&mut mt, f.build(&mut mt));
                 let var = root!(&mut mt, Var::new(&mut mt, f.borrow().into()));
                 ns.clone().add(&mut mt, name.borrow(), var.borrow());
             }
@@ -704,77 +713,267 @@ impl Mutator {
             }
 
             None
+        } else if let Some(callee) = callee.try_cast::<TypedClosure>(self) {
+            let code = self.borrow(callee).code;
+
+            // Pass arguments:
+            self.regs.enter(argc);
+
+            // Jump:
+            self.set_code(code);
+
+            // Ensure register space, reclaim garbage regs prefix and extend regs if necessary:
+            self.regs.ensure(self.borrow(code).max_regs);
+
+            // TODO: GC safepoint (only becomes necessary with multithreading)
+
+            // Check arity and argument types:
+            let min_arity = self.borrow(code).min_arity;
+            if !self.borrow(code).varargs {
+                if argc != min_arity {
+                    todo!("non-varargs closure argc")
+                }
+
+                for (i, param_type) in self.borrow(self.borrow(callee).domain).indexed_field().iter().enumerate() {
+                    if let Some(param_type) = param_type.try_cast::<Type>(self) {
+                        if !self.regs[1 + i].instance_of_dyn(self, param_type) {
+                            todo!("error: arg type");
+                        }
+                    }
+                }
+            } else {
+                if argc < min_arity {
+                    todo!("varargs closure argc")
+                }
+
+                for (i, param_type) in self.borrow(self.borrow(callee).domain).indexed_field().iter()
+                    .take(min_arity - 1)
+                    .enumerate()
+                {
+                    if let Some(param_type) = param_type.try_cast::<Type>(self) {
+                        if !self.regs[1 + i].instance_of_dyn(self, param_type) {
+                            todo!("error: arg type");
+                        }
+                    }
+                }
+
+                let param_type = self.borrow(self.borrow(callee).domain).indexed_field()[min_arity - 1];
+                for i in min_arity..argc {
+                    if let Some(param_type) = param_type.try_cast::<Type>(self) {
+                        if !self.regs[i].instance_of_dyn(self, param_type) {
+                            todo!("error: arg type");
+                        }
+                    }
+                }
+
+                let varargs_len = argc - min_arity;
+                let acc_index = self.regs.len();
+                self.regs.push(EmptyList::instance(self).into());
+                for i in ((acc_index - varargs_len)..acc_index).rev() {
+                    unsafe {
+                        let pair = self.alloc_static::<Pair>();
+                        pair.as_ptr().write(Pair::new(self.regs[i], self.regs[acc_index]));
+                        self.regs[acc_index] = Gc::new_unchecked(pair).into();
+                    }
+                }
+
+                unsafe { self.regs.popnnt_unchecked(varargs_len); }
+            }
+
+            None
         } else if let Some(callee) = callee.try_cast::<CaseFn>(self) {
-            for &clause in self.borrow(callee).indexed_field() {
-                let code = self.borrow(clause).code;
+            'clauses: for &clause in self.borrow(callee).indexed_field() {
+                if let Some(clause) = clause.try_cast::<Closure>(self) {
+                    let code = self.borrow(clause).code;
 
-                let min_arity = self.borrow(code).min_arity;
-                if !self.borrow(code).varargs {
-                    if argc == min_arity {
-                        // Replace callee with selected method:
-                        self.regs_mut()[callee_reg] = clause.into();
+                    let min_arity = self.borrow(code).min_arity;
+                    if !self.borrow(code).varargs {
+                        if argc == min_arity {
+                            // Replace callee with selected method:
+                            self.regs_mut()[callee_reg] = clause.into();
 
-                        // Pass arguments:
-                        self.regs.enter(argc);
+                            // Pass arguments:
+                            self.regs.enter(argc);
 
-                        // Jump:
-                        self.set_code(code);
+                            // Jump:
+                            self.set_code(code);
 
-                        // Ensure register space, reclaim garbage regs prefix and extend regs if necessary:
-                        self.regs.ensure(self.borrow(code).max_regs);
+                            // Ensure register space, reclaim garbage regs prefix and extend regs if necessary:
+                            self.regs.ensure(self.borrow(code).max_regs);
 
-                        // TODO: GC safepoint (only becomes necessary with multithreading)
+                            // TODO: GC safepoint (only becomes necessary with multithreading)
 
-                        return None;
+                            return None;
+                        }
+                    } else {
+                        if argc >= min_arity {
+                            // Replace callee with selected method:
+                            self.regs_mut()[callee_reg] = clause.into();
+
+                            // Pass arguments:
+                            self.regs.enter(argc);
+
+                            // Jump:
+                            self.set_code(code);
+
+                            // Ensure register space, reclaim garbage regs prefix and extend regs if necessary:
+                            self.regs.ensure(self.borrow(code).max_regs);
+
+                            // TODO: GC safepoint (only becomes necessary with multithreading)
+
+                            let varargs_len = argc - min_arity;
+                            let acc_index = self.regs.len();
+                            self.regs.push(EmptyList::instance(self).into());
+                            for i in ((acc_index - varargs_len)..acc_index).rev() {
+                                unsafe {
+                                    let pair = self.alloc_static::<Pair>();
+                                    pair.as_ptr().write(Pair::new(self.regs[i], self.regs[acc_index]));
+                                    self.regs[acc_index] = Gc::new_unchecked(pair).into();
+                                }
+                            }
+
+                            unsafe { self.regs.popnnt_unchecked(varargs_len); }
+
+                            return None;
+                        }
+                    }
+                } else if let Some(clause) = clause.try_cast::<TypedClosure>(self) {
+                    let code = self.borrow(clause).code;
+
+                    let min_arity = self.borrow(code).min_arity;
+                    if !self.borrow(code).varargs {
+                        if argc == min_arity {
+                            // Replace callee with selected method:
+                            self.regs_mut()[callee_reg] = clause.into();
+
+                            // Pass arguments:
+                            self.regs.enter(argc);
+
+                            // Jump:
+                            self.set_code(code);
+
+                            // Ensure register space, reclaim garbage regs prefix and extend regs if necessary:
+                            self.regs.ensure(self.borrow(code).max_regs);
+
+                            // TODO: GC safepoint (only becomes necessary with multithreading)
+
+                            todo!("satisfy borrow checker");
+                            /*for (i, param_type) in self.borrow(self.borrow(clause).domain).indexed_field().iter()
+                                .enumerate()
+                            {
+                                if let Some(param_type) = param_type.try_cast::<Type>(self) {
+                                    if !self.regs[1 + i].instance_of_dyn(self, param_type) {
+                                        continue 'clauses;
+                                    }
+                                }
+                            }*/
+
+                            return None;
+                        }
+                    } else {
+                        if argc >= min_arity {
+                            // Replace callee with selected method:
+                            self.regs_mut()[callee_reg] = clause.into();
+
+                            // Pass arguments:
+                            self.regs.enter(argc);
+
+                            // Jump:
+                            self.set_code(code);
+
+                            // Ensure register space, reclaim garbage regs prefix and extend regs if necessary:
+                            self.regs.ensure(self.borrow(code).max_regs);
+
+                            // TODO: GC safepoint (only becomes necessary with multithreading)
+
+                            todo!("satisfy borrow checker");
+                            /*for (i, param_type) in self.borrow(self.borrow(clause).domain).indexed_field().iter()
+                                .take(min_arity - 1)
+                                .enumerate()
+                            {
+                                if let Some(param_type) = param_type.try_cast::<Type>(self) {
+                                    if !self.regs[1 + i].instance_of_dyn(self, param_type) {
+                                        continue 'clauses;
+                                    }
+                                }
+                            }
+
+                            let param_type = self.borrow(self.borrow(clause).domain).indexed_field()[min_arity - 1];
+                            for i in min_arity..argc {
+                                if let Some(param_type) = param_type.try_cast::<Type>(self) {
+                                    if !self.regs[i].instance_of_dyn(self, param_type) {
+                                        continue 'clauses;
+                                    }
+                                }
+                            }*/
+
+                            let varargs_len = argc - min_arity;
+                            let acc_index = self.regs.len();
+                            self.regs.push(EmptyList::instance(self).into());
+                            for i in ((acc_index - varargs_len)..acc_index).rev() {
+                                unsafe {
+                                    let pair = self.alloc_static::<Pair>();
+                                    pair.as_ptr().write(Pair::new(self.regs[i], self.regs[acc_index]));
+                                    self.regs[acc_index] = Gc::new_unchecked(pair).into();
+                                }
+                            }
+
+                            unsafe { self.regs.popnnt_unchecked(varargs_len); }
+
+                            return None;
+                        }
                     }
                 } else {
-                    if argc >= min_arity {
-                        // Replace callee with selected method:
-                        self.regs_mut()[callee_reg] = clause.into();
-
-                        // Pass arguments:
-                        self.regs.enter(argc);
-
-                        // Jump:
-                        self.set_code(code);
-
-                        // Ensure register space, reclaim garbage regs prefix and extend regs if necessary:
-                        self.regs.ensure(self.borrow(code).max_regs);
-
-                        // TODO: GC safepoint (only becomes necessary with multithreading)
-
-                        let varargs_len = argc - min_arity;
-                        let acc_index = self.regs.len();
-                        self.regs.push(EmptyList::instance(self).into());
-                        for i in ((acc_index - varargs_len)..acc_index).rev() {
-                            unsafe {
-                                let pair = self.alloc_static::<Pair>();
-                                pair.as_ptr().write(Pair::new(self.regs[i], self.regs[acc_index]));
-                                self.regs[acc_index] = Gc::new_unchecked(pair).into();
-                            }
-                        }
-
-                        unsafe { self.regs.popnnt_unchecked(varargs_len); }
-
-                        return None;
-                    }
+                    todo!("unexpected case-fn clause")
                 }
             }
 
-            todo!("error: case-fn argc")
+            todo!("error: no matching clause")
         } else if let Some(callee) = callee.try_cast::<NativeFn>(self) {
             // Pass arguments:
             self.regs.enter(argc);
 
-            // Check arity:
+            // Check arity and argument types:
             let min_arity = self.borrow(callee).min_arity;
             if !self.borrow(callee).varargs {
                 if argc != min_arity {
                     todo!("non-varargs native-fn argc")
                 }
+
+                if let Some(domain) = self.borrow(callee).domain.try_cast::<Vector<ORef>>(self) {
+                    for (i, param_type) in self.borrow(domain).indexed_field().iter().enumerate() {
+                        if let Some(param_type) = param_type.try_cast::<Type>(self) {
+                            if !self.regs[1 + i].instance_of_dyn(self, param_type) {
+                                todo!("error: arg type");
+                            }
+                        }
+                    }
+                }
             } else {
                 if argc < min_arity {
                     todo!("varargs native-fn argc")
+                }
+
+                if let Some(domain) = self.borrow(callee).domain.try_cast::<Vector<ORef>>(self) {
+                    for (i, param_type) in self.borrow(domain).indexed_field().iter()
+                        .take(min_arity - 1)
+                        .enumerate()
+                    {
+                        if let Some(param_type) = param_type.try_cast::<Type>(self) {
+                            if !self.regs[1 + i].instance_of_dyn(self, param_type) {
+                                todo!("error: arg type");
+                            }
+                        }
+                    }
+
+                    let param_type = self.borrow(domain).indexed_field()[min_arity - 1];
+                    for i in min_arity..argc {
+                        if let Some(param_type) = param_type.try_cast::<Type>(self) {
+                            if !self.regs[i].instance_of_dyn(self, param_type) {
+                                todo!("error: arg type");
+                            }
+                        }
+                    }
                 }
             }
 
@@ -1049,6 +1248,17 @@ impl Mutator {
                         unsafe { self.regs.push_unchecked(self.borrow(self.consts()).indexed_field()[ci]); }
                         let closure = Closure::new(self, len);
                         unsafe { self.regs.popn_unchecked(len + 1); }
+                        unsafe { self.regs.push_unchecked(closure.into()); }
+                    },
+
+                    Opcode::DomainFn => {
+                        let arity = self.next_oparg();
+                        let ci = self.next_oparg();
+                        let len = self.next_oparg();
+
+                        unsafe { self.regs.push_unchecked(self.borrow(self.consts()).indexed_field()[ci]); }
+                        let closure = TypedClosure::new(self, arity, len);
+                        unsafe { self.regs.popn_unchecked(arity + len + 1); }
                         unsafe { self.regs.push_unchecked(closure.into()); }
                     },
 

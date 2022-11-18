@@ -1,14 +1,13 @@
-use crate::oref::{Reify, Gc};
+use crate::oref::{Reify, Gc, ORef};
 use crate::heap_obj::Indexed;
 use crate::mutator::Mutator;
 use crate::r#type::IndexedType;
-use crate::closure::Closure;
 
 #[repr(C)]
 pub struct CaseFn;
 
 unsafe impl Indexed for CaseFn {
-    type Item = Gc<Closure>;
+    type Item = ORef; // Gc<Closure> | Gc<TypedClosure>
 }
 
 impl Reify for CaseFn {
@@ -25,8 +24,8 @@ impl CaseFn {
         let first_clause_reg = regs.len().checked_sub(len).unwrap();
         nptr.as_ptr().write(CaseFn);
         let mut v = nptr.as_mut().indexed_field_ptr_mut();
-        for clause in &regs.as_slice()[first_clause_reg..(first_clause_reg + len)] {
-            v.write(clause.unchecked_cast::<Closure>());
+        for &clause in &regs.as_slice()[first_clause_reg..(first_clause_reg + len)] {
+            v.write(clause);
             v = v.add(1);
         }
 

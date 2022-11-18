@@ -40,6 +40,7 @@ pub enum Opcode {
     Br,
 
     r#Fn,
+    DomainFn,
     CaseFn,
     Call,
     CheckOneReturnValue,
@@ -169,6 +170,7 @@ pub enum DecodedInstr<'a> {
     Br {dist: usize},
 
     Fn {code_index: usize, len: usize},
+    DomainFn {arity: usize, code_index: usize, len: usize},
     CaseFn {clausec: usize},
     Call {argc: usize, prunes: &'a u8},
     CheckOneReturnValue,
@@ -258,6 +260,30 @@ impl<'a> DecodedInstr<'a> {
                                             code_index: *code_index as usize,
                                             len: *len as usize
                                         }, 3)),
+                                        None => None
+                                    }
+                                },
+                                None => None
+                            },
+                        Opcode::DomainFn =>
+                            match bytes.get(i) {
+                                Some(arity) => {
+                                    i += 1;
+
+                                    match bytes.get(i) {
+                                        Some(code_index) => {
+                                            i += 1;
+
+                                            match bytes.get(i) {
+                                                Some(cloverc) => Some((DecodedInstr::DomainFn {
+                                                    arity: *arity as usize,
+                                                    code_index: *code_index as usize,
+                                                    len: *cloverc as usize
+                                                }, 4)),
+                                                None => None
+                                            }
+                                        },
+
                                         None => None
                                     }
                                 },
@@ -491,6 +517,27 @@ impl Bytecode {
                                 if let Some(code) = code.try_cast::<Bytecode>(mt) {
                                     writeln!(fmt, "{}{}: fn {}", indent, i, len)?;
                                     mt.borrow(code).disassemble(mt, fmt, &(indent.to_string() + "  "))?;
+                                } else {
+                                    todo!()
+                                }
+                            } else {
+                                todo!()
+                            }
+                        } else {
+                            todo!()
+                        },
+                    Opcode::DomainFn =>
+                        if let Some((_, arity)) = instrs.next() {
+                            if let Some((_, ci)) = instrs.next() {
+                                if let Some((_, cloverc)) = instrs.next() {
+                                    let code = mt.borrow(self.consts).indexed_field()[*ci as usize];
+
+                                    if let Some(code) = code.try_cast::<Bytecode>(mt) {
+                                        writeln!(fmt, "{}{}: domain-fn {} {}", indent, i, arity, cloverc)?;
+                                        mt.borrow(code).disassemble(mt, fmt, &(indent.to_string() + "  "))?;
+                                    } else {
+                                        todo!()
+                                    }
                                 } else {
                                     todo!()
                                 }
@@ -735,6 +782,19 @@ impl Builder {
 
     pub fn r#fn(&mut self, code: Handle<Bytecode>, len: usize, pos: HandleAny) {
         self.instrs.push(Opcode::r#Fn as u8);
+
+        let i = u8::try_from(self.consts.len()).unwrap();
+        self.consts.push(code.into());
+        self.instrs.push(i);
+
+        self.instrs.push(u8::try_from(len).unwrap());
+        self.positions.push(pos);
+    }
+
+    pub fn domain_fn(&mut self, arity: usize, code: Handle<Bytecode>, len: usize, pos: HandleAny) {
+        self.instrs.push(Opcode::DomainFn as u8);
+
+        self.instrs.push(u8::try_from(arity).unwrap());
 
         let i = u8::try_from(self.consts.len()).unwrap();
         self.consts.push(code.into());

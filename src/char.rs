@@ -1,9 +1,17 @@
 use std::mem::transmute;
 
-use crate::oref::{ORef, Tagged, CHAR_TAG};
+use crate::oref::{Reify, Gc, ORef, Tagged, CHAR_TAG};
+use crate::mutator::Mutator;
+use crate::r#type::Type;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Char(usize);
+
+impl Reify for Char {
+    type Kind = Type;
+
+    fn reify(mt: &Mutator) -> Gc<Self::Kind> { mt.types().char }
+}
 
 impl Tagged for Char {
     const TAG: usize = CHAR_TAG;

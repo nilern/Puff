@@ -76,22 +76,39 @@ pub fn liveness(expr: &mut anf::PosExpr) {
                 live_outs
             }
 
-            r#Fn(ref mut fvs, ref params, _, ref mut body) => {
+            r#Fn(ref mut domain, ref mut fvs, ref params, _, ref mut body) => {
                 let free_vars = fn_clause_free_vars(params, body);
 
                 *fvs = free_vars.clone();
 
                 live_outs.extend(free_vars);
+
+                if let Some(domain) = domain {
+                    live_outs = domain.iter_mut().rev()
+                        .fold(live_outs, |live_outs, param_type| match param_type {
+                            Some(param_type) => live_ins(param_type, live_outs),
+                            None => live_outs
+                        });
+                }
+
                 live_outs
             },
 
             CaseFn(ref mut clauses) => {
-                for (_, ref mut fvs, ref params, _, ref mut body) in clauses.iter_mut() {
+                for (_, ref mut domain, ref mut fvs, ref params, _, ref mut body) in clauses.iter_mut().rev() {
                     let free_vars = fn_clause_free_vars(params, body);
 
                     *fvs = free_vars.clone();
 
                     live_outs.extend(free_vars);
+
+                    if let Some(domain) = domain {
+                        live_outs = domain.iter_mut().rev()
+                            .fold(live_outs, |live_outs, param_type| match param_type {
+                                Some(param_type) => live_ins(param_type, live_outs),
+                                None => live_outs
+                            });
+                    }
                 }
 
                 live_outs

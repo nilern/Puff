@@ -2,7 +2,7 @@ use std::boxed;
 use std::collections::hash_set::HashSet;
 use std::collections::hash_map::HashMap;
 
-use crate::compiler::anf::{self, PosExpr};
+use crate::compiler::anf::{self, PosExpr, Domain};
 use crate::compiler::{Compiler, Id};
 use crate::handle::{HandleAny, Root, root};
 use crate::bool::Bool;
@@ -11,6 +11,16 @@ pub fn mutables(expr: &anf::PosExpr) -> HashSet<Id> {
     use anf::Expr::*;
 
     fn expr_mutables(mutables: &mut HashSet<Id>, expr: &anf::PosExpr) {
+        fn domain_mutables(mutables: &mut HashSet<Id>, domain: &Option<Domain>) {
+            if let Some(domain) = domain {
+                for param_type in domain.iter() {
+                    if let Some(param_type) = param_type {
+                        expr_mutables(mutables, param_type);
+                    }
+                }
+            }
+        }
+
         match expr.expr {
             Define(_, ref val_expr) => expr_mutables(mutables, val_expr),
             GlobalSet(_, ref val_expr) => expr_mutables(mutables, val_expr),
@@ -33,9 +43,15 @@ pub fn mutables(expr: &anf::PosExpr) -> HashSet<Id> {
                 expr_mutables(mutables, val_expr);
             },
 
-            Fn(_, _, _, ref body) => expr_mutables(mutables, body),
+            Fn(ref domain, _, _, _, ref body) => {
+                domain_mutables(mutables, domain);
+                expr_mutables(mutables, body);
+            },
 
-            CaseFn(ref clauses) => for (_, _, _, _, ref body) in clauses { expr_mutables(mutables, body); },
+            CaseFn(ref clauses) => for (_, ref domain, _, _, _, ref body) in clauses {
+                domain_mutables(mutables, domain);
+                expr_mutables(mutables, body);
+            },
 
             Call(ref cargs, _) =>
                 for (_, val_expr) in cargs { expr_mutables(mutables, val_expr); },
@@ -139,6 +155,15 @@ pub fn letrec(cmp: &mut Compiler, mutables: &HashSet<Id>, expr: anf::PosExpr) ->
     }
 
     fn convert(cmp: &mut Compiler, mutables: &HashSet<Id>, env: &mut Env, expr: anf::PosExpr) -> anf::PosExpr {
+        fn convert_domain(cmp: &mut Compiler, mutables: &HashSet<Id>, env: &mut Env, domain: Option<Domain>)
+            -> Option<Domain>
+        {
+            domain.map(|domain|
+                domain.into_iter().map(|param_type|
+                    param_type.map(|param_type| convert(cmp, mutables, env, param_type))
+                ).collect())
+        }
+
         let PosExpr {expr, pos} = expr;
         
         let expr = match expr {
@@ -269,12 +294,14 @@ pub fn letrec(cmp: &mut Compiler, mutables: &HashSet<Id>, expr: anf::PosExpr) ->
                 }
             }
 
-            Fn(fvs, params, varargs, body) =>
-                Fn(fvs, params, varargs, boxed::Box::new(convert(cmp, mutables, env, *body))),
+            Fn(domain, fvs, params, varargs, body) =>
+                Fn(convert_domain(cmp, mutables, env, domain), fvs, params, varargs,
+                    boxed::Box::new(convert(cmp, mutables, env, *body))),
 
             CaseFn(clauses) =>
-                CaseFn(clauses.into_iter().map(|(pos, fvs, params, varargs, body)|
-                    (pos, fvs, params, varargs, convert(cmp, mutables, env, body))
+                CaseFn(clauses.into_iter().map(|(pos, domain, fvs, params, varargs, body)|
+                    (pos, convert_domain(cmp, mutables, env, domain), fvs, params, varargs,
+                        convert(cmp, mutables, env, body))
                 ).collect()),
 
             Call(cargs, live_outs) =>
@@ -315,6 +342,13 @@ pub fn letrec(cmp: &mut Compiler, mutables: &HashSet<Id>, expr: anf::PosExpr) ->
 pub fn convert_mutables(cmp: &mut Compiler, mutables: &HashSet<Id>, expr: anf::PosExpr) -> anf::PosExpr {
     use anf::Expr::*;
     use anf::Triv::*;
+
+    fn convert_domain(cmp: &mut Compiler, mutables: &HashSet<Id>, domain: Option<Domain>) -> Option<Domain> {
+        domain.map(|domain|
+            domain.into_iter().map(|param_type|
+                param_type.map(|param_type| convert_mutables(cmp, mutables, param_type))
+            ).collect())
+    }
 
     fn convert_fn_clause(cmp: &mut Compiler, mutables: &HashSet<Id>, pos: HandleAny, params: anf::Params,
         body: anf::PosExpr
@@ -397,15 +431,17 @@ pub fn convert_mutables(cmp: &mut Compiler, mutables: &HashSet<Id>, expr: anf::P
 
         CheckedBoxGet {guard, r#box} => CheckedBoxGet {guard, r#box},
 
-        Fn(fvs, params, varargs, body) => {
+        Fn(domain, fvs, params, varargs, body) => {
+            let domain = convert_domain(cmp, mutables, domain);
             let (params, body) = convert_fn_clause(cmp, mutables, pos.clone(), params, *body);
-            Fn(fvs, params, varargs, boxed::Box::new(body))
+            Fn(domain, fvs, params, varargs, boxed::Box::new(body))
         },
 
         CaseFn(clauses) =>
-            CaseFn(clauses.into_iter().map(|(pos, fvs, params, varargs, body)| {
+            CaseFn(clauses.into_iter().map(|(pos, domain, fvs, params, varargs, body)| {
+                let domain = convert_domain(cmp, mutables, domain);
                 let (params, body) = convert_fn_clause(cmp, mutables, pos.clone(), params, body);
-                (pos, fvs, params, varargs, body)
+                (pos, domain, fvs, params, varargs, body)
             }).collect()),
 
         Call(cargs, live_outs) =>

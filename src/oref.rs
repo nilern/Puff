@@ -22,9 +22,21 @@ pub trait Tagged {
     const TAG: usize;
 }
 
+pub trait ReifyNontop {
+    fn reify_nontop(mt: &Mutator) -> ORef;
+}
+
+impl<T: Reify> ReifyNontop for T {
+    fn reify_nontop(mt: &Mutator) -> ORef { Self::reify(mt).into() }
+}
+
 // TODO: Enforce `usize` at least 32 bits:
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ORef(usize);
+
+impl ReifyNontop for ORef {
+    fn reify_nontop(mt: &Mutator) -> ORef { Bool::instance(mt, false).into() }
+}
 
 impl ORef {
     pub const TAG_SIZE: usize = 2;

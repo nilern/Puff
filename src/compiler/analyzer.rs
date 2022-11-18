@@ -3,7 +3,7 @@ use std::collections::hash_set::HashSet;
 use std::boxed;
 
 use crate::list::{Pair, EmptyList};
-use crate::compiler::anf::{self, PosExpr};
+use crate::compiler::anf::{self, PosExpr, Domain};
 use crate::heap_obj::Singleton;
 use crate::oref::{ORef, Gc};
 use crate::handle::{Handle, HandleAny, Root, root};
@@ -96,6 +96,7 @@ pub fn analyze(cmp: &mut Compiler, expr: HandleAny) -> anf::PosExpr {
     }
 
     fn analyze_letrec(cmp: &mut Compiler, env: &Rc<Env>, args: HandleAny, pos: HandleAny) -> anf::PosExpr {
+        // TODO: Reject duplicate binding names:
         fn bindings(cmp: &mut Compiler, env: &Rc<Env>, bindings: ORef) -> (Rc<Env>, Vec<(Id, HandleAny)>) {
             fn binding(cmp: &mut Compiler, env: &Rc<Env>, binding: ORef) -> (Rc<Env>, (Id, HandleAny)) {
                 let stx = binding.try_cast::<Syntax>(cmp.mt).unwrap_or_else(|| {
@@ -195,59 +196,111 @@ pub fn analyze(cmp: &mut Compiler, expr: HandleAny) -> anf::PosExpr {
     }
 
     fn analyze_lambda_clause(cmp: &mut Compiler, env: &Rc<Env>, args: HandleAny)
-        -> (HandleAny, HashSet<Id>, Vec<Id>, bool, PosExpr)
+        -> (HandleAny, Option<Domain>, HashSet<Id>, Vec<Id>, bool, PosExpr)
     {
+        fn analyze_typed_param(cmp: &mut Compiler, outer_env: &Rc<Env>, args: ORef) -> (Handle<Symbol>, PosExpr) {
+            let args = args.try_cast::<Pair>(cmp.mt).unwrap_or_else(|| todo!("error"));
+
+            let param = cmp.mt.borrow(args).car().try_cast::<Syntax>(cmp.mt).unwrap_or_else(|| {
+                todo!("error: param not a syntax object")
+            });
+            let param = root!(cmp.mt, cmp.mt.borrow(param).expr.try_cast::<Symbol>(cmp.mt)
+                .unwrap_or_else(|| todo!("error: param.expr not a symbol")));
+
+            let args = root!(cmp.mt, cmp.mt.borrow(args).cdr().try_cast::<Pair>(cmp.mt)
+                .unwrap_or_else(|| todo!()));
+
+            let param_type = root!(cmp.mt, args.car());
+            let param_type = analyze_expr(cmp, outer_env, param_type);
+
+            if args.cdr() != EmptyList::instance(cmp.mt).into() {
+                todo!("error")
+            }
+
+            (param, param_type)
+        }
+
         // TODO: Reject duplicate parameter names:
-        fn analyze_params(cmp: &mut Compiler, env: &Rc<Env>, params: ORef) -> (HandleAny, Rc<Env>, anf::Params, bool) {
+        fn analyze_params(cmp: &mut Compiler, outer_env: &Rc<Env>, params: ORef)
+            -> (HandleAny, Rc<Env>, Option<Domain>, anf::Params, bool)
+        {
             let mut anf_ps = vec![Id::fresh(cmp)]; // Id for "self" closure
-            let mut env = env.clone();
+            let mut env = outer_env.clone();
+            let mut varargs = false;
+            let mut domain = Vec::new();
 
             let params = params.try_cast::<Syntax>(cmp.mt).unwrap_or_else(|| {
-                todo!() // error
+                todo!("error: params not a syntax object")
             });
             let pos = root!(cmp.mt, cmp.mt.borrow(params).pos);
+            let params = cmp.mt.borrow(params).expr;
 
-            if let Some(param) = cmp.mt.borrow(params).expr.try_cast::<Symbol>(cmp.mt) { // (lambda args ...
+            if let Some(param) = params.try_cast::<Symbol>(cmp.mt) { // (lambda args ...
                 let param = root!(cmp.mt, param);
                 let id = Id::src_fresh(cmp, param.clone());
                 anf_ps.push(id);
-
-                return (pos, Rc::new(Env::Binding(id, param, env.clone())), anf_ps, true)
+                env = Rc::new(Env::Binding(id, param, env.clone()));
+                varargs = true;
+                domain.push(None);
             } else { // (lambda (...
-                let mut params = cmp.mt.borrow(params).expr;
+                let mut params = root!(cmp.mt, params);
 
-                while let Some(ps_pair) = params.try_cast::<Pair>(cmp.mt) {
-                    let param = cmp.mt.borrow(ps_pair).car().try_cast::<Syntax>(cmp.mt).unwrap_or_else(|| {
-                        todo!() // error
+                while let Some(ps_pair) = params.clone().try_cast::<Pair>(cmp.mt) {
+                    let car = ps_pair.car().try_cast::<Syntax>(cmp.mt).unwrap_or_else(|| {
+                        todo!("error: param not a syntax object")
                     });
+                    if let Some(car) = cmp.mt.borrow(car).expr.try_cast::<Symbol>(cmp.mt) {
+                        if cmp.mt.borrow(car).name() != ":" {
+                            let param = root!(cmp.mt, car);
+                            let id = Id::src_fresh(cmp, param.clone());
+                            anf_ps.push(id);
+                            env = Rc::new(Env::Binding(id, param, env.clone()));
+                            domain.push(None);
+                        } else {
+                            let (param, param_type) = analyze_typed_param(cmp, outer_env, ps_pair.cdr());
 
-                    if let Some(param) = cmp.mt.borrow(param).expr.try_cast::<Symbol>(cmp.mt) {
-                        let param = root!(cmp.mt, param);
+                            let id = Id::src_fresh(cmp, param.clone());
+                            anf_ps.push(id);
+                            env = Rc::new(Env::Binding(id, param, env.clone()));
+                            varargs = true;
+                            domain.push(Some(param_type));
+
+                            let domain = if domain.iter().any(Option::is_some) { Some(domain) } else { None };
+                            return (pos, env, domain, anf_ps, varargs)
+                        }
+                    } else if let Some(param_pair) = cmp.mt.borrow(car).expr.try_cast::<Pair>(cmp.mt) {
+                        let (param, param_type) = analyze_typed_param (cmp, outer_env, cmp.mt.borrow(param_pair).cdr());
+
                         let id = Id::src_fresh(cmp, param.clone());
                         anf_ps.push(id);
                         env = Rc::new(Env::Binding(id, param, env.clone()));
+                        domain.push(Some(param_type));
                     } else {
-                        todo!()
+                        todo!("error: param not a symbol or pair");
                     }
 
-                    params = cmp.mt.borrow(ps_pair).cdr();
+                    params = root!(cmp.mt, ps_pair.cdr());
                 }
 
-                if params == EmptyList::instance(cmp.mt).into() { // (lambda (arg*) ...
-                    return (pos, env, anf_ps, false)
+                if params.oref() == EmptyList::instance(cmp.mt).into() { // (lambda (arg*) ...
+                    // Done
                 } else if let Some(param) = params.try_cast::<Syntax>(cmp.mt) { // (lambda (arg* . args) ...
-                    if let Some(param) = cmp.mt.borrow(param).expr.try_cast::<Symbol>(cmp.mt) {
-                        let param = root!(cmp.mt, param);
-                        let id = Id::src_fresh(cmp, param.clone());
-                        anf_ps.push(id);
-                        env = Rc::new(Env::Binding(id, param, env.clone()));
+                    let param = root!(cmp.mt, param.expr.try_cast::<Symbol>(cmp.mt).unwrap_or_else(|| {
+                        todo!("error params.expr tail not a list or a symbol")
+                    }));
 
-                        return (pos, env, anf_ps, true)
-                    }
+                    let id = Id::src_fresh(cmp, param.clone());
+                    anf_ps.push(id);
+                    env = Rc::new(Env::Binding(id, param, env.clone()));
+                    varargs = true;
+                    domain.push(None);
+                } else {
+                    todo!("error: params.expr tail not a list or symbol");
                 }
             }
 
-            todo!() // error
+            let domain = if domain.iter().any(Option::is_some) { Some(domain) } else { None };
+            (pos, env, domain, anf_ps, varargs)
         }
 
         let args = args.try_cast::<Pair>(cmp.mt).unwrap_or_else(|| {
@@ -262,18 +315,18 @@ pub fn analyze(cmp: &mut Compiler, expr: HandleAny) -> anf::PosExpr {
             todo!() // error
         }
 
-        let (pos, env, params, varargs) = analyze_params(cmp, env, params);
+        let (pos, env, domain, params, varargs) = analyze_params(cmp, env, params);
         let body = analyze_expr(cmp, &env, body);
 
-        (pos, anf::LiveVars::new(), params, varargs, body)
+        (pos, domain, anf::LiveVars::new(), params, varargs, body)
     }
 
     fn analyze_lambda(cmp: &mut Compiler, env: &Rc<Env>, args: HandleAny, pos: HandleAny) -> anf::PosExpr {
-        let (_, free_vars, params, varargs, body) = analyze_lambda_clause(cmp, env, args);
-        PosExpr {expr: r#Fn(free_vars, params, varargs, boxed::Box::new(body)), pos}
+        let (_, domain, free_vars, params, varargs, body) = analyze_lambda_clause(cmp, env, args);
+        PosExpr {expr: r#Fn(domain, free_vars, params, varargs, boxed::Box::new(body)), pos}
     }
 
-    fn analyze_case_lambda(cmp: &mut Compiler, env: &Rc<Env>, mut args: HandleAny, pos: HandleAny) -> anf::PosExpr {
+     fn analyze_case_lambda(cmp: &mut Compiler, env: &Rc<Env>, mut args: HandleAny, pos: HandleAny) -> anf::PosExpr {
         let mut clauses = Vec::new();
 
         while let Some(args_pair) = args.clone().try_cast::<Pair>(cmp.mt) {
@@ -288,8 +341,8 @@ pub fn analyze(cmp: &mut Compiler, expr: HandleAny) -> anf::PosExpr {
         if args.oref() == EmptyList::instance(cmp.mt).into() {
             match clauses.len() {
                 1 => {
-                    let (_, free_vars, params, varargs, body) = clauses.pop().unwrap();
-                    PosExpr {expr: r#Fn(free_vars, params, varargs, boxed::Box::new(body)), pos}
+                    let (_, domain, free_vars, params, varargs, body) = clauses.pop().unwrap();
+                    PosExpr {expr: r#Fn(domain, free_vars, params, varargs, boxed::Box::new(body)), pos}
                 },
                 _ => PosExpr {expr: CaseFn(clauses), pos}
             }
@@ -479,5 +532,5 @@ pub fn analyze(cmp: &mut Compiler, expr: HandleAny) -> anf::PosExpr {
 
     let body = analyze_toplevel_form(cmp, expr);
     let body_pos = body.pos.clone();
-    PosExpr {expr: r#Fn(anf::LiveVars::new(), vec![Id::fresh(cmp)], false, boxed::Box::new(body)), pos: body_pos}
+    PosExpr {expr: r#Fn(None, anf::LiveVars::new(), vec![Id::fresh(cmp)], false, boxed::Box::new(body)), pos: body_pos}
 }

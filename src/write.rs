@@ -4,7 +4,7 @@ use crate::oref::{ORef, Gc, ORefEnum};
 use crate::heap_obj::Indexed;
 use crate::bytecode::Bytecode;
 use crate::syntax::{Syntax, Pos};
-use crate::closure::Closure;
+use crate::closure::{Closure, TypedClosure};
 use crate::case_fn::CaseFn;
 use crate::native_fn::NativeFn;
 use crate::vector::{Vector, VectorMut};
@@ -117,6 +117,8 @@ impl DisplayWithin for Gc<()> {
         } else if let Some(_) = self.try_cast::<Type>(mt) {
             write!(fmt, "#<type>")
         } else if let Some(_) = self.try_cast::<Closure>(mt) {
+            write!(fmt, "#<procedure @ {:p}>", mt.borrow(*self))
+        } else if let Some(_) = self.try_cast::<TypedClosure>(mt) {
             write!(fmt, "#<procedure @ {:p}>", mt.borrow(*self))
         } else if let Some(_) = self.try_cast::<CaseFn>(mt) {
             write!(fmt, "#<procedure case @ {:p}>", mt.borrow(*self))

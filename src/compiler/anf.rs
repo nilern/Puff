@@ -32,7 +32,7 @@ pub enum Expr {
     BoxGet(Id),
     CheckedBoxGet {guard: Id, r#box: Id},
 
-    r#Fn(LiveVars, Params, bool, Box<PosExpr>),
+    r#Fn(Option<Domain>, LiveVars, Params, bool, Box<PosExpr>),
     CaseFn(Vec<FnClause>),
     Call(Vec<Binding>, LiveVars),
     CallWithValues((Id, Box<PosExpr>), (Id, Box<PosExpr>), LiveVars),
@@ -49,9 +49,11 @@ pub struct PosExpr {
 
 pub type Binding = (Id, PosExpr);
 
+pub type Domain = Vec<Option<PosExpr>>;
+
 pub type Params = Vec<Id>;
 
-type FnClause = (HandleAny, LiveVars, Params, bool, PosExpr);
+type FnClause = (HandleAny, Option<Domain>, LiveVars, Params, bool, PosExpr);
 
 impl PosExpr {
     pub fn to_doc<'a>(&'a self, mt: &'a Mutator, cmp: &Compiler) -> RcDoc<()> { self.expr.to_doc(mt, cmp) }
@@ -152,7 +154,7 @@ impl Expr {
                     .append(RcDoc::line().append(r#box.to_doc(cmp)).nest(2)).append(RcDoc::text(")"))
                     .group(),
 
-            &Fn(_, ref params, varargs, ref body) =>
+            &Fn(ref domain, _, ref params, varargs, ref body) =>
                 RcDoc::text("(lambda")
                     .append(RcDoc::line().append(params_to_doc(params, varargs, cmp))
                         .nest(2))
@@ -228,7 +230,7 @@ fn params_to_doc<'a>(params: &[Id], varargs: bool, cmp: &Compiler) -> RcDoc<'a, 
     RcDoc::text("(").append(doc.group().nest(1)).append(RcDoc::text(")"))
 }
 
-fn clause_to_doc<'a>(&(_, _, ref params, varargs, ref body): &'a FnClause, mt: &'a Mutator, cmp: &Compiler)
+fn clause_to_doc<'a>(&(_, ref domain, _, ref params, varargs, ref body): &'a FnClause, mt: &'a Mutator, cmp: &Compiler)
     -> RcDoc<'a, ()>
 {
     RcDoc::text("(")
