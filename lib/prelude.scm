@@ -73,10 +73,10 @@
 (define null? (lambda (obj) (eq? obj '())))
 
 (define list?
-  (lambda (obj)
-    (if (pair? obj)
-      (list? (cdr obj))
-      (null? obj))))
+  (case-lambda
+    (((: pair <pair>)) (list? (cdr pair)))
+    (((: _ <empty-list>)) #t)
+    ((_) #f)))
 
 (define cons (lambda (car cdr) (make <pair> car cdr)))
 
@@ -265,16 +265,14 @@
 (define make-vector (lambda (k) (make-indexed-zeroed <vector-mut> k)))
 
 (define vector-length
-  (lambda (vector)
-    (if (vector? vector)
-      (indexed-length vector)
-      (error "vector-length: non-vector" vector))))
+  (case-lambda
+    (((: vector <vector>)) (indexed-length vector))
+    (((: vector <vector-mut>)) (indexed-length vector))))
 
 (define vector-ref
-  (lambda (vector k)
-    (if (vector? vector)
-      (indexed-ref vector k)
-      (error "vector-ref: non-vector" vector))))
+  (case-lambda
+    (((: vector <vector>) k) (indexed-ref vector k))
+    (((: vector <vector-mut>) k) (indexed-ref vector k))))
 
 (define vector-set! (lambda ((: vector <vector-mut>) k obj) (indexed-set! vector k obj)))
 
@@ -336,31 +334,22 @@
 (define make-string (lambda (k) (make <string-mut> k k (make-bytevector k))))
 
 (define string-length
-  (lambda (string)
-    (if (instance? <string> string)
-      (field-ref string 0)
-      (if (instance? <string-mut> string)
-        (field-ref string 0)
-        (error "string-length: non-string" string)))))
+  (case-lambda
+    (((: string <string>)) (field-ref string 0))
+    (((: string <string-mut>)) (field-ref string 0))))
 
 (define string-byte-length
-  (lambda (string)
-    (if (instance? <string> string)
-      (indexed-length string)
-      (if (instance? <string-mut> string)
-        (field-ref string 1)
-        (error "string-byte-length: non-string" string)))))
+  (case-lambda
+    (((: string <string>)) (indexed-length string))
+    (((: string <string-mut>)) (field-ref string 1))))
 
 (define string-mut-bytes (lambda ((: string <string-mut>)) (field-ref string 2)))
 
 (define string-ref
   (letrec ((string-immut-ref string-ref))
-    (lambda (string k)
-      (if (instance? <string> string)
-        (string-immut-ref string k)
-        (if (instance? <string-mut> string)
-          (string-mut-ref string k)
-          (error "string-ref: non-string" string))))))
+    (case-lambda
+      (((: string <string>) k) (string-immut-ref string k))
+      (((: string <string-mut>) k) (string-mut-ref string k)))))
 
 (define string-fold-right
   (lambda (proc acc vector)
@@ -409,13 +398,11 @@
           (make <string-mut> (- end start) byte-len bytes))))))
 
 (define string-bytevector-copy!
-  (lambda (bytes at string)
-    (if (instance? <string> string)
-      (indexed-copy! bytes at string 0 (string-byte-length string))
-      (if (instance? <string-mut> string)
-        (letrec ((string-bytes (string-mut-bytes string)))
-          (indexed-copy! bytes at string-bytes 0 (bytevector-length string-bytes)))
-        (error "string-append: non-string" string)))))
+  (case-lambda
+    ((bytes at (: string <string>)) (indexed-copy! bytes at string 0 (string-byte-length string)))
+    ((bytes at (: string <string-mut>))
+     (letrec ((string-bytes (string-mut-bytes string)))
+       (indexed-copy! bytes at string-bytes 0 (bytevector-length string-bytes))))))
 
 (define string-append
   (letrec ((strings-lengths
