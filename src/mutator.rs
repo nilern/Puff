@@ -309,7 +309,6 @@ impl Mutator {
             let bytecode = BootstrapTypeBuilder::<NonIndexedType>::new()
                 .field(any, fixnum, usize_type.into(), false)
                 .field(any, fixnum, bool.into(), false)
-                .field(any, fixnum, any, false)
                 .field(any, fixnum, usize_type.into(), false)
                 .field(any, fixnum, usize_type.into(), false)
                 .field(any, fixnum, vector_of_any.into(), false)
