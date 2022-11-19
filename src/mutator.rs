@@ -418,6 +418,7 @@ impl Mutator {
             let ns = root!(&mut mt, mt.ns.unwrap());
 
             for (name, t) in [("<pair>", root!(&mut mt, Gc::<Type>::from(mt.types.pair))),
+                ("<empty-list>", root!(&mut mt, Gc::<Type>::from(mt.types.empty_list))),
                 ("<vector>", root!(&mut mt, Gc::<Type>::from(mt.types.vector_of_any))),
                 ("<vector-mut>", root!(&mut mt, Gc::<Type>::from(mt.types.vector_mut_of_any))),
                 ("<bytevector-mut>", root!(&mut mt, Gc::<Type>::from(mt.types.vector_mut_of_byte))),
@@ -675,7 +676,7 @@ impl Mutator {
         Ok(())
     }
 
-    fn dispatch(&mut self, argc: usize) -> Option<BasicFn> {
+    fn dispatch(&self, argc: usize) -> Option<BasicFn> {
         fn check_arity(varargs: bool, min_arity: usize, argc: usize) -> bool {
             if !varargs {
                 argc == min_arity
@@ -855,8 +856,14 @@ impl Mutator {
                 unsafe { isize::from(Fixnum::from_oref_unchecked(self.stack.pop().unwrap())) as usize };
 
             let start = self.stack.len() - frame_len;
-            let f = unsafe { self.stack[start].unchecked_cast::<Closure>() };
-            let code = self.borrow(f).code;
+            let f = self.stack[start];
+            let code = if let Some(f) = f.try_cast::<Closure>(self) {
+                self.borrow(f).code
+            } else if let Some(f) = f.try_cast::<TypedClosure>(self) {
+                self.borrow(f).code
+            } else {
+                unreachable!()
+            };
 
             // Jump back:
             self.set_code(code);
