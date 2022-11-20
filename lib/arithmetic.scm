@@ -58,6 +58,14 @@
       (((: a <fixnum>) (: b <flonum>)) (fl>? (fixnum->flonum a) b))
       (((: a <flonum>) (: b <fixnum>)) (fl>? a (fixnum->flonum b))))))
 
+(define >=
+  (comparer
+    (case-lambda
+      (((: a <fixnum>) (: b <fixnum>)) (fx>=? a b))
+      (((: a <flonum>) (: b <flonum>)) (fl>=? a b))
+      (((: a <fixnum>) (: b <flonum>)) (fl>=? (fixnum->flonum a) b))
+      (((: a <flonum>) (: b <fixnum>)) (fl>=? a (fixnum->flonum b))))))
+
 (define <
   (comparer
     (case-lambda
@@ -65,6 +73,14 @@
       (((: a <flonum>) (: b <flonum>)) (fl<? a b))
       (((: a <fixnum>) (: b <flonum>)) (fl<? (fixnum->flonum a) b))
       (((: a <flonum>) (: b <fixnum>)) (fl<? a (fixnum->flonum b))))))
+
+(define <=
+  (comparer
+    (case-lambda
+      (((: a <fixnum>) (: b <fixnum>)) (fx<=? a b))
+      (((: a <flonum>) (: b <flonum>)) (fl<=? a b))
+      (((: a <fixnum>) (: b <flonum>)) (fl<=? (fixnum->flonum a) b))
+      (((: a <flonum>) (: b <fixnum>)) (fl<=? a (fixnum->flonum b))))))
 
 (define + fx+)
 (define - fx-)

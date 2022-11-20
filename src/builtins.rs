@@ -151,9 +151,25 @@ builtin!{
 }
 
 builtin!{
+    fn FX_GE, fx_ge_params, fx_ge(mt, a: Fixnum, b: Fixnum) {
+        let last_index = mt.regs().len() - 1;
+        mt.regs_mut()[last_index] = Bool::instance(mt, a >= b).into();
+        Answer::Ret {retc: 1}
+    }
+}
+
+builtin!{
     fn FX_LT, fx_lt_params, fx_lt(mt, a: Fixnum, b: Fixnum) {
         let last_index = mt.regs().len() - 1;
         mt.regs_mut()[last_index] = Bool::instance(mt, a < b).into();
+        Answer::Ret {retc: 1}
+    }
+}
+
+builtin!{
+    fn FX_LE, fx_le_params, fx_le(mt, a: Fixnum, b: Fixnum) {
+        let last_index = mt.regs().len() - 1;
+        mt.regs_mut()[last_index] = Bool::instance(mt, a <= b).into();
         Answer::Ret {retc: 1}
     }
 }
@@ -167,9 +183,25 @@ builtin!{
 }
 
 builtin!{
+    fn FL_GE, fl_ge_params, fl_ge(mt, a: Flonum, b: Flonum) {
+        let last_index = mt.regs().len() - 1;
+        mt.regs_mut()[last_index] = Bool::instance(mt, a >= b).into();
+        Answer::Ret {retc: 1}
+    }
+}
+
+builtin!{
     fn FL_LT, fl_lt_params, fl_lt(mt, a: Flonum, b: Flonum) {
         let last_index = mt.regs().len() - 1;
         mt.regs_mut()[last_index] = Bool::instance(mt, a < b).into();
+        Answer::Ret {retc: 1}
+    }
+}
+
+builtin!{
+    fn FL_LE, fl_le_params, fl_le(mt, a: Flonum, b: Flonum) {
+        let last_index = mt.regs().len() - 1;
+        mt.regs_mut()[last_index] = Bool::instance(mt, a <= b).into();
         Answer::Ret {retc: 1}
     }
 }
