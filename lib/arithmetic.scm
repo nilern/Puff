@@ -50,6 +50,14 @@
            (compare b cs))
          #f)))))
 
+(define =
+  (comparer
+    (case-lambda
+      (((: a <fixnum>) (: b <fixnum>)) (eq? a b))
+      (((: a <flonum>) (: b <flonum>)) (eq? a b))
+      (((: a <fixnum>) (: b <flonum>)) (eq? (fixnum->flonum a) b))
+      (((: a <flonum>) (: b <fixnum>)) (eq? a (fixnum->flonum b))))))
+
 (define >
   (comparer
     (case-lambda
