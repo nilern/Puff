@@ -1,6 +1,6 @@
 use std::mem::transmute;
 
-use crate::oref::{Reify, Tagged, ORef, Gc, FIXNUM_TAG};
+use crate::oref::{FromORefUnchecked, ReifyNontop, Reify, Tagged, ORef, Gc, FIXNUM_TAG};
 use crate::mutator::Mutator;
 use crate::r#type::Type;
 
@@ -17,12 +17,18 @@ impl Reify for Fixnum {
     fn reify(mt: &Mutator) -> Gc<Self::Kind> { mt.types().fixnum }
 }
 
+impl ReifyNontop for Fixnum {
+    fn reify_nontop(mt: &Mutator) -> ORef { Self::reify(mt).into() }
+}
+
+impl FromORefUnchecked for Fixnum {
+    unsafe fn from_oref_unchecked(oref: ORef) -> Self { transmute(oref) }
+}
+
 impl Fixnum {
     const MIN: isize = -(1 << (ORef::PAYLOAD_BITS - 1));
 
     const MAX: isize = (1 << (ORef::PAYLOAD_BITS - 1)) - 1;
-
-    pub unsafe fn from_oref_unchecked(oref: ORef) -> Self { transmute(oref) }
 
     pub fn checked_add(self, other: Self) -> Option<Self> { self.0.checked_add(other.0).map(Self) }
 

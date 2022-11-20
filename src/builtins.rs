@@ -5,7 +5,7 @@ use std::slice;
 use crate::heap_obj::{Header, Indexed};
 use crate::native_fn::{self, Answer};
 use crate::mutator::Mutator;
-use crate::oref::{ReifyNontop, ORef, Gc};
+use crate::oref::{FromORefUnchecked, ReifyNontop, ORef, Gc};
 use crate::handle::{Handle, Root, root};
 use crate::fixnum::Fixnum;
 use crate::bool::Bool;
@@ -32,14 +32,20 @@ macro_rules! arity {
 
 macro_rules! builtin {
     {fn $name:ident, $make_param_types:ident, $fn_name:ident
-        ($mt:ident $(, $arg_t:ty)*) $body:block
+        ($mt:ident $(, $arg:ident : $arg_t:ty)*) $body:block
     } => {
         fn $make_param_types(mt: &mut Mutator) -> ORef {
             let ts = vec![$(root!(mt, <$arg_t>::reify_nontop(mt))),*];
             Vector::<ORef>::from_handles(mt, &ts).into()
         }
 
-        fn $fn_name($mt: &mut Mutator) -> Answer $body
+        fn $fn_name($mt: &mut Mutator) -> Answer {
+            let mut i = 0;
+            $(i += 1;
+              let $arg = unsafe { <$arg_t>::from_oref_unchecked($mt.regs()[i]) };)*
+
+            $body
+        }
 
         pub const $name: native_fn::Builder = native_fn::Builder {
             min_arity: arity!($mt $(, $arg_t)*), varargs: false, make_param_types: $make_param_types,
@@ -48,17 +54,23 @@ macro_rules! builtin {
     };
 
     {fn $name:ident, $make_param_types:ident, $fn_name:ident
-        ($mt:ident $(, $arg_t:ty)*, ...) $body:block
+        ($mt:ident $(, $arg:ident : $arg_t:ty)*; $vararg_t:ty, ...) $body:block
     } => {
         fn $make_param_types(mt: &mut Mutator) -> ORef {
-            let ts = vec![$(root!(mt, <$arg_t>::reify_nontop(mt))),*];
+            let ts = vec![$(root!(mt, <$arg_t>::reify_nontop(mt)),)* root!(mt, <$vararg_t>::reify_nontop(mt))];
             Vector::<ORef>::from_handles(mt, &ts).into()
         }
 
-        fn $fn_name($mt: &mut Mutator) -> Answer $body
+        fn $fn_name($mt: &mut Mutator) -> Answer {
+            let mut i = 0;
+            $(i += 1;
+              let $arg = unsafe { <$arg_t>::from_oref_unchecked($mt.regs()[i]) };)*
+
+            $body
+        }
 
         pub const $name: native_fn::Builder = native_fn::Builder {
-            min_arity: arity!($mt $(, $arg_t)*) - 1, varargs: true, make_param_types: $make_param_types,
+            min_arity: arity!($mt $(, $arg_t)*, $vararg_t) - 1, varargs: true, make_param_types: $make_param_types,
             code: $fn_name
         };
     };
@@ -83,10 +95,7 @@ pub const EQ: native_fn::Builder = native_fn::Builder {
 };
 
 builtin!{
-    fn FX_ADD, fx_add_params, fx_add(mt, Fixnum, Fixnum) {
-        let a = unsafe { Fixnum::from_oref_unchecked(mt.regs()[1]) };
-        let b = unsafe { Fixnum::from_oref_unchecked(mt.regs()[2]) };
-
+    fn FX_ADD, fx_add_params, fx_add(mt, a: Fixnum, b: Fixnum) {
         let res = match a.checked_add(b) {
             Some(res) => res,
             None => todo!("overflow")
@@ -99,10 +108,7 @@ builtin!{
 }
 
 builtin!{
-    fn FX_SUB, fx_sub_params, fx_sub(mt, Fixnum, Fixnum) {
-        let a = unsafe { Fixnum::from_oref_unchecked(mt.regs()[1]) };
-        let b = unsafe { Fixnum::from_oref_unchecked(mt.regs()[2]) };
-
+    fn FX_SUB, fx_sub_params, fx_sub(mt, a: Fixnum, b: Fixnum) {
         let res = match a.checked_sub(b) {
             Some(res) => res,
             None => todo!("overflow")
@@ -115,10 +121,7 @@ builtin!{
 }
 
 builtin!{
-    fn FX_MUL, fx_mul_params, fx_mul(mt, Fixnum, Fixnum) {
-        let a = unsafe { Fixnum::from_oref_unchecked(mt.regs()[1]) };
-        let b = unsafe { Fixnum::from_oref_unchecked(mt.regs()[2]) };
-
+    fn FX_MUL, fx_mul_params, fx_mul(mt, a: Fixnum, b: Fixnum) {
         let res = match a.checked_mul(b) {
             Some(res) => res,
             None => todo!("overflow")
@@ -131,10 +134,7 @@ builtin!{
 }
 
 builtin!{
-    fn FX_GT, fx_gt_params, fx_gt(mt, Fixnum, Fixnum) {
-        let a = unsafe { Fixnum::from_oref_unchecked(mt.regs()[1]) };
-        let b = unsafe { Fixnum::from_oref_unchecked(mt.regs()[2]) };
-
+    fn FX_GT, fx_gt_params, fx_gt(mt, a: Fixnum, b: Fixnum) {
         let last_index = mt.regs().len() - 1;
         mt.regs_mut()[last_index] = Bool::instance(mt, a > b).into();
         Answer::Ret {retc: 1}
@@ -142,8 +142,8 @@ builtin!{
 }
 
 builtin!{
-    fn CHAR_LENGTH_UTF8, char_length_utf8_params, char_length_utf8(mt, Char) {
-        let c = char::from(unsafe { Char::from_oref_unchecked(mt.regs()[1]) });
+    fn CHAR_LENGTH_UTF8, char_length_utf8_params, char_length_utf8(mt, c: Char) {
+        let c = char::from(c);
 
         let last_index = mt.regs().len() - 1;
         mt.regs_mut()[last_index] = Fixnum::from(c.len_utf8() as u8).into();
@@ -152,10 +152,7 @@ builtin!{
 }
 
 builtin!{
-    fn IS_INSTANCE, is_instance_params, is_instance(mt, Type, ORef) {
-        let t = unsafe { mt.regs()[1].unchecked_cast::<Type>() };
-        let v = mt.regs()[2];
-
+    fn IS_INSTANCE, is_instance_params, is_instance(mt, t: Gc<Type>, v: ORef) {
         let res = v.instance_of_dyn(mt, t);
 
         let last_index = mt.regs().len() - 1;
@@ -165,9 +162,7 @@ builtin!{
 }
 
 builtin!{
-    fn MAKE_ZEROED, make_zeroed_params, make_zeroed(mt, Type) {
-        let t = unsafe { mt.regs()[1].unchecked_cast::<Type>() };
-
+    fn MAKE_ZEROED, make_zeroed_params, make_zeroed(mt, t: Gc<Type>) {
         let res = if t.oref_zeroable(mt) {
             ORef::from(Fixnum::from(0u8))
         } else if mt.borrow(t).zeroable {
@@ -186,9 +181,8 @@ builtin!{
 }
 
 builtin!{
-    fn MAKE_INDEXED_ZEROED, make_indexed_zeroed_params, make_indexed_zeroed(mt, Type, Fixnum) {
-        let t = unsafe { mt.regs()[1].unchecked_cast::<Type>() };
-        let len = isize::from(unsafe { Fixnum::from_oref_unchecked(mt.regs()[2]) });
+    fn MAKE_INDEXED_ZEROED, make_indexed_zeroed_params, make_indexed_zeroed(mt, t: Gc<Type>, len: Fixnum) {
+        let len = isize::from(len);
         let len = if len >= 0 {
             len as usize
         } else {
@@ -213,8 +207,7 @@ builtin!{
 }
 
 builtin!{
-    fn MAKE, make_params, make(mt, Type, ORef, ...) {
-        let t = unsafe { mt.regs()[1].unchecked_cast::<Type>() };
+    fn MAKE, make_params, make(mt, t: Gc<Type>; ORef, ...) {
         if mt.borrow(t).is_bits {
             todo!("error: bits type");
         }
@@ -294,11 +287,11 @@ builtin!{
 }
 
 builtin!{
-    fn FIELD_REF, field_ref_params, field_ref(mt, ORef, Fixnum) {
-        let obj = Gc::<()>::try_from(mt.regs()[1]).unwrap_or_else(|_| {
+    fn FIELD_REF, field_ref_params, field_ref(mt, obj: ORef, index: Fixnum) {
+        let obj = Gc::<()>::try_from(obj).unwrap_or_else(|_| {
             todo!() // error
         });
-        let index = isize::from(unsafe { Fixnum::from_oref_unchecked(mt.regs()[2]) });
+        let index = isize::from(index);
         let index = if index >= 0 {
             index as usize
         } else {
@@ -328,17 +321,16 @@ builtin!{
 }
 
 builtin!{
-    fn FIELD_SET, field_set_params, field_set(mt, ORef, Fixnum, ORef) {
-        let obj = Gc::<()>::try_from(mt.regs()[1]).unwrap_or_else(|_| {
+    fn FIELD_SET, field_set_params, field_set(mt, obj: ORef, index: Fixnum, v: ORef) {
+        let obj = Gc::<()>::try_from(obj).unwrap_or_else(|_| {
             todo!() // error
         });
-        let index = isize::from(unsafe { Fixnum::from_oref_unchecked(mt.regs()[2]) });
+        let index = isize::from(index);
         let index = if index >= 0 {
             index as usize
         } else {
             todo!() // error
         };
-        let v = mt.regs()[3];
 
         let t = mt.borrow(obj.r#type());
 
@@ -389,11 +381,11 @@ pub const INDEXED_LENGTH: native_fn::Builder = native_fn::Builder {
 };
 
 builtin!{
-    fn INDEXED_REF, indexed_ref_params, indexed_ref(mt, ORef, Fixnum) {
-        let obj = Gc::<()>::try_from(mt.regs()[1]).unwrap_or_else(|_| {
+    fn INDEXED_REF, indexed_ref_params, indexed_ref(mt, obj: ORef, index: Fixnum) {
+        let obj = Gc::<()>::try_from(obj).unwrap_or_else(|_| {
             todo!() // error
         });
-        let index = isize::from(unsafe { Fixnum::from_oref_unchecked(mt.regs()[2]) });
+        let index = isize::from(index);
         let index = if index >= 0 {
             index as usize
         } else {
@@ -425,17 +417,16 @@ builtin!{
 }
 
 builtin!{
-    fn INDEXED_SET, indexed_set_params, indexed_set(mt, ORef, Fixnum, ORef) {
-        let obj = Gc::<()>::try_from(mt.regs()[1]).unwrap_or_else(|_| {
+    fn INDEXED_SET, indexed_set_params, indexed_set(mt, obj: ORef, index: Fixnum, v: ORef) {
+        let obj = Gc::<()>::try_from(obj).unwrap_or_else(|_| {
             todo!() // error
         });
-        let index = isize::from(unsafe { Fixnum::from_oref_unchecked(mt.regs()[2]) });
+        let index = isize::from(index);
         let index = if index >= 0 {
             index as usize
         } else {
             todo!() // error
         };
-        let v = mt.regs()[3];
 
         let t = mt.borrow(obj.r#type());
 
@@ -464,8 +455,10 @@ builtin!{
 }
 
 builtin!{
-    fn INDEXED_COPY, indexed_copy_params, indexed_copy(mt, ORef, Fixnum, ORef, Fixnum, Fixnum) {
-        let to = Gc::<()>::try_from(mt.regs()[1]).unwrap_or_else(|()| {
+    fn INDEXED_COPY, indexed_copy_params, indexed_copy(mt, to: ORef, at: Fixnum, from: ORef, start: Fixnum,
+        end: Fixnum
+    ) {
+        let to = Gc::<()>::try_from(to).unwrap_or_else(|()| {
             todo!("to not a heap object");
         });
         let to_type = mt.borrow(to.r#type());
@@ -474,11 +467,11 @@ builtin!{
         }
         let to_len = unsafe { *((to.as_ptr() as *const Header).offset(-1) as *const usize).offset(-1) };
 
-        let at = isize::from(unsafe { Fixnum::from_oref_unchecked(mt.regs()[2]) });
+        let at = isize::from(at);
         let at = if at >= 0 { at as usize } else { todo!("negative at"); };
         if at >= to_len { todo!("at out of bounds"); }
 
-        let from = Gc::<()>::try_from(mt.regs()[3]).unwrap_or_else(|()| {
+        let from = Gc::<()>::try_from(from).unwrap_or_else(|()| {
             todo!("from not a heap object");
         });
         let from_type = mt.borrow(from.r#type());
@@ -487,11 +480,11 @@ builtin!{
         }
         let from_len = unsafe { *((from.as_ptr() as *const Header).offset(-1) as *const usize).offset(-1) };
 
-        let start = isize::from(unsafe { Fixnum::from_oref_unchecked(mt.regs()[4]) });
+        let start = isize::from(start);
         let start = if start >= 0 { start as usize } else { todo!("negative start"); };
         if start >= from_len { todo!("start out of bounds"); }
 
-        let end = isize::from(unsafe { Fixnum::from_oref_unchecked(mt.regs()[5]) });
+        let end = isize::from(end);
         let end = if end >= 0 { end as usize } else { todo!("negative end"); };
         if end > from_len { todo!("end out of bounds"); }
 
@@ -553,8 +546,10 @@ pub const INDEXED_FILL: native_fn::Builder = native_fn::Builder {
 };
 
 builtin!{
-    fn INDEXED_CHAR_UTF8_SET, indexed_char_utf8_set_params, indexed_char_utf8_set(mt, ORef, Fixnum, Char) {
-        let bytes = Gc::<()>::try_from(mt.regs()[1]).unwrap_or_else(|()| {
+    fn INDEXED_CHAR_UTF8_SET, indexed_char_utf8_set_params, indexed_char_utf8_set(mt, bytes: ORef, at: Fixnum,
+        c: Char
+    ) {
+        let bytes = Gc::<()>::try_from(bytes).unwrap_or_else(|()| {
             todo!("not a heap object");
         });
         let bytes_type = mt.borrow(bytes.r#type());
@@ -569,12 +564,12 @@ builtin!{
             todo!("indexed field not bytes")
         }
 
-        let at = isize::from(unsafe { Fixnum::from_oref_unchecked(mt.regs()[2]) });
+        let at = isize::from(at);
         let at = if at >= 0 { at as usize } else { todo!("negative at") };
         let bytes_length = unsafe { *((bytes.as_ptr() as *const Header).offset(-1) as *const usize).offset(-1) };
         if at >= bytes_length { todo!("at out of bounds"); }
 
-        let c = char::from(unsafe { Char::from_oref_unchecked(mt.regs()[3]) });
+        let c = char::from(c);
         let c_len = c.len_utf8();
         if at + c_len > bytes_length { todo!("char does not fit"); }
 
@@ -589,7 +584,7 @@ builtin!{
 
 
 builtin!{
-    fn STRING, string_params, string(mt, Char, ...) {
+    fn STRING, string_params, string(mt; Char, ...) {
         let char_len = mt.regs().len() - 1;
         let mut byte_len = 0;
         for &c in &mt.regs().as_slice()[1..] {
@@ -617,9 +612,8 @@ builtin!{
 }
 
 builtin!{
-    fn STRING_REF, string_ref_params, string_ref(mt, String, Fixnum) {
-        let s = unsafe { mt.regs()[1].unchecked_cast::<String>() };
-        let i = isize::from(unsafe { Fixnum::from_oref_unchecked(mt.regs()[2]) });
+    fn STRING_REF, string_ref_params, string_ref(mt, s: Gc<String>, i: Fixnum) {
+        let i = isize::from(i);
         let i = if i >= 0 {
             i as usize
         } else {
@@ -637,9 +631,8 @@ builtin!{
 }
 
 builtin!{
-    fn STRING_MUT_REF, string_mut_ref_params, string_mut_ref(mt, StringMut, Fixnum) {
-        let s = unsafe { mt.regs()[1].unchecked_cast::<StringMut>() };
-        let i = isize::from(unsafe { Fixnum::from_oref_unchecked(mt.regs()[2]) });
+    fn STRING_MUT_REF, string_mut_ref_params, string_mut_ref(mt, s: Gc<StringMut>, i: Fixnum) {
+        let i = isize::from(i);
         let i = if i >= 0 {
             i as usize
         } else {
@@ -657,15 +650,14 @@ builtin!{
 }
 
 builtin!{
-    fn STRING_SET, string_set_params, string_set(mt, StringMut, Fixnum, Char) {
-        let s = unsafe { mt.regs()[1].unchecked_cast::<StringMut>() };
-        let i = isize::from(unsafe { Fixnum::from_oref_unchecked(mt.regs()[2]) });
+    fn STRING_SET, string_set_params, string_set(mt, s: Gc<StringMut>, i: Fixnum, c: Char) {
+        let i = isize::from(i);
         let i = if i >= 0 {
             i as usize
         } else {
             todo!("negative index");
         };
-        let c = char::from(unsafe { Char::from_oref_unchecked(mt.regs()[3]) });
+        let c = char::from(c);
 
         root!(mt, s).borrow().set_nth(mt, i, c).unwrap_or_else(|_| {
             todo!("out of bounds");
@@ -676,9 +668,9 @@ builtin!{
 }
 
 builtin!{
-    fn STRING_FILL, string_fill_params, string_fill(mt, StringMut, Char) {
-        let s = root!(mt, unsafe { mt.regs()[1].unchecked_cast::<StringMut>() });
-        let c = char::from(unsafe { Char::from_oref_unchecked(mt.regs()[2]) });
+    fn STRING_FILL, string_fill_params, string_fill(mt, s: Gc<StringMut>, c: Char) {
+        let s = root!(mt, s);
+        let c = char::from(c);
 
         let mut char_bytes = [0; 4];
         let char_bytes = c.encode_utf8(&mut char_bytes).as_bytes();
@@ -711,8 +703,8 @@ builtin!{
 }
 
 builtin!{
-    fn EVAL_SYNTAX, eval_syntax_params, eval_syntax(mt, Syntax) {
-        let expr = root!(mt, mt.regs()[mt.regs().len() - 1]);
+    fn EVAL_SYNTAX, eval_syntax_params, eval_syntax(mt, expr: Gc<Syntax>) {
+        let expr = root!(mt, ORef::from(expr));
 
         if mt.cfg().debug {
             println!("{}", expr.oref().within(&mt));
@@ -743,8 +735,8 @@ builtin!{
 }
 
 builtin!{
-    fn LOAD, load_params, load(mt, String) {
-        let filename = root!(mt, unsafe { mt.regs()[mt.regs().len() - 1].unchecked_cast::<String>() });
+    fn LOAD, load_params, load(mt, filename: Gc<String>) {
+        let filename = root!(mt, filename);
         let s = fs::read_to_string(filename.as_str()).unwrap_or_else(|_| {
             todo!()
         });
@@ -820,7 +812,7 @@ pub const VALUES: native_fn::Builder = native_fn::Builder {
 };
 
 builtin!{
-    fn CALL_CC, call_cc_params, call_cc(mt, ORef) {
+    fn CALL_CC, call_cc_params, call_cc(mt, _f: ORef) {
         mt.regs_mut()[0] = mt.regs()[1];
         mt.regs_mut()[1] = Continuation::current(mt).into();
 
@@ -829,9 +821,7 @@ builtin!{
 }
 
 builtin!{
-    fn CONTINUE, continue_params, r#continue(mt, Continuation, ORef, ...) {
-        let k = unsafe { mt.regs()[1].unchecked_cast::<Continuation>() };
-
+    fn CONTINUE, continue_params, r#continue(mt, k: Gc<Continuation>; ORef, ...) {
         mt.reinstate_continuation(k);
 
         Answer::Ret {retc: mt.regs().len() - 2}
@@ -839,10 +829,8 @@ builtin!{
 }
 
 builtin!{
-    fn OPEN_FILE, open_file_params, open_file(mt, String, Fixnum) {
-        let filename = unsafe { root!(mt, mt.regs()[1].unchecked_cast::<String>()) };
-        let oflag = unsafe { Fixnum::from_oref_unchecked(mt.regs()[2]) };
-
+    fn OPEN_FILE, open_file_params, open_file(mt, filename: Gc<String>, oflag: Fixnum) {
+        let filename = root!(mt, filename);
         let port = Port::open(mt, filename.borrow(), oflag);
 
         let last_index = mt.regs().len() - 1;
@@ -852,9 +840,7 @@ builtin!{
 }
 
 builtin!{
-    fn CLOSE_PORT, close_port_params, close_port(mt, Port) {
-        let port = unsafe { mt.regs()[1].unchecked_cast::<Port>() };
-
+    fn CLOSE_PORT, close_port_params, close_port(mt, port: Gc<Port>) {
         mt.borrow(port).close();
 
         Answer::Ret {retc: 1} // HACK: Happens to return `port`    
@@ -862,9 +848,7 @@ builtin!{
 }
 
 builtin! {
-    fn READ_CHAR, read_char_params, read_char(mt, Port) {
-        let port = unsafe { mt.regs()[1].unchecked_cast::<Port>() };
-
+    fn READ_CHAR, read_char_params, read_char(mt, port: Gc<Port>) {
         let res = match mt.borrow(port).read_char() {
             Some(c) => ORef::from(Char::from(c)),
             None => ORef::from(Eof::instance(mt))
@@ -877,9 +861,7 @@ builtin! {
 }
 
 builtin! {
-    fn PEEK_CHAR, peek_char_params, peek_char(mt, Port) {
-        let port = unsafe { mt.regs()[1].unchecked_cast::<Port>() };
-
+    fn PEEK_CHAR, peek_char_params, peek_char(mt, port: Gc<Port>) {
         let res = match mt.borrow(port).peek_char() {
             Some(c) => ORef::from(Char::from(c)),
             None => ORef::from(Eof::instance(mt))
@@ -892,10 +874,7 @@ builtin! {
 }
 
 builtin! {
-    fn WRITE_CHAR, write_char_params, write_char(mt, Char, Port) {
-        let c = unsafe { Char::from_oref_unchecked(mt.regs()[1]) };
-        let port = unsafe { mt.regs()[2].unchecked_cast::<Port>() };
-
+    fn WRITE_CHAR, write_char_params, write_char(mt, c: Char, port: Gc<Port>) {
         mt.borrow(port).write_char(char::from(c));
 
         Answer::Ret {retc: 1} // HACK: happens to return `port`

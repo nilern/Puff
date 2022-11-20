@@ -4,7 +4,7 @@ use std::alloc::Layout;
 use std::slice;
 
 use crate::heap::{self, Heap};
-use crate::oref::{ORef, Gc};
+use crate::oref::{FromORefUnchecked, ORef, Gc};
 use crate::r#type::{Type, Field, IndexedType, NonIndexedType, BitsType, BootstrapTypeBuilder};
 use crate::symbol::{Symbol, SymbolTable};
 use crate::heap_obj::{NonIndexed, Indexed, Singleton, Header, min_size_of_indexed,

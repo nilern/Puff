@@ -26,8 +26,12 @@ pub trait ReifyNontop {
     fn reify_nontop(mt: &Mutator) -> ORef;
 }
 
-impl<T: Reify> ReifyNontop for T {
-    fn reify_nontop(mt: &Mutator) -> ORef { Self::reify(mt).into() }
+impl<T: Reify> ReifyNontop for Gc<T> {
+    fn reify_nontop(mt: &Mutator) -> ORef { T::reify(mt).into() }
+}
+
+pub trait FromORefUnchecked {
+    unsafe fn from_oref_unchecked(oref: ORef) -> Self;
 }
 
 // TODO: Enforce `usize` at least 32 bits:
@@ -36,6 +40,10 @@ pub struct ORef(usize);
 
 impl ReifyNontop for ORef {
     fn reify_nontop(mt: &Mutator) -> ORef { Bool::instance(mt, false).into() }
+}
+
+impl FromORefUnchecked for ORef {
+    unsafe fn from_oref_unchecked(oref: ORef) -> Self { oref }
 }
 
 impl ORef {
@@ -176,6 +184,10 @@ impl<T> From<Gc<T>> for ORef {
     fn from(obj: Gc<T>) -> Self { Self(obj.oref) }
 }
 
+impl<T> FromORefUnchecked for Gc<T> {
+    unsafe fn from_oref_unchecked(oref: ORef) -> Self { Gc {oref: oref.0, phantom: PhantomData::default()} }
+}
+
 impl TryFrom<ORef> for Gc<()> {
     type Error = ();
 
@@ -189,8 +201,6 @@ impl TryFrom<ORef> for Gc<()> {
 }
 
 impl<T> Gc<T> {
-    unsafe fn from_oref_unchecked(oref: ORef) -> Self { Gc {oref: oref.0, phantom: PhantomData::default()} }
-
     pub unsafe fn new_unchecked(nptr: NonNull<T>) -> Self {
         Gc {
             oref: (nptr.as_ptr() as usize) | Self::TAG,

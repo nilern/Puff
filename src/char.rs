@@ -1,6 +1,6 @@
 use std::mem::transmute;
 
-use crate::oref::{Reify, Gc, ORef, Tagged, CHAR_TAG};
+use crate::oref::{FromORefUnchecked, Reify, ReifyNontop, Gc, ORef, Tagged, CHAR_TAG};
 use crate::mutator::Mutator;
 use crate::r#type::Type;
 
@@ -11,6 +11,10 @@ impl Reify for Char {
     type Kind = Type;
 
     fn reify(mt: &Mutator) -> Gc<Self::Kind> { mt.types().char }
+}
+
+impl ReifyNontop for Char {
+    fn reify_nontop(mt: &Mutator) -> ORef { Self::reify(mt).into() }
 }
 
 impl Tagged for Char {
@@ -44,8 +48,8 @@ impl From<Char> for char {
     }
 }
 
-impl Char {
-    pub unsafe fn from_oref_unchecked(oref: ORef) -> Self { transmute(oref) }
+impl FromORefUnchecked for Char {
+    unsafe fn from_oref_unchecked(oref: ORef) -> Self { transmute(oref) }
 }
 
 #[cfg(test)]

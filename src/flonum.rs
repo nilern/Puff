@@ -1,6 +1,6 @@
 use std::mem::transmute;
 
-use crate::oref::{ORef, Tagged, FLONUM_TAG};
+use crate::oref::{FromORefUnchecked, ORef, Tagged, FLONUM_TAG};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Flonum(usize);
@@ -26,8 +26,8 @@ impl From<Flonum> for f64 {
     }
 }
 
-impl Flonum {
-    pub unsafe fn from_oref_unchecked(oref: ORef) -> Self { transmute(oref) }
+impl FromORefUnchecked for Flonum {
+    unsafe fn from_oref_unchecked(oref: ORef) -> Self { transmute(oref) }
 }
 
 #[cfg(test)]
