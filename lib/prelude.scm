@@ -1,3 +1,5 @@
+(load "lib/arithmetic.scm")
+
 (define call-with-values (lambda (producer consumer) (call-with-values* producer consumer)))
 
 (define winders '())
@@ -57,14 +59,6 @@
                             (set! winders (cdr winders))
                             (out)
                             (apply values vs)))))))
-
-(define + fx+)
-(define - fx-)
-(define * fx*)
-
-(define > fx>)
-
-(define zero? (lambda (n) (eq? n 0)))
 
 (define not (lambda (obj) (if obj #f #t)))
 
