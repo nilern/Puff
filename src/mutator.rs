@@ -416,7 +416,9 @@ impl Mutator {
 
             let ns = root!(&mut mt, mt.ns.unwrap());
 
-            for (name, t) in [("<pair>", root!(&mut mt, Gc::<Type>::from(mt.types.pair))),
+            for (name, t) in [("<fixnum>", root!(&mut mt, Gc::<Type>::from(mt.types.fixnum))),
+                ("<flonum>", root!(&mut mt, Gc::<Type>::from(mt.types.flonum))),
+                ("<pair>", root!(&mut mt, Gc::<Type>::from(mt.types.pair))),
                 ("<empty-list>", root!(&mut mt, Gc::<Type>::from(mt.types.empty_list))),
                 ("<vector>", root!(&mut mt, Gc::<Type>::from(mt.types.vector_of_any))),
                 ("<vector-mut>", root!(&mut mt, Gc::<Type>::from(mt.types.vector_mut_of_any))),
