@@ -151,9 +151,25 @@ builtin!{
 }
 
 builtin!{
+    fn FX_LT, fx_lt_params, fx_lt(mt, a: Fixnum, b: Fixnum) {
+        let last_index = mt.regs().len() - 1;
+        mt.regs_mut()[last_index] = Bool::instance(mt, a < b).into();
+        Answer::Ret {retc: 1}
+    }
+}
+
+builtin!{
     fn FL_GT, fl_gt_params, fl_gt(mt, a: Flonum, b: Flonum) {
         let last_index = mt.regs().len() - 1;
         mt.regs_mut()[last_index] = Bool::instance(mt, a > b).into();
+        Answer::Ret {retc: 1}
+    }
+}
+
+builtin!{
+    fn FL_LT, fl_lt_params, fl_lt(mt, a: Flonum, b: Flonum) {
+        let last_index = mt.regs().len() - 1;
+        mt.regs_mut()[last_index] = Bool::instance(mt, a < b).into();
         Answer::Ret {retc: 1}
     }
 }
