@@ -94,4 +94,4 @@
 (define - fx-)
 (define * fx*)
 
-(define zero? (lambda (n) (eq? n 0)))
+(define zero? (lambda (n) (= n 0)))
