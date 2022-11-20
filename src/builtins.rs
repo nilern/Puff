@@ -8,6 +8,7 @@ use crate::mutator::Mutator;
 use crate::oref::{FromORefUnchecked, ReifyNontop, ORef, Gc};
 use crate::handle::{Handle, Root, root};
 use crate::fixnum::Fixnum;
+use crate::flonum::Flonum;
 use crate::bool::Bool;
 use crate::string::{String, StringMut};
 use crate::char::Char;
@@ -93,6 +94,14 @@ pub const EQ: native_fn::Builder = native_fn::Builder {
     min_arity: 3, varargs: false, make_param_types: any_param_types,
     code: eq
 };
+
+builtin!{
+    fn FIXNUM_TO_FLONUM, fixnum_to_flonum_params, fixnum_to_flonum(mt, n: Fixnum) {
+        let last_index = mt.regs().len() - 1;
+        mt.regs_mut()[last_index] = Flonum::from(n).into();
+        Answer::Ret {retc: 1}
+    }
+}
 
 builtin!{
     fn FX_ADD, fx_add_params, fx_add(mt, a: Fixnum, b: Fixnum) {
