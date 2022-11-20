@@ -151,6 +151,14 @@ builtin!{
 }
 
 builtin!{
+    fn FL_GT, fl_gt_params, fl_gt(mt, a: Flonum, b: Flonum) {
+        let last_index = mt.regs().len() - 1;
+        mt.regs_mut()[last_index] = Bool::instance(mt, a > b).into();
+        Answer::Ret {retc: 1}
+    }
+}
+
+builtin!{
     fn CHAR_LENGTH_UTF8, char_length_utf8_params, char_length_utf8(mt, c: Char) {
         let c = char::from(c);
 

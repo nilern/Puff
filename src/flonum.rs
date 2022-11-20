@@ -1,13 +1,26 @@
 use std::mem::transmute;
+use std::cmp::Ordering;
 
-use crate::oref::{FromORefUnchecked, ORef, Tagged, FLONUM_TAG};
+use crate::oref::{Reify, ReifyNontop, FromORefUnchecked, Gc, ORef, Tagged, FLONUM_TAG};
 use crate::fixnum::Fixnum;
+use crate::mutator::Mutator;
+use crate::r#type::Type;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Flonum(usize);
 
 impl Tagged for Flonum {
     const TAG: usize = FLONUM_TAG;
+}
+
+impl Reify for Flonum {
+    type Kind = Type;
+
+    fn reify(mt: &Mutator) -> Gc<Self::Kind> { mt.types().flonum }
+}
+
+impl ReifyNontop for Flonum {
+    fn reify_nontop(mt: &Mutator) -> ORef { Self::reify(mt).into() }
 }
 
 impl From<Flonum> for ORef {
@@ -33,6 +46,10 @@ impl From<Fixnum> for Flonum {
 
 impl FromORefUnchecked for Flonum {
     unsafe fn from_oref_unchecked(oref: ORef) -> Self { transmute(oref) }
+}
+
+impl PartialOrd for Flonum {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> { f64::from(*self).partial_cmp(&f64::from(*other)) }
 }
 
 #[cfg(test)]
