@@ -1,5 +1,6 @@
 use std::rc::Rc;
 use std::collections::hash_set::HashSet;
+use std::collections::hash_map::HashMap;
 use std::boxed;
 
 use crate::list::{Pair, EmptyList};
@@ -10,29 +11,44 @@ use crate::handle::{Handle, HandleAny, Root, root};
 use crate::symbol::Symbol;
 use crate::compiler::{Compiler, Id};
 use crate::syntax::Syntax;
+use crate::mutator::Mutator;
 
 pub fn analyze(cmp: &mut Compiler, expr: HandleAny) -> anf::PosExpr {
     use anf::Expr::*;
     use anf::Triv::*;
 
-    enum Env {
-        Binding(Id, Handle<Symbol>, Rc<Env>),
-        Empty
+    type UnitToplevel = HashMap<String, Handle<Symbol>>; // OPTIMIZE: hash set of `Handle<Symbol>` somehow
+
+    enum Binding {
+        Local(Id),
+        UnitGlobal,
+        OldGlobal
     }
 
-    impl Env {
-        fn get(env: &Rc<Env>, name: Gc<Symbol>) -> Option<Id> {
-            let mut env = env.clone();
-            loop {
-                match &*env {
-                    &Self::Binding(id, ref bname, ref parent) =>
-                        if bname.oref() == name {
-                            return Some(id);
-                        } else {
-                            env = parent.clone();
-                        },
-                    &Self::Empty => return None
-                }
+    enum Env {
+        Binding(Id, Handle<Symbol>, Rc<Env>),
+        UnitToplevel(UnitToplevel)
+    }
+
+    fn binding(mt: &mut Mutator, env: &Rc<Env>, name: Gc<Symbol>) -> Option<Binding> {
+        let mut env = env.clone();
+        loop {
+            match &*env {
+                &Env::Binding(id, ref bname, ref parent) =>
+                    if bname.oref() == name {
+                        return Some(Binding::Local(id));
+                    } else {
+                        env = parent.clone();
+                    },
+
+                &Env::UnitToplevel(ref unit_toplevel) =>
+                    return if unit_toplevel.contains_key(mt.borrow(name).name()) {
+                        Some(Binding::UnitGlobal)
+                    } else if mt.ns().contains_key(name) {
+                        Some(Binding::OldGlobal)
+                    } else {
+                        None
+                    }
             }
         }
     }
@@ -46,10 +62,18 @@ pub fn analyze(cmp: &mut Compiler, expr: HandleAny) -> anf::PosExpr {
         let pos = root!(&mut cmp.mt, stx.pos);
 
         if let Some(name) = expr.try_cast::<Symbol>(cmp.mt) {
-            if let Some(id) = Env::get(env, name) {
-                PosExpr {expr: Triv(Use(id)), pos}
-            } else {
-                PosExpr {expr: Global(root!(&mut cmp.mt, name)), pos}
+            match binding(&mut cmp.mt, env, name) {
+                Some(Binding::Local(id)) => PosExpr {expr: Triv(Use(id)), pos},
+                Some(Binding::UnitGlobal) => PosExpr {expr: Global(root!(&mut cmp.mt, name)), pos},
+
+                // OPTIMIZE: Could emit direct Var usage instead of Namespace-lookup instructions:
+                Some(Binding::OldGlobal) => PosExpr {expr: Global(root!(&mut cmp.mt, name)), pos},
+
+                None => {
+                    eprintln!("Warning: unbound variable `{}` at {}", cmp.mt.borrow(name).name(),
+                        pos.oref().within(cmp.mt));
+                    PosExpr {expr: Global(root!(&mut cmp.mt, name)), pos}
+                }
             }
         } else if let Some(ls) = expr.try_cast::<Pair>(cmp.mt) {
             let callee = cmp.mt.borrow(ls).car().try_cast::<Syntax>(cmp.mt).unwrap_or_else(|| {
@@ -406,10 +430,17 @@ pub fn analyze(cmp: &mut Compiler, expr: HandleAny) -> anf::PosExpr {
         }));
         let val_expr = boxed::Box::new(analyze_expr(cmp, env, val_sexpr));
 
-        if let Some(id) = Env::get(env, name.oref()) {
-            return PosExpr {expr: Set(id, val_expr), pos};
-        } else {
-            return PosExpr {expr: GlobalSet(name, val_expr), pos};
+        match binding(&mut cmp.mt, env, name.oref()) {
+            Some(Binding::Local(id)) => PosExpr {expr: Set(id, val_expr), pos},
+            Some(Binding::UnitGlobal) => PosExpr {expr: GlobalSet(name, val_expr), pos},
+
+            // OPTIMIZE: Could emit direct Var usage instead of Namespace-lookup instructions:
+            Some(Binding::OldGlobal) => PosExpr {expr: GlobalSet(name, val_expr), pos},
+
+            None => {
+                eprintln!("Warning: `set!` unbound variable `{}` at {}", name.name(), pos.oref().within(cmp.mt));
+                PosExpr {expr: GlobalSet(name, val_expr), pos}
+            }
         }
     }
 
@@ -460,7 +491,51 @@ pub fn analyze(cmp: &mut Compiler, expr: HandleAny) -> anf::PosExpr {
         PosExpr {expr: Call(bindings, HashSet::new()), pos}
     }
 
-    fn analyze_toplevel_form(cmp: &mut Compiler, form: HandleAny) -> anf::PosExpr {
+    fn declare_toplevel_form(cmp: &mut Compiler, unit_toplevel: &mut UnitToplevel, form: ORef) {
+        let stx = form.try_cast::<Syntax>(cmp.mt).unwrap_or_else(|| {
+            todo!() // error
+        });
+
+        if let Some(ls) = cmp.mt.borrow(stx).expr.try_cast::<Pair>(cmp.mt) {
+            let callee = cmp.mt.borrow(ls).car().try_cast::<Syntax>(cmp.mt).unwrap_or_else(|| {
+                todo!() // error
+            });
+
+            if let Some(callee) = cmp.mt.borrow(callee).expr.try_cast::<Symbol>(cmp.mt) {
+                if cmp.mt.borrow(callee).name() == "define" {
+                    declare(cmp, unit_toplevel, cmp.mt.borrow(ls).cdr());
+                } else if cmp.mt.borrow(callee).name() == "begin" {
+                    declare_toplevel_begin(cmp, unit_toplevel, cmp.mt.borrow(ls).cdr());
+                }
+            }
+        }
+    }
+
+    fn declare(cmp: &mut Compiler, unit_toplevel: &mut UnitToplevel, args: ORef) {
+        let args = args.try_cast::<Pair>(cmp.mt).unwrap_or_else(|| {
+            todo!() // error
+        });
+
+        let definiend = cmp.mt.borrow(args).car();
+        let definiend = definiend.try_cast::<Syntax>(cmp.mt).unwrap_or_else(|| {
+            todo!() // error
+        });
+        let definiend = root!(cmp.mt, cmp.mt.borrow(definiend).expr.try_cast::<Symbol>(cmp.mt).unwrap_or_else(|| {
+            todo!() // error
+        }));
+
+        unit_toplevel.insert(String::from(definiend.name()), definiend);
+    }
+
+    fn declare_toplevel_begin(cmp: &mut Compiler, unit_toplevel: &mut UnitToplevel, mut args: ORef) {
+        while let Some(args_pair) = args.try_cast::<Pair>(cmp.mt) {
+            declare_toplevel_form(cmp, unit_toplevel, cmp.mt.borrow(args_pair).car());
+
+            args = cmp.mt.borrow(args_pair).cdr();
+        }
+    }
+
+    fn analyze_toplevel_form(cmp: &mut Compiler, env: &Rc<Env>, form: HandleAny) -> anf::PosExpr {
         let stx = form.clone().try_cast::<Syntax>(cmp.mt).unwrap_or_else(|| {
             todo!() // error
         });
@@ -474,18 +549,18 @@ pub fn analyze(cmp: &mut Compiler, expr: HandleAny) -> anf::PosExpr {
             if let Some(callee) = cmp.mt.borrow(callee).expr.try_cast::<Symbol>(cmp.mt) {
                 if cmp.mt.borrow(callee).name() == "define" {
                     let args = root!(cmp.mt, cmp.mt.borrow(ls).cdr());
-                    return analyze_definition(cmp, args, pos);
+                    return analyze_definition(cmp, env, args, pos);
                 } else if cmp.mt.borrow(callee).name() == "begin" {
                     let args = root!(cmp.mt, cmp.mt.borrow(ls).cdr());
-                    return analyze_toplevel_begin(cmp, args, pos);
+                    return analyze_toplevel_begin(cmp, env, args, pos);
                 }
             }
         }
 
-        analyze_expr(cmp, &Rc::new(Env::Empty), form)
+        analyze_expr(cmp, env, form)
     }
 
-    fn analyze_definition(cmp: &mut Compiler, args: HandleAny, pos: HandleAny) -> anf::PosExpr {
+    fn analyze_definition(cmp: &mut Compiler, env: &Rc<Env>, args: HandleAny, pos: HandleAny) -> anf::PosExpr {
         let args = args.try_cast::<Pair>(cmp.mt).unwrap_or_else(|| {
             todo!() // error
         });
@@ -504,17 +579,17 @@ pub fn analyze(cmp: &mut Compiler, expr: HandleAny) -> anf::PosExpr {
         let definiend = root!(cmp.mt, cmp.mt.borrow(definiend).expr.try_cast::<Symbol>(cmp.mt).unwrap_or_else(|| {
             todo!() // error
         }));
-        let val_expr = analyze_expr(cmp, &Rc::new(Env::Empty), val_expr);
+        let val_expr = analyze_expr(cmp, env, val_expr);
 
         PosExpr {expr: Define(definiend, boxed::Box::new(val_expr)), pos}
     }
 
-    fn analyze_toplevel_begin(cmp: &mut Compiler, mut args: HandleAny, pos: HandleAny) -> anf::PosExpr {
+    fn analyze_toplevel_begin(cmp: &mut Compiler, env: &Rc<Env>, mut args: HandleAny, pos: HandleAny) -> anf::PosExpr {
         let mut stmts = Vec::new();
 
         while let Some(args_pair) = args.clone().try_cast::<Pair>(cmp.mt) {
             let stmt = root!(cmp.mt, args_pair.car());
-            stmts.push(analyze_toplevel_form(cmp, stmt));
+            stmts.push(analyze_toplevel_form(cmp, env, stmt));
 
             args = root!(cmp.mt, args_pair.cdr());
         }
@@ -530,7 +605,12 @@ pub fn analyze(cmp: &mut Compiler, expr: HandleAny) -> anf::PosExpr {
         }
     }
 
-    let body = analyze_toplevel_form(cmp, expr);
+    let env = {
+        let mut unit_toplevel = HashMap::new();
+        declare_toplevel_form(cmp, &mut unit_toplevel, expr.oref());
+        Rc::new(Env::UnitToplevel(unit_toplevel))
+    };
+    let body = analyze_toplevel_form(cmp, &env, expr);
     let body_pos = body.pos.clone();
     PosExpr {expr: r#Fn(None, anf::LiveVars::new(), vec![Id::fresh(cmp)], false, boxed::Box::new(body)), pos: body_pos}
 }

@@ -482,6 +482,8 @@ impl Mutator {
     // HACK: returns raw pointer because of lifetime issues in Symbol::new:
     pub fn symbols_mut(&mut self) -> *mut SymbolTable { &mut self.symbols as _ }
 
+    pub fn ns(&mut self) -> Handle<Namespace> { root!(self, self.ns.unwrap()) }
+
     fn set_code(&mut self, code: Gc<Bytecode>) {
         self.code = Some(code);
         self.consts = Some(self.borrow(code).consts);

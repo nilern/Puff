@@ -98,6 +98,8 @@ impl Namespace {
             }
         }
     }
+
+    pub fn contains_key(&self, name: Gc<Symbol>) -> bool { self.get(name).is_some() }
 }
 
 impl Handle<Namespace> {
